@@ -46,9 +46,21 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key \
 npm run migrate:notion-income
 ```
 
+## Budget assistant
+
+There's a chat widget (bottom-right, on every page) that logs transactions from plain language — "log $42 at Publix yesterday", "paycheck $2100 today". It calls the Claude API server-side (`app/api/assistant`) with a `log_transaction` tool; it can't do anything else (no editing accounts, categories, or existing transactions).
+
+To enable it, get a key at [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) and add it to `.env.local`:
+
+```
+ANTHROPIC_API_KEY=your-anthropic-api-key
+```
+
+Usage is billed per request on your Anthropic account — a few cents per hundred logged transactions at most. Without this key set, the widget still shows but logging fails with a clear error.
+
 ## Deploying
 
-Push this repo to GitHub, then import it on [Vercel](https://vercel.com/new). Add the two env vars from `.env.local` in the Vercel project settings. Every push to `main` redeploys automatically.
+Push this repo to GitHub, then import it on [Vercel](https://vercel.com/new). Add the three env vars from `.env.local` (including `ANTHROPIC_API_KEY`, if you enabled the assistant) in the Vercel project settings. Every push to `main` redeploys automatically.
 
 ## Data model
 

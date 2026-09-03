@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { reorderAccounts } from "@/app/actions";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, progressColor } from "@/lib/format";
 import type { AccountWithBalance } from "@/lib/queries";
 
 export function DashboardAccountList({
@@ -73,8 +73,8 @@ export function DashboardAccountList({
                 </div>
                 <div className="mt-1 h-1.5 w-full rounded-full bg-bg">
                   <div
-                    className="h-1.5 rounded-full bg-accent"
-                    style={{ width: `${goalPct}%` }}
+                    className="h-1.5 rounded-full"
+                    style={{ width: `${goalPct}%`, backgroundColor: progressColor(goalPct) }}
                   />
                 </div>
               </div>

@@ -1,5 +1,6 @@
 import { signOut } from "@/app/actions";
 import { NavLinks } from "./nav-links";
+import { AssistantWidget } from "./assistant-widget";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -28,6 +29,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <main className="mx-auto w-full max-w-[1280px] flex-1 px-8 py-10">
         {children}
       </main>
+      <AssistantWidget />
     </div>
   );
 }

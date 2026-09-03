@@ -7,7 +7,7 @@ import {
   updateAccountGoal,
   reorderAccounts,
 } from "@/app/actions";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, progressColor } from "@/lib/format";
 import type { AccountWithBalance } from "@/lib/queries";
 
 const BANK_BADGE_CLASSES: Record<string, string> = {
@@ -116,8 +116,8 @@ export function AccountList({
                 </div>
                 <div className="mt-1 h-1.5 w-full rounded-full bg-bg">
                   <div
-                    className="h-1.5 rounded-full bg-accent"
-                    style={{ width: `${progress}%` }}
+                    className="h-1.5 rounded-full"
+                    style={{ width: `${progress}%`, backgroundColor: progressColor(progress!) }}
                   />
                 </div>
               </div>
