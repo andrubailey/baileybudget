@@ -4,8 +4,11 @@ export type Account = {
   starting_balance: number;
   goal: number | null;
   is_active: boolean;
+  bank: string | null;
   created_at: string;
 };
+
+export const BANK_OPTIONS = ["Chase", "CIT Bank", "Amex"] as const;
 
 export type Period = {
   id: string;
@@ -15,19 +18,16 @@ export type Period = {
   created_at: string;
 };
 
+// Expense categories belong to one period (e.g. "Groceries" in September and
+// "Groceries" in October are separate rows, each with their own planned
+// amount). Income categories are shared across periods, so period_id is null.
 export type Category = {
   id: string;
   name: string;
   kind: "income" | "expense";
-  is_need: boolean;
-  created_at: string;
-};
-
-export type BudgetLine = {
-  id: string;
-  category_id: string;
-  period_id: string;
+  period_id: string | null;
   planned_amount: number;
+  is_need: boolean;
   created_at: string;
 };
 

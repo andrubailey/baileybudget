@@ -16,12 +16,21 @@ export async function createAccount(formData: FormData) {
   const starting_balance = Number(formData.get("starting_balance") ?? 0);
   const goalRaw = formData.get("goal");
   const goal = goalRaw ? Number(goalRaw) : null;
+  const bank = String(formData.get("bank") ?? "").trim() || null;
 
   if (!name) return;
 
-  await supabase.from("accounts").insert({ name, starting_balance, goal });
+  await supabase
+    .from("accounts")
+    .insert({ name, starting_balance, goal, bank });
   revalidatePath("/accounts");
   revalidatePath("/");
+}
+
+export async function updateAccountBank(id: string, bank: string | null) {
+  const supabase = await createClient();
+  await supabase.from("accounts").update({ bank }).eq("id", id);
+  revalidatePath("/accounts");
 }
 
 export async function toggleAccountActive(id: string, is_active: boolean) {
@@ -51,25 +60,30 @@ export async function createCategory(formData: FormData) {
     | "income"
     | "expense";
   const is_need = formData.get("is_need") === "on";
+  const planned_amount = Number(formData.get("planned_amount") ?? 0);
+  // Expense categories belong to the period they were created in; income
+  // categories are shared across all periods.
+  const period_id =
+    kind === "expense" ? String(formData.get("period_id") ?? "") || null : null;
 
-  if (!name) return;
+  if (!name || (kind === "expense" && !period_id)) return;
 
-  await supabase.from("categories").insert({ name, kind, is_need });
+  await supabase
+    .from("categories")
+    .insert({ name, kind, is_need, period_id, planned_amount });
   revalidatePath("/categories");
+  revalidatePath("/");
 }
 
-export async function upsertBudgetLine(
+export async function updateCategoryPlanned(
   category_id: string,
-  period_id: string,
   planned_amount: number,
 ) {
   const supabase = await createClient();
   await supabase
-    .from("budget_lines")
-    .upsert(
-      { category_id, period_id, planned_amount },
-      { onConflict: "category_id,period_id" },
-    );
+    .from("categories")
+    .update({ planned_amount })
+    .eq("id", category_id);
   revalidatePath("/categories");
   revalidatePath("/");
 }
