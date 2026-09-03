@@ -33,6 +33,13 @@ export async function updateAccountBank(id: string, bank: string | null) {
   revalidatePath("/accounts");
 }
 
+export async function updateAccountGoal(id: string, goal: number | null) {
+  const supabase = await createClient();
+  await supabase.from("accounts").update({ goal }).eq("id", id);
+  revalidatePath("/accounts");
+  revalidatePath("/");
+}
+
 export async function toggleAccountActive(id: string, is_active: boolean) {
   const supabase = await createClient();
   await supabase.from("accounts").update({ is_active }).eq("id", id);

@@ -1,5 +1,10 @@
 import { getAccountsWithBalances } from "@/lib/queries";
-import { createAccount, toggleAccountActive, updateAccountBank } from "@/app/actions";
+import {
+  createAccount,
+  toggleAccountActive,
+  updateAccountBank,
+  updateAccountGoal,
+} from "@/app/actions";
 import { formatMoney } from "@/lib/format";
 import { BANK_OPTIONS } from "@/lib/types";
 
@@ -131,7 +136,9 @@ export default async function AccountsPage() {
               {a.goal && a.goal > 0 && (
                 <div className="mt-4">
                   <div className="flex justify-between text-xs text-black/50 dark:text-white/50">
-                    <span>Goal {formatMoney(a.goal)}</span>
+                    <span>
+                      {formatMoney(a.balance)} / {formatMoney(a.goal)}
+                    </span>
                     <span>{progress?.toFixed(0)}%</span>
                   </div>
                   <div className="mt-1 h-1.5 w-full rounded-full bg-black/10 dark:bg-white/10">
@@ -142,6 +149,31 @@ export default async function AccountsPage() {
                   </div>
                 </div>
               )}
+
+              <form
+                action={async (formData: FormData) => {
+                  "use server";
+                  const raw = String(formData.get("goal") ?? "").trim();
+                  const goal = raw ? Number(raw) : null;
+                  await updateAccountGoal(a.id, goal);
+                }}
+                className="mt-2 flex items-center gap-2"
+              >
+                <input
+                  type="number"
+                  step="0.01"
+                  name="goal"
+                  defaultValue={a.goal ?? ""}
+                  placeholder="Set goal"
+                  className="w-full rounded-md border border-black/15 bg-transparent px-2 py-1 text-xs dark:border-white/15"
+                />
+                <button
+                  type="submit"
+                  className="shrink-0 rounded-md border border-black/15 px-2 py-1 text-xs dark:border-white/15"
+                >
+                  Save
+                </button>
+              </form>
 
               <form
                 action={async (formData: FormData) => {
