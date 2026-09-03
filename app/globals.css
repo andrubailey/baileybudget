@@ -1,70 +1,26 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #faf7f0;
-  --surface: #ffffff;
-  --surface-2: #f2ede0;
-  --border: #e3dac4;
-  --text: #1c1a16;
-  --text-muted: #746a58;
-  --accent: #9c7a2c;
-  --accent-soft: #f1e6c8;
-  --positive: #2f6a48;
-  --negative: #a8402f;
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #100e0b;
-    --surface: #1a1712;
-    --surface-2: #211d17;
-    --border: #343026;
-    --text: #f5f0e6;
-    --text-muted: #a89d87;
-    --accent: #d6b167;
-    --accent-soft: rgba(214, 177, 103, 0.14);
-    --positive: #6bb989;
-    --negative: #e08a72;
+    --background: #0a0a0a;
+    --foreground: #ededed;
   }
 }
 
-@theme inline {
-  --color-bg: var(--bg);
-  --color-surface: var(--surface);
-  --color-surface-2: var(--surface-2);
-  --color-border: var(--border);
-  --color-text: var(--text);
-  --color-text-muted: var(--text-muted);
-  --color-accent: var(--accent);
-  --color-accent-soft: var(--accent-soft);
-  --color-positive: var(--positive);
-  --color-negative: var(--negative);
-  --font-display: var(--font-fraunces);
-  --font-sans: var(--font-public-sans);
-}
-
 body {
-  background-color: var(--bg);
-  color: var(--text);
-  font-family: var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
-  background-image: radial-gradient(
-    circle at 1px 1px,
-    color-mix(in srgb, var(--text) 6%, transparent) 1px,
-    transparent 0
-  );
-  background-size: 22px 22px;
-}
-
-.font-display {
-  font-family: var(--font-fraunces), ui-serif, Georgia, serif;
-  font-feature-settings: "ss01" 1;
-}
-
-.tabular {
-  font-variant-numeric: tabular-nums;
-}
-
-::selection {
-  background: var(--accent-soft);
-  color: var(--text);
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
 }
