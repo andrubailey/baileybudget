@@ -8,8 +8,11 @@ create table if not exists accounts (
   goal numeric,
   is_active boolean not null default true,
   bank text,
+  sort_order integer not null default 0,
   created_at timestamptz not null default now()
 );
+
+create index if not exists accounts_sort_order_idx on accounts(sort_order);
 
 create table if not exists periods (
   id uuid primary key default gen_random_uuid(),

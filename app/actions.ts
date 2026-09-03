@@ -20,9 +20,28 @@ export async function createAccount(formData: FormData) {
 
   if (!name) return;
 
+  const { data: last } = await supabase
+    .from("accounts")
+    .select("sort_order")
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const sort_order = (last?.sort_order ?? -1) + 1;
+
   await supabase
     .from("accounts")
-    .insert({ name, starting_balance, goal, bank });
+    .insert({ name, starting_balance, goal, bank, sort_order });
+  revalidatePath("/accounts");
+  revalidatePath("/");
+}
+
+export async function reorderAccounts(orderedIds: string[]) {
+  const supabase = await createClient();
+  await Promise.all(
+    orderedIds.map((id, index) =>
+      supabase.from("accounts").update({ sort_order: index }).eq("id", id),
+    ),
+  );
   revalidatePath("/accounts");
   revalidatePath("/");
 }

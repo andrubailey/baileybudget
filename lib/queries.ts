@@ -3,31 +3,13 @@ import type { Account, BudgetLine, Category, Transaction } from "@/lib/types";
 
 export type AccountWithBalance = Account & { balance: number };
 
-// Group accounts by bank in a fixed order — Chase (business accounts before
-// personal), then CIT Bank, then Amex — with anything else last.
-const BANK_ORDER = ["Chase", "CIT Bank", "Amex"];
-
-function accountSortKey(a: Account): [number, number, string] {
-  const bankRank = a.bank ? BANK_ORDER.indexOf(a.bank) : -1;
-  const businessRank = /business/i.test(a.name) ? 0 : 1;
-  return [bankRank === -1 ? BANK_ORDER.length : bankRank, businessRank, a.name];
-}
-
-function sortAccounts<T extends Account>(accounts: T[]): T[] {
-  return [...accounts].sort((a, b) => {
-    const [aBank, aBusiness, aName] = accountSortKey(a);
-    const [bBank, bBusiness, bName] = accountSortKey(b);
-    return aBank - bBank || aBusiness - bBusiness || aName.localeCompare(bName);
-  });
-}
-
 export async function getAccountsWithBalances(): Promise<
   AccountWithBalance[]
 > {
   const supabase = await createClient();
 
   const [{ data: accounts }, { data: transactions }] = await Promise.all([
-    supabase.from("accounts").select("*").order("created_at"),
+    supabase.from("accounts").select("*").order("sort_order").order("created_at"),
     supabase.from("transactions").select("account_id, kind, amount"),
   ]);
 
@@ -41,12 +23,10 @@ export async function getAccountsWithBalances(): Promise<
     );
   }
 
-  const withBalances = (accounts ?? []).map((a) => ({
+  return (accounts ?? []).map((a) => ({
     ...a,
     balance: a.starting_balance + (deltaByAccount.get(a.id) ?? 0),
   }));
-
-  return sortAccounts(withBalances);
 }
 
 export type PeriodSummary = {

@@ -5,6 +5,7 @@ export type Account = {
   goal: number | null;
   is_active: boolean;
   bank: string | null;
+  sort_order: number;
   created_at: string;
 };
 
