@@ -3,6 +3,24 @@ import type { Account, BudgetLine, Category, Transaction } from "@/lib/types";
 
 export type AccountWithBalance = Account & { balance: number };
 
+// Group accounts by bank in a fixed order — Chase (business accounts before
+// personal), then CIT Bank, then Amex — with anything else last.
+const BANK_ORDER = ["Chase", "CIT Bank", "Amex"];
+
+function accountSortKey(a: Account): [number, number, string] {
+  const bankRank = a.bank ? BANK_ORDER.indexOf(a.bank) : -1;
+  const businessRank = /business/i.test(a.name) ? 0 : 1;
+  return [bankRank === -1 ? BANK_ORDER.length : bankRank, businessRank, a.name];
+}
+
+function sortAccounts<T extends Account>(accounts: T[]): T[] {
+  return [...accounts].sort((a, b) => {
+    const [aBank, aBusiness, aName] = accountSortKey(a);
+    const [bBank, bBusiness, bName] = accountSortKey(b);
+    return aBank - bBank || aBusiness - bBusiness || aName.localeCompare(bName);
+  });
+}
+
 export async function getAccountsWithBalances(): Promise<
   AccountWithBalance[]
 > {
@@ -23,10 +41,12 @@ export async function getAccountsWithBalances(): Promise<
     );
   }
 
-  return (accounts ?? []).map((a) => ({
+  const withBalances = (accounts ?? []).map((a) => ({
     ...a,
     balance: a.starting_balance + (deltaByAccount.get(a.id) ?? 0),
   }));
+
+  return sortAccounts(withBalances);
 }
 
 export type PeriodSummary = {
