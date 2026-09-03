@@ -11,16 +11,13 @@ import { formatMoney } from "@/lib/format";
 import type { AccountWithBalance } from "@/lib/queries";
 
 const BANK_BADGE_CLASSES: Record<string, string> = {
-  Chase: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
-  "CIT Bank": "bg-slate-100 text-slate-800 dark:bg-slate-800/60 dark:text-slate-300",
-  Amex: "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300",
+  Chase: "bg-accent-soft text-accent",
+  "CIT Bank": "bg-bg text-text-muted",
+  Amex: "bg-[#e0f7fa] text-[#0e7490]",
 };
 
 function bankBadgeClass(bank: string) {
-  return (
-    BANK_BADGE_CLASSES[bank] ??
-    "bg-black/10 text-black/60 dark:bg-white/10 dark:text-white/60"
-  );
+  return BANK_BADGE_CLASSES[bank] ?? "bg-bg text-text-faint";
 }
 
 export function AccountList({
@@ -57,11 +54,7 @@ export function AccountList({
   }
 
   if (order.length === 0) {
-    return (
-      <p className="text-sm text-black/50 dark:text-white/50">
-        No accounts yet — add your first one above.
-      </p>
-    );
+    return <p className="text-sm text-text-muted">No accounts yet — add your first one above.</p>;
   }
 
   return (
@@ -79,14 +72,14 @@ export function AccountList({
             onDragOver={(e) => handleDragOver(e, a.id)}
             onDrop={handleDrop}
             onDragEnd={handleDrop}
-            className={`cursor-grab rounded-xl border border-black/10 p-5 active:cursor-grabbing dark:border-white/10 ${
+            className={`cursor-grab rounded-xl border border-border bg-surface p-5 shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)] active:cursor-grabbing ${
               draggedId === a.id ? "opacity-50" : ""
             }`}
           >
             <div className="flex items-start justify-between">
               <div>
                 <div className="flex items-center gap-2">
-                  <p className="font-medium">{a.name}</p>
+                  <p className="font-medium text-text">{a.name}</p>
                   {a.bank && (
                     <span
                       className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${bankBadgeClass(a.bank)}`}
@@ -95,7 +88,7 @@ export function AccountList({
                     </span>
                   )}
                 </div>
-                <p className="mt-1 text-2xl font-semibold">
+                <p className="tabular mt-1 text-2xl font-semibold text-text">
                   {formatMoney(a.balance)}
                 </p>
               </div>
@@ -104,8 +97,8 @@ export function AccountList({
                   type="submit"
                   className={`rounded-full px-2.5 py-1 text-xs font-medium ${
                     a.is_active
-                      ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300"
-                      : "bg-black/10 text-black/50 dark:bg-white/10 dark:text-white/50"
+                      ? "bg-accent-soft text-accent"
+                      : "bg-bg text-text-faint"
                   }`}
                 >
                   {a.is_active ? "Active" : "Deactivated"}
@@ -115,15 +108,15 @@ export function AccountList({
 
             {a.goal && a.goal > 0 && (
               <div className="mt-4">
-                <div className="flex justify-between text-xs text-black/50 dark:text-white/50">
+                <div className="tabular flex justify-between text-xs text-text-faint">
                   <span>
                     {formatMoney(a.balance)} / {formatMoney(a.goal)}
                   </span>
                   <span>{progress?.toFixed(0)}%</span>
                 </div>
-                <div className="mt-1 h-1.5 w-full rounded-full bg-black/10 dark:bg-white/10">
+                <div className="mt-1 h-1.5 w-full rounded-full bg-bg">
                   <div
-                    className="h-1.5 rounded-full bg-black dark:bg-white"
+                    className="h-1.5 rounded-full bg-accent"
                     style={{ width: `${progress}%` }}
                   />
                 </div>
@@ -144,11 +137,11 @@ export function AccountList({
                 name="goal"
                 defaultValue={a.goal ?? ""}
                 placeholder="Set goal"
-                className="w-full rounded-md border border-black/15 bg-transparent px-2 py-1 text-xs dark:border-white/15"
+                className="w-full rounded-md border border-border bg-bg px-2 py-1 text-xs text-text outline-none focus:border-accent"
               />
               <button
                 type="submit"
-                className="shrink-0 rounded-md border border-black/15 px-2 py-1 text-xs dark:border-white/15"
+                className="shrink-0 rounded-md border border-border px-2 py-1 text-xs font-medium text-text-muted hover:bg-bg"
               >
                 Save
               </button>
@@ -166,7 +159,7 @@ export function AccountList({
                 list="bank-options"
                 defaultValue={a.bank ?? ""}
                 placeholder="Set bank"
-                className="w-full rounded-md border border-black/15 bg-transparent px-2 py-1 text-xs dark:border-white/15"
+                className="w-full rounded-md border border-border bg-bg px-2 py-1 text-xs text-text outline-none focus:border-accent"
               />
               <datalist id="bank-options">
                 {bankOptions.map((b) => (
@@ -175,7 +168,7 @@ export function AccountList({
               </datalist>
               <button
                 type="submit"
-                className="shrink-0 rounded-md border border-black/15 px-2 py-1 text-xs dark:border-white/15"
+                className="shrink-0 rounded-md border border-border px-2 py-1 text-xs font-medium text-text-muted hover:bg-bg"
               >
                 Save
               </button>

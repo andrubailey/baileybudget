@@ -5,6 +5,11 @@ import { formatMoney } from "@/lib/format";
 import { PeriodSwitcher } from "@/app/(app)/period-switcher";
 import { TransactionForm } from "./transaction-form";
 
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/);
+  return (parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "");
+}
+
 export default async function TransactionsPage({
   searchParams,
 }: {
@@ -27,8 +32,8 @@ export default async function TransactionsPage({
     <div className="space-y-8">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-lg font-semibold">Transactions</h1>
-          <p className="mt-1 text-sm text-black/60 dark:text-white/60">
+          <h1 className="text-2xl font-semibold text-text">Transactions</h1>
+          <p className="mt-1 text-sm text-text-muted">
             Log income and expenses as they happen.
           </p>
         </div>
@@ -36,7 +41,7 @@ export default async function TransactionsPage({
       </div>
 
       {!period ? (
-        <p className="text-sm text-black/50 dark:text-white/50">
+        <p className="text-sm text-text-muted">
           Create a period first from the Periods page.
         </p>
       ) : (
@@ -47,46 +52,59 @@ export default async function TransactionsPage({
             categories={categories}
           />
 
-          <div className="overflow-hidden rounded-xl border border-black/10 dark:border-white/10">
-            <table className="w-full text-sm">
-              <thead className="bg-black/5 text-left dark:bg-white/5">
-                <tr>
-                  <th className="px-4 py-2 font-medium">Date</th>
-                  <th className="px-4 py-2 font-medium">Description</th>
-                  <th className="px-4 py-2 font-medium">Category</th>
-                  <th className="px-4 py-2 font-medium">Account</th>
-                  <th className="px-4 py-2 font-medium">Tags</th>
-                  <th className="px-4 py-2 text-right font-medium">Amount</th>
-                  <th className="px-4 py-2" />
+          <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-border bg-bg">
+                  <th className="px-6 py-2 text-xs font-medium text-text-muted">
+                    Description
+                  </th>
+                  <th className="px-6 py-2 text-xs font-medium text-text-muted">Category</th>
+                  <th className="px-6 py-2 text-xs font-medium text-text-muted">Account</th>
+                  <th className="px-6 py-2 text-xs font-medium text-text-muted">Tags</th>
+                  <th className="px-6 py-2 text-xs font-medium text-text-muted">Date</th>
+                  <th className="px-6 py-2 text-right text-xs font-medium text-text-muted">
+                    Amount
+                  </th>
+                  <th className="px-6 py-2" />
                 </tr>
               </thead>
               <tbody>
                 {transactions.map((t) => (
-                  <tr key={t.id} className="border-t border-black/10 dark:border-white/10">
-                    <td className="px-4 py-2">{t.txn_date}</td>
-                    <td className="px-4 py-2">{t.description}</td>
-                    <td className="px-4 py-2">
+                  <tr key={t.id} className="border-b border-border last:border-b-0">
+                    <td className="px-6 py-3">
+                      <div className="flex items-center gap-3">
+                        <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-black/5 bg-bg text-xs font-semibold text-text-faint">
+                          {initials(t.description)}
+                        </span>
+                        <span className="text-sm font-medium text-text">
+                          {t.description}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-3 text-sm text-text-muted">
                       {t.category_id ? categoryById.get(t.category_id) : "—"}
                     </td>
-                    <td className="px-4 py-2">
+                    <td className="px-6 py-3 text-sm text-text-muted">
                       {t.account_id ? accountById.get(t.account_id) : "—"}
                     </td>
-                    <td className="px-4 py-2">
+                    <td className="px-6 py-3 text-sm text-text-muted">
                       {t.tags.length > 0 ? t.tags.join(", ") : "—"}
                     </td>
+                    <td className="px-6 py-3 text-sm text-text-muted">{t.txn_date}</td>
                     <td
-                      className={`px-4 py-2 text-right font-medium ${
-                        t.kind === "income" ? "text-green-600" : ""
+                      className={`tabular px-6 py-3 text-right text-sm font-medium ${
+                        t.kind === "income" ? "text-success" : "text-text"
                       }`}
                     >
                       {t.kind === "income" ? "+" : "-"}
                       {formatMoney(t.amount)}
                     </td>
-                    <td className="px-4 py-2 text-right">
+                    <td className="px-6 py-3 text-right">
                       <form action={deleteTransaction.bind(null, t.id)}>
                         <button
                           type="submit"
-                          className="text-xs text-black/40 hover:text-red-600 dark:text-white/40"
+                          className="text-xs text-text-faint hover:text-[#f04438]"
                         >
                           Delete
                         </button>
@@ -96,7 +114,7 @@ export default async function TransactionsPage({
                 ))}
                 {transactions.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-6 text-center text-black/50 dark:text-white/50">
+                    <td colSpan={7} className="px-6 py-10 text-center text-sm text-text-muted">
                       No transactions logged for this period yet.
                     </td>
                   </tr>
