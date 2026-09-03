@@ -20,6 +20,23 @@ income/expense transactions.
    ```
 6. Open [http://localhost:3000](http://localhost:3000), sign in, and create your first period from the **Periods** page — everything else (accounts, categories, transactions) is scoped to a period.
 
+## Importing from Notion
+
+If you were tracking expenses in a Notion "Ultimate Budget"-style template, `scripts/migrate-notion.mjs` does a one-time import of accounts, periods, expense categories, and expense transactions straight from Notion into Supabase.
+
+1. Create a Notion internal integration at [notion.so/my-integrations](https://www.notion.so/my-integrations) → **New integration** → copy its **Internal Integration Secret**.
+2. Open your Notion Finances page → **···** menu → **Connections** → add the integration you just created, so it can read the Accounts / Time Periods / Budget / Expenses databases.
+3. In Supabase, go to **Settings → API** and copy the **service_role** secret key (this bypasses row-level security — keep it out of `.env.local` / git, only use it for this one-off run).
+4. Run:
+   ```bash
+   NOTION_TOKEN=secret_xxx \
+   SUPABASE_URL=https://your-project.supabase.co \
+   SUPABASE_SERVICE_ROLE_KEY=your-service-role-key \
+   npm run migrate:notion
+   ```
+
+It dedupes Notion's per-month category rows (e.g. "Groceries - AUG26") into one category per name, skips blank/corrupt rows, and only imports expenses (not income) — matching what was actually in use. Safe to re-run against a fresh database, but running it twice against the same database will duplicate everything (there's no dedupe on re-run).
+
 ## Deploying
 
 Push this repo to GitHub, then import it on [Vercel](https://vercel.com/new). Add the two env vars from `.env.local` in the Vercel project settings. Every push to `main` redeploys automatically.
