@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getPeriods, pickPeriod } from "@/lib/periods";
 import {
   getAccountsWithBalances,
+  getCategories,
   getCategoryProgress,
   getPeriodSummary,
   getTransactions,
@@ -9,6 +10,7 @@ import {
 import { formatMoney } from "@/lib/format";
 import { PeriodSwitcher } from "@/app/(app)/period-switcher";
 import { DashboardAccountList } from "@/app/(app)/dashboard-account-list";
+import { QuickAddButton } from "@/app/(app)/quick-add";
 
 const CATEGORY_COLORS = [
   "#9e77ed",
@@ -49,12 +51,14 @@ export default async function DashboardPage({
     );
   }
 
-  const [accounts, summary, categoryProgress, transactions] = await Promise.all([
-    getAccountsWithBalances(),
-    getPeriodSummary(period.id),
-    getCategoryProgress(period.id),
-    getTransactions(period.id),
-  ]);
+  const [accounts, categories, summary, categoryProgress, transactions] =
+    await Promise.all([
+      getAccountsWithBalances(),
+      getCategories(),
+      getPeriodSummary(period.id),
+      getCategoryProgress(period.id),
+      getTransactions(period.id),
+    ]);
 
   const activeAccounts = accounts.filter((a) => a.is_active);
   const accountById = new Map(accounts.map((a) => [a.id, a.name]));
@@ -111,21 +115,17 @@ export default async function DashboardPage({
 
       {/* Quick actions */}
       <div className="grid grid-cols-1 gap-8 sm:grid-cols-3">
-        <QuickAction
-          href="/transactions"
-          bg="#dcfae6"
-          title="Add income"
-          subtitle="Log an income transaction"
-          icon={
-            <path d="M12 5v14M5 12h14" stroke="#17b26a" strokeWidth={2} strokeLinecap="round" />
-          }
+        <QuickAddButton
+          kind="income"
+          periodId={period.id}
+          accounts={activeAccounts}
+          categories={categories}
         />
-        <QuickAction
-          href="/transactions"
-          bg="#fee4e2"
-          title="Add expense"
-          subtitle="Log an expense transaction"
-          icon={<path d="M5 12h14" stroke="#f04438" strokeWidth={2} strokeLinecap="round" />}
+        <QuickAddButton
+          kind="expense"
+          periodId={period.id}
+          accounts={activeAccounts}
+          categories={categories}
         />
         <QuickAction
           href="/accounts"
