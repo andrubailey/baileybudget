@@ -35,7 +35,16 @@ If you were tracking expenses in a Notion "Ultimate Budget"-style template, `scr
    npm run migrate:notion
    ```
 
-It dedupes Notion's per-month category rows (e.g. "Groceries - AUG26") into one category per name, skips blank/corrupt rows, and only imports expenses (not income) — matching what was actually in use. Safe to re-run against a fresh database, but running it twice against the same database will duplicate everything (there's no dedupe on re-run).
+It dedupes Notion's per-month category rows (e.g. "Groceries - AUG26") into one category per name and skips blank/corrupt rows. Safe to re-run against a fresh database, but running it twice against the same database will duplicate everything (there's no dedupe on re-run).
+
+Then import income the same way — it matches existing accounts/periods by name instead of re-creating them, so it's safe to run any time after the step above:
+
+```bash
+NOTION_TOKEN=secret_xxx \
+SUPABASE_URL=https://your-project.supabase.co \
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key \
+npm run migrate:notion-income
+```
 
 ## Deploying
 
