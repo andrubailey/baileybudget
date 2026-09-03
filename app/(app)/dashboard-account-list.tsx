@@ -55,23 +55,25 @@ export function DashboardAccountList({
             onDragOver={(e) => handleDragOver(e, a.id)}
             onDrop={handleDrop}
             onDragEnd={handleDrop}
-            className={`cursor-grab rounded-xl border border-black/10 p-4 active:cursor-grabbing dark:border-white/10 ${
+            className={`cursor-grab rounded-xl border border-border bg-surface p-5 shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)] active:cursor-grabbing ${
               draggedId === a.id ? "opacity-50" : ""
             }`}
           >
-            <p className="text-sm text-black/60 dark:text-white/60">{a.name}</p>
-            <p className="mt-1 text-xl font-semibold">{formatMoney(a.balance)}</p>
+            <p className="text-sm font-medium text-text-muted">{a.name}</p>
+            <p className="tabular mt-1 text-xl font-semibold text-text">
+              {formatMoney(a.balance)}
+            </p>
             {goalPct !== null && (
               <div className="mt-3">
-                <div className="flex justify-between text-xs text-black/50 dark:text-white/50">
+                <div className="tabular flex justify-between text-xs text-text-faint">
                   <span>
                     {formatMoney(a.balance)} / {formatMoney(a.goal!)}
                   </span>
                   <span>{goalPct.toFixed(0)}%</span>
                 </div>
-                <div className="mt-1 h-1.5 w-full rounded-full bg-black/10 dark:bg-white/10">
+                <div className="mt-1 h-1.5 w-full rounded-full bg-bg">
                   <div
-                    className="h-1.5 rounded-full bg-black dark:bg-white"
+                    className="h-1.5 rounded-full bg-accent"
                     style={{ width: `${goalPct}%` }}
                   />
                 </div>
