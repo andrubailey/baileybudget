@@ -64,17 +64,27 @@ alter table categories enable row level security;
 alter table budget_lines enable row level security;
 alter table transactions enable row level security;
 
+drop policy if exists "authenticated read accounts" on accounts;
+drop policy if exists "authenticated write accounts" on accounts;
 create policy "authenticated read accounts" on accounts for select to authenticated using (true);
 create policy "authenticated write accounts" on accounts for all to authenticated using (true) with check (true);
 
+drop policy if exists "authenticated read periods" on periods;
+drop policy if exists "authenticated write periods" on periods;
 create policy "authenticated read periods" on periods for select to authenticated using (true);
 create policy "authenticated write periods" on periods for all to authenticated using (true) with check (true);
 
+drop policy if exists "authenticated read categories" on categories;
+drop policy if exists "authenticated write categories" on categories;
 create policy "authenticated read categories" on categories for select to authenticated using (true);
 create policy "authenticated write categories" on categories for all to authenticated using (true) with check (true);
 
+drop policy if exists "authenticated read budget_lines" on budget_lines;
+drop policy if exists "authenticated write budget_lines" on budget_lines;
 create policy "authenticated read budget_lines" on budget_lines for select to authenticated using (true);
 create policy "authenticated write budget_lines" on budget_lines for all to authenticated using (true) with check (true);
 
+drop policy if exists "authenticated read transactions" on transactions;
+drop policy if exists "authenticated write transactions" on transactions;
 create policy "authenticated read transactions" on transactions for select to authenticated using (true);
 create policy "authenticated write transactions" on transactions for all to authenticated using (true) with check (true);
