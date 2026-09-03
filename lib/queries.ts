@@ -66,6 +66,7 @@ export type CategoryProgress = Category & {
   actual: number;
   remaining: number;
   overBudget: boolean;
+  transactions: { id: string; description: string }[];
 };
 
 export async function getCategoryProgress(
@@ -86,9 +87,10 @@ export async function getCategoryProgress(
         .eq("period_id", periodId),
       supabase
         .from("transactions")
-        .select("category_id, amount")
+        .select("id, category_id, amount, description")
         .eq("period_id", periodId)
-        .eq("kind", "expense"),
+        .eq("kind", "expense")
+        .order("txn_date", { ascending: false }),
     ]);
 
   const plannedByCategory = new Map<string, number>();
@@ -97,15 +99,22 @@ export async function getCategoryProgress(
   }
 
   const actualByCategory = new Map<string, number>();
+  const transactionsByCategory = new Map<
+    string,
+    { id: string; description: string }[]
+  >();
   for (const t of (transactions ?? []) as Pick<
     Transaction,
-    "category_id" | "amount"
+    "id" | "category_id" | "amount" | "description"
   >[]) {
     if (!t.category_id) continue;
     actualByCategory.set(
       t.category_id,
       (actualByCategory.get(t.category_id) ?? 0) + t.amount,
     );
+    const list = transactionsByCategory.get(t.category_id) ?? [];
+    list.push({ id: t.id, description: t.description });
+    transactionsByCategory.set(t.category_id, list);
   }
 
   return ((categories ?? []) as Category[]).map((c) => {
@@ -117,6 +126,7 @@ export async function getCategoryProgress(
       actual,
       remaining: planned - actual,
       overBudget: actual > planned && planned > 0,
+      transactions: transactionsByCategory.get(c.id) ?? [],
     };
   });
 }
