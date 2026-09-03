@@ -42,7 +42,8 @@ export default async function TransactionsPage({
 
       {!period ? (
         <p className="text-sm text-text-muted">
-          Create a period first from the Periods page.
+          Couldn&apos;t set up this month&apos;s period automatically — try
+          reloading the page.
         </p>
       ) : (
         <>

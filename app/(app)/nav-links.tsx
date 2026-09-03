@@ -8,7 +8,6 @@ const NAV_LINKS = [
   { href: "/transactions", label: "Transactions" },
   { href: "/categories", label: "Categories" },
   { href: "/accounts", label: "Accounts" },
-  { href: "/periods", label: "Periods" },
 ];
 
 export function NavLinks() {

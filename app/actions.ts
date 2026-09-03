@@ -66,19 +66,6 @@ export async function toggleAccountActive(id: string, is_active: boolean) {
   revalidatePath("/");
 }
 
-export async function createPeriod(formData: FormData) {
-  const supabase = await createClient();
-  const name = String(formData.get("name") ?? "").trim();
-  const start_date = String(formData.get("start_date") ?? "");
-  const end_date = String(formData.get("end_date") ?? "");
-
-  if (!name || !start_date || !end_date) return;
-
-  await supabase.from("periods").insert({ name, start_date, end_date });
-  revalidatePath("/periods");
-  revalidatePath("/");
-}
-
 export async function createCategory(formData: FormData) {
   const supabase = await createClient();
   const name = String(formData.get("name") ?? "").trim();

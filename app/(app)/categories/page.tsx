@@ -80,7 +80,8 @@ export default async function CategoriesPage({
 
       {!period ? (
         <p className="text-sm text-text-muted">
-          Create a period first to set planned budget amounts.
+          Couldn&apos;t set up this month&apos;s period automatically — try
+          reloading the page.
         </p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border bg-surface shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]">

@@ -41,11 +41,8 @@ export default async function DashboardPage({
       <div className="space-y-3">
         <h1 className="text-2xl font-semibold text-text">Welcome</h1>
         <p className="text-sm text-text-muted">
-          Start by creating your first period (month) on the{" "}
-          <Link href="/periods" className="text-accent underline underline-offset-2">
-            Periods
-          </Link>{" "}
-          page.
+          Couldn&apos;t set up this month&apos;s period automatically — try
+          reloading the page.
         </p>
       </div>
     );
