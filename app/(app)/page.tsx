@@ -107,10 +107,7 @@ export default async function DashboardPage({
         </h2>
         <div className="mt-3 space-y-3">
           {categoryProgress.map((c) => {
-            const pct =
-              c.planned_amount > 0
-                ? Math.min(100, (c.actual / c.planned_amount) * 100)
-                : 0;
+            const pct = c.planned > 0 ? Math.min(100, (c.actual / c.planned) * 100) : 0;
             return (
               <div key={c.id}>
                 <div className="flex justify-between text-sm">
@@ -118,7 +115,7 @@ export default async function DashboardPage({
                   <span
                     className={c.overBudget ? "text-red-600" : "text-black/60 dark:text-white/60"}
                   >
-                    {formatMoney(c.actual)} / {formatMoney(c.planned_amount)}
+                    {formatMoney(c.actual)} / {formatMoney(c.planned)}
                   </span>
                 </div>
                 <div className="mt-1 h-1.5 w-full rounded-full bg-black/10 dark:bg-white/10">

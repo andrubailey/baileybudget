@@ -1,5 +1,5 @@
 import { getPeriods, pickPeriod } from "@/lib/periods";
-import { getTransactions, getCategoriesForPeriod, getAccountsWithBalances } from "@/lib/queries";
+import { getTransactions, getCategories, getAccountsWithBalances } from "@/lib/queries";
 import { deleteTransaction } from "@/app/actions";
 import { formatMoney } from "@/lib/format";
 import { PeriodSwitcher } from "@/app/(app)/period-switcher";
@@ -16,7 +16,7 @@ export default async function TransactionsPage({
 
   const [accounts, categories, transactions] = await Promise.all([
     getAccountsWithBalances(),
-    period ? getCategoriesForPeriod(period.id) : Promise.resolve([]),
+    getCategories(),
     period ? getTransactions(period.id) : Promise.resolve([]),
   ]);
 

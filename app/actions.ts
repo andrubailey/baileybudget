@@ -60,30 +60,25 @@ export async function createCategory(formData: FormData) {
     | "income"
     | "expense";
   const is_need = formData.get("is_need") === "on";
-  const planned_amount = Number(formData.get("planned_amount") ?? 0);
-  // Expense categories belong to the period they were created in; income
-  // categories are shared across all periods.
-  const period_id =
-    kind === "expense" ? String(formData.get("period_id") ?? "") || null : null;
 
-  if (!name || (kind === "expense" && !period_id)) return;
+  if (!name) return;
 
-  await supabase
-    .from("categories")
-    .insert({ name, kind, is_need, period_id, planned_amount });
+  await supabase.from("categories").insert({ name, kind, is_need });
   revalidatePath("/categories");
-  revalidatePath("/");
 }
 
-export async function updateCategoryPlanned(
+export async function upsertBudgetLine(
   category_id: string,
+  period_id: string,
   planned_amount: number,
 ) {
   const supabase = await createClient();
   await supabase
-    .from("categories")
-    .update({ planned_amount })
-    .eq("id", category_id);
+    .from("budget_lines")
+    .upsert(
+      { category_id, period_id, planned_amount },
+      { onConflict: "category_id,period_id" },
+    );
   revalidatePath("/categories");
   revalidatePath("/");
 }

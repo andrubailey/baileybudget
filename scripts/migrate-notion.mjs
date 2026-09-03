@@ -26,7 +26,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 // Notion database IDs for the "Ultimate Budget" template structure.
 const DB = {
   accounts: "234b34ad-10cd-81d9-be50-000bd57df8e2",
-  categories: "234b34ad-10cd-81e6-af5c-000b8bba3c1f", // "Budget" table (one row per category per month — imported as-is, one category per period)
+  categories: "234b34ad-10cd-81e6-af5c-000b8bba3c1f", // "Budget" table (expense categories, one row per category per month)
   periods: "234b34ad-10cd-8157-886b-000b188bf82f", // "Time Periods" table
   expenses: "234b34ad-10cd-8168-8e4a-000b03420878",
 };
@@ -79,7 +79,7 @@ function mapTags(names) {
 }
 
 // Category rows are named e.g. "Groceries - AUG26"; strip the " - MONYY" suffix
-// for display since the period is already tracked separately via period_id.
+// to get one canonical category shared across months.
 function baseCategoryName(name) {
   return name.replace(/\s*-\s*[A-Za-z]{3}\d{2}$/, "").trim();
 }
@@ -135,33 +135,26 @@ async function main() {
   }
   console.log(`Inserted ${periodIdMap.size} periods`);
 
-  // --- Categories: one per Notion Budget row, scoped to its period ---
-  const categoryPageToId = new Map(); // notion page id -> supabase category id
-  let categoryCount = 0;
+  // --- Categories (dedupe by base name) ---
+  const categoryNameToId = new Map(); // base name -> supabase category id
+  const categoryPageToBaseName = new Map(); // notion page id -> base name
   for (const page of categoryPages) {
     const rawName = title(page.properties, "Name");
     if (!rawName) continue;
-    const periodPageId = relationId(page.properties, "Month");
-    const period_id = periodIdMap.get(periodPageId);
-    if (!period_id) continue; // category not tied to an imported period
+    const baseName = baseCategoryName(rawName);
+    categoryPageToBaseName.set(page.id, baseName);
 
-    const planned_amount = number(page.properties, "Planned") ?? 0;
-    const { data, error } = await supabase
-      .from("categories")
-      .insert({
-        name: baseCategoryName(rawName),
-        kind: "expense",
-        period_id,
-        planned_amount,
-        is_need: false,
-      })
-      .select("id")
-      .single();
-    if (error) throw error;
-    categoryPageToId.set(page.id, data.id);
-    categoryCount++;
+    if (!categoryNameToId.has(baseName)) {
+      const { data, error } = await supabase
+        .from("categories")
+        .insert({ name: baseName, kind: "expense", is_need: false })
+        .select("id")
+        .single();
+      if (error) throw error;
+      categoryNameToId.set(baseName, data.id);
+    }
   }
-  console.log(`Inserted ${categoryCount} expense categories`);
+  console.log(`Inserted ${categoryNameToId.size} unique expense categories`);
 
   // --- Transactions ---
   const rows = [];
@@ -179,9 +172,10 @@ async function main() {
     const account_id = accountPageId
       ? (accountIdMap.get(accountPageId) ?? null)
       : null;
-    const category_id = categoryPageId
-      ? (categoryPageToId.get(categoryPageId) ?? null)
+    const baseName = categoryPageId
+      ? categoryPageToBaseName.get(categoryPageId)
       : null;
+    const category_id = baseName ? (categoryNameToId.get(baseName) ?? null) : null;
     const tags = mapTags(multiSelectNames(page.properties, "Tags"));
 
     rows.push({

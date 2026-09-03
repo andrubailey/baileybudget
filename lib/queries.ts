@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import type { Account, Category, Transaction } from "@/lib/types";
+import type { Account, BudgetLine, Category, Transaction } from "@/lib/types";
 
 export type AccountWithBalance = Account & { balance: number };
 
@@ -62,6 +62,7 @@ export async function getPeriodSummary(
 }
 
 export type CategoryProgress = Category & {
+  planned: number;
   actual: number;
   remaining: number;
   overBudget: boolean;
@@ -72,19 +73,28 @@ export async function getCategoryProgress(
 ): Promise<CategoryProgress[]> {
   const supabase = await createClient();
 
-  const [{ data: categories }, { data: transactions }] = await Promise.all([
-    supabase
-      .from("categories")
-      .select("*")
-      .eq("kind", "expense")
-      .eq("period_id", periodId)
-      .order("name"),
-    supabase
-      .from("transactions")
-      .select("category_id, amount")
-      .eq("period_id", periodId)
-      .eq("kind", "expense"),
-  ]);
+  const [{ data: categories }, { data: budgetLines }, { data: transactions }] =
+    await Promise.all([
+      supabase
+        .from("categories")
+        .select("*")
+        .eq("kind", "expense")
+        .order("name"),
+      supabase
+        .from("budget_lines")
+        .select("*")
+        .eq("period_id", periodId),
+      supabase
+        .from("transactions")
+        .select("category_id, amount")
+        .eq("period_id", periodId)
+        .eq("kind", "expense"),
+    ]);
+
+  const plannedByCategory = new Map<string, number>();
+  for (const line of (budgetLines ?? []) as BudgetLine[]) {
+    plannedByCategory.set(line.category_id, line.planned_amount);
+  }
 
   const actualByCategory = new Map<string, number>();
   for (const t of (transactions ?? []) as Pick<
@@ -99,25 +109,23 @@ export async function getCategoryProgress(
   }
 
   return ((categories ?? []) as Category[]).map((c) => {
+    const planned = plannedByCategory.get(c.id) ?? 0;
     const actual = actualByCategory.get(c.id) ?? 0;
     return {
       ...c,
+      planned,
       actual,
-      remaining: c.planned_amount - actual,
-      overBudget: actual > c.planned_amount && c.planned_amount > 0,
+      remaining: planned - actual,
+      overBudget: actual > planned && planned > 0,
     };
   });
 }
 
-// Expense categories scoped to one period, plus the shared income categories.
-export async function getCategoriesForPeriod(
-  periodId: string,
-): Promise<Category[]> {
+export async function getCategories(): Promise<Category[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("categories")
     .select("*")
-    .or(`period_id.eq.${periodId},kind.eq.income`)
     .order("kind")
     .order("name");
   return data ?? [];

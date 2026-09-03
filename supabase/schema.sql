@@ -19,18 +19,21 @@ create table if not exists periods (
   created_at timestamptz not null default now()
 );
 
--- Expense categories belong to one specific period (e.g. "Groceries" in
--- September is a different row than "Groceries" in October), so each carries
--- its own planned amount directly. Income categories are shared across all
--- periods, so period_id is null for kind='income'.
 create table if not exists categories (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   kind text not null check (kind in ('income', 'expense')),
-  period_id uuid references periods(id) on delete cascade,
-  planned_amount numeric not null default 0,
   is_need boolean not null default false,
   created_at timestamptz not null default now()
+);
+
+create table if not exists budget_lines (
+  id uuid primary key default gen_random_uuid(),
+  category_id uuid not null references categories(id) on delete cascade,
+  period_id uuid not null references periods(id) on delete cascade,
+  planned_amount numeric not null default 0,
+  created_at timestamptz not null default now(),
+  unique (category_id, period_id)
 );
 
 create table if not exists transactions (
@@ -50,7 +53,7 @@ create table if not exists transactions (
 create index if not exists transactions_period_idx on transactions(period_id);
 create index if not exists transactions_account_idx on transactions(account_id);
 create index if not exists transactions_category_idx on transactions(category_id);
-create index if not exists categories_period_idx on categories(period_id);
+create index if not exists budget_lines_period_idx on budget_lines(period_id);
 
 -- Row Level Security: this is a 2-person shared household budget.
 -- Any authenticated user (you + your wife) can read/write everything —
@@ -59,6 +62,7 @@ create index if not exists categories_period_idx on categories(period_id);
 alter table accounts enable row level security;
 alter table periods enable row level security;
 alter table categories enable row level security;
+alter table budget_lines enable row level security;
 alter table transactions enable row level security;
 
 drop policy if exists "authenticated read accounts" on accounts;
@@ -75,6 +79,11 @@ drop policy if exists "authenticated read categories" on categories;
 drop policy if exists "authenticated write categories" on categories;
 create policy "authenticated read categories" on categories for select to authenticated using (true);
 create policy "authenticated write categories" on categories for all to authenticated using (true) with check (true);
+
+drop policy if exists "authenticated read budget_lines" on budget_lines;
+drop policy if exists "authenticated write budget_lines" on budget_lines;
+create policy "authenticated read budget_lines" on budget_lines for select to authenticated using (true);
+create policy "authenticated write budget_lines" on budget_lines for all to authenticated using (true) with check (true);
 
 drop policy if exists "authenticated read transactions" on transactions;
 drop policy if exists "authenticated write transactions" on transactions;
