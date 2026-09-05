@@ -1,8 +1,9 @@
 import { getPeriods, pickPeriod } from "@/lib/periods";
 import { getCategoryProgress, getCategories } from "@/lib/queries";
-import { createCategory, upsertBudgetLine } from "@/app/actions";
+import { upsertBudgetLine } from "@/app/actions";
 import { formatMoney } from "@/lib/format";
 import { PeriodSwitcher } from "@/app/(app)/period-switcher";
+import { AddCategoryForm } from "./add-category-form";
 
 const CATEGORY_COLORS = [
   "#9e77ed",
@@ -41,42 +42,7 @@ export default async function CategoriesPage({
         {period && <PeriodSwitcher periods={periods} selectedId={period.id} />}
       </div>
 
-      <form
-        action={createCategory}
-        className="grid max-w-xl grid-cols-1 gap-4 rounded-xl border border-border bg-surface p-6 shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)] sm:grid-cols-3"
-      >
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium text-text">Name</label>
-          <input
-            name="name"
-            required
-            placeholder="Groceries"
-            className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text outline-none transition-colors focus:border-accent"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium text-text">Type</label>
-          <select
-            name="kind"
-            className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text outline-none transition-colors focus:border-accent"
-          >
-            <option value="expense">Expense</option>
-            <option value="income">Income</option>
-          </select>
-        </div>
-        <div className="flex items-end gap-2 pb-2.5">
-          <input type="checkbox" id="is_need" name="is_need" className="h-4 w-4 accent-[var(--accent)]" />
-          <label htmlFor="is_need" className="text-sm text-text">Need (vs. want)</label>
-        </div>
-        <div className="sm:col-span-3">
-          <button
-            type="submit"
-            className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
-          >
-            Add category
-          </button>
-        </div>
-      </form>
+      <AddCategoryForm />
 
       {!period ? (
         <p className="text-sm text-text-muted">

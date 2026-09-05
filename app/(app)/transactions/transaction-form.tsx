@@ -17,12 +17,28 @@ export function TransactionForm({
   accounts: Account[];
   categories: Category[];
 }) {
+  const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<"income" | "expense">("expense");
   const filteredCategories = categories.filter((c) => c.kind === kind);
 
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-text-muted transition-colors hover:bg-bg"
+      >
+        + Add transaction
+      </button>
+    );
+  }
+
   return (
     <form
-      action={createTransaction}
+      action={(formData) => {
+        createTransaction(formData);
+        setOpen(false);
+      }}
       className="grid max-w-3xl grid-cols-1 gap-4 rounded-xl border border-border bg-surface p-6 shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)] sm:grid-cols-3"
     >
       <input type="hidden" name="period_id" value={periodId} />
@@ -42,7 +58,7 @@ export function TransactionForm({
 
       <div className="space-y-1.5 sm:col-span-2">
         <label className="text-sm font-medium text-text">Description</label>
-        <input name="description" required placeholder="Whole Foods" className={fieldClass} />
+        <input name="description" required placeholder="Whole Foods" autoFocus className={fieldClass} />
       </div>
 
       <div className="space-y-1.5">
@@ -102,12 +118,19 @@ export function TransactionForm({
         </div>
       </div>
 
-      <div className="sm:col-span-3">
+      <div className="flex gap-2 sm:col-span-3">
         <button
           type="submit"
           className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
         >
           Add transaction
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-text-muted hover:bg-bg"
+        >
+          Cancel
         </button>
       </div>
     </form>
