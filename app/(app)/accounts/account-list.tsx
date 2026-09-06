@@ -124,6 +124,16 @@ export function AccountList({
             <div className="flex items-start justify-between">
               <div>
                 <div className="flex items-center gap-2">
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent-soft">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                      <path
+                        d="M3 10h18M6 6h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z"
+                        stroke="var(--accent)"
+                        strokeWidth={1.6}
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </span>
                   <p className="font-medium text-text">{a.name}</p>
                   {a.bank && <BankLogo bank={a.bank} size="lg" />}
                   {a.account_type && (

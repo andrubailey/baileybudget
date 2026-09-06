@@ -88,6 +88,16 @@ export function DashboardAccountList({
           >
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-2">
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent-soft">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M3 10h18M6 6h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z"
+                      stroke="var(--accent)"
+                      strokeWidth={1.6}
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </span>
                 <p className="text-sm font-medium text-text-muted">{a.name}</p>
                 {a.bank && <BankLogo bank={a.bank} />}
                 {a.is_debt && (

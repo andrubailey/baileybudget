@@ -10,9 +10,11 @@ import {
   getPeriodSummaryForRange,
   getSafeToSpend,
   getTransactionsForRange,
+  getUpcomingBills,
 } from "@/lib/queries";
 import { FinancialSnapshot } from "@/app/(app)/financial-snapshot";
 import { BudgetCategoriesCard } from "@/app/(app)/budget-categories";
+import { UpcomingBillsCard } from "@/app/(app)/upcoming-bills";
 import { formatMoney, formatDate } from "@/lib/format";
 import { RangeSwitcher } from "@/app/(app)/range-switcher";
 import { DashboardAccountList } from "@/app/(app)/dashboard-account-list";
@@ -78,6 +80,7 @@ export default async function DashboardPage({
     snapshotCategoryProgress,
     safeToSpend,
     currentPeriodProgress,
+    upcomingBills,
   ] = await Promise.all([
     getAccountsWithBalances(),
     getCategories(),
@@ -91,6 +94,7 @@ export default async function DashboardPage({
     getCategoryProgressForRange(iso(snapshotStart), iso(snapshotEnd)),
     currentPeriod ? getSafeToSpend(currentPeriod.id) : Promise.resolve(0),
     currentPeriod ? getCategoryProgress(currentPeriod.id) : Promise.resolve([]),
+    currentPeriod ? getUpcomingBills(currentPeriod.id) : Promise.resolve([]),
   ]);
 
   const topSnapshotCategory = snapshotCategoryProgress
@@ -535,6 +539,8 @@ export default async function DashboardPage({
               : null
           }
         />
+
+        <UpcomingBillsCard bills={upcomingBills} categories={categories} />
 
         <ObjectivesSection objectives={objectives} accounts={accounts} />
 

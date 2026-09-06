@@ -28,8 +28,17 @@ export function TransactionForm({
   const [categoryTouched, setCategoryTouched] = useState(false);
   const [duplicates, setDuplicates] = useState<DuplicateMatch[] | null>(null);
   const [pendingFormData, setPendingFormData] = useState<FormData | null>(null);
+  const [accountId, setAccountId] = useState("");
   const filteredCategories = categories.filter((c) => c.kind === kind);
   const showToast = useToast();
+
+  // Debt accounts (credit cards, loans) store the opposite of what you'd
+  // naturally expect: a new charge is recorded as "income" (it increases
+  // what's owed) and a payment as "expense" (it reduces what's owed). The
+  // form always speaks in terms of "charge"/"payment" for these accounts
+  // and flips the stored kind here instead of making the user remember it.
+  const isDebtAccount = accounts.find((a) => a.id === accountId)?.is_debt ?? false;
+  const effectiveKind = isDebtAccount ? (kind === "expense" ? "income" : "expense") : kind;
 
   async function handleDescriptionBlur(description: string) {
     if (kind !== "expense" || categoryTouched || !description.trim()) return;
@@ -43,12 +52,14 @@ export function TransactionForm({
     setCategoryTouched(false);
     setDuplicates(null);
     setPendingFormData(null);
+    setAccountId("");
   }
 
   async function submitFormData(formData: FormData) {
     await createTransaction(formData);
     resetForm();
-    showToast(kind === "income" ? "Income logged" : "Expense logged");
+    const label = isDebtAccount ? (kind === "expense" ? "Charge" : "Payment") : kind === "income" ? "Income" : "Expense";
+    showToast(`${label} logged`);
   }
 
   async function handleSubmit(formData: FormData) {
@@ -91,17 +102,17 @@ export function TransactionForm({
       className="grid max-w-3xl grid-cols-1 gap-4 rounded-xl border border-border bg-surface p-6 shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)] sm:grid-cols-3"
     >
       <input type="hidden" name="period_id" value={periodId} />
+      <input type="hidden" name="kind" value={effectiveKind} />
 
       <div className="space-y-1.5">
         <label className="text-sm font-medium text-text">Type</label>
         <select
-          name="kind"
           value={kind}
           onChange={(e) => setKind(e.target.value as "income" | "expense")}
           className={fieldClass}
         >
-          <option value="expense">Expense</option>
-          <option value="income">Income</option>
+          <option value="expense">{isDebtAccount ? "Charge" : "Expense"}</option>
+          <option value="income">{isDebtAccount ? "Payment" : "Income"}</option>
         </select>
       </div>
 
@@ -135,7 +146,12 @@ export function TransactionForm({
 
       <div className="space-y-1.5">
         <label className="text-sm font-medium text-text">Account</label>
-        <select name="account_id" className={fieldClass}>
+        <select
+          name="account_id"
+          value={accountId}
+          onChange={(e) => setAccountId(e.target.value)}
+          className={fieldClass}
+        >
           <option value="">—</option>
           {accounts.map((a) => (
             <option key={a.id} value={a.id}>
@@ -143,6 +159,11 @@ export function TransactionForm({
             </option>
           ))}
         </select>
+        {isDebtAccount && (
+          <p className="text-xs text-text-faint">
+            This is a debt account — logged as a {kind === "expense" ? "charge" : "payment"}.
+          </p>
+        )}
       </div>
 
       <div className="space-y-1.5">

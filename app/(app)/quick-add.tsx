@@ -61,9 +61,26 @@ export function QuickAddButton({
   const [splitRows, setSplitRows] = useState([{ category_id: "", amount: "" }]);
   const [duplicates, setDuplicates] = useState<DuplicateMatch[] | null>(null);
   const [pendingFormData, setPendingFormData] = useState<FormData | null>(null);
+  const [accountId, setAccountId] = useState("");
   const { bg, title, subtitle } = CONFIG[kind];
   const kindCategories = categories.filter((c) => c.kind === kind);
   const showToast = useToast();
+
+  // Debt accounts (credit cards, loans) store the opposite of what you'd
+  // naturally expect: a new charge is recorded as "income" (it increases
+  // what's owed) and a payment as "expense" (it reduces what's owed). Rather
+  // than making the user remember that, the form always speaks in terms of
+  // "charge"/"payment" for these accounts and flips the stored kind here.
+  const selectedAccount = accounts.find((a) => a.id === accountId);
+  const isDebtAccount = selectedAccount?.is_debt ?? false;
+  const effectiveKind = isDebtAccount ? (kind === "expense" ? "income" : "expense") : kind;
+  const actionLabel = isDebtAccount
+    ? kind === "expense"
+      ? "charge"
+      : "payment"
+    : kind === "expense"
+      ? "expense"
+      : "income";
 
   // Global shortcut for the app's single most frequent action — logging a
   // transaction — so it doesn't always require finding and clicking the tile.
@@ -99,6 +116,7 @@ export function QuickAddButton({
     setCategoryTouched(false);
     setDuplicates(null);
     setPendingFormData(null);
+    setAccountId("");
   }
 
   async function submitFormData(formData: FormData) {
@@ -113,7 +131,7 @@ export function QuickAddButton({
       await createTransaction(formData);
     }
     resetForm();
-    showToast(kind === "income" ? "Income logged" : "Expense logged");
+    showToast(`${actionLabel[0].toUpperCase()}${actionLabel.slice(1)} logged`);
   }
 
   async function handleSubmit(formData: FormData) {
@@ -207,7 +225,7 @@ export function QuickAddButton({
 
             <form action={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <input type="hidden" name="period_id" value={periodId} />
-              <input type="hidden" name="kind" value={kind} />
+              <input type="hidden" name="kind" value={effectiveKind} />
 
               <div className="space-y-1.5 sm:col-span-2">
                 <label className="text-sm font-medium text-text">Description</label>
@@ -248,7 +266,17 @@ export function QuickAddButton({
 
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-text">Account</label>
-                <select name="account_id" className={fieldClass}>
+                <select
+                  name="account_id"
+                  value={accountId}
+                  onChange={(e) => {
+                    setAccountId(e.target.value);
+                    if (e.target.value && accounts.find((a) => a.id === e.target.value)?.is_debt) {
+                      setSplit(false);
+                    }
+                  }}
+                  className={fieldClass}
+                >
                   <option value="">—</option>
                   {accounts.map((a) => (
                     <option key={a.id} value={a.id}>
@@ -256,6 +284,11 @@ export function QuickAddButton({
                     </option>
                   ))}
                 </select>
+                {isDebtAccount && (
+                  <p className="text-xs text-text-faint">
+                    This is a debt account — this will be logged as a {actionLabel}.
+                  </p>
+                )}
               </div>
 
               {!split && (
@@ -280,7 +313,7 @@ export function QuickAddButton({
                 </div>
               )}
 
-              {kind === "expense" && (
+              {kind === "expense" && !isDebtAccount && (
                 <div className="flex items-center gap-2 sm:col-span-2">
                   <input
                     type="checkbox"
@@ -386,7 +419,7 @@ export function QuickAddButton({
 
               <div className="flex items-center gap-3 sm:col-span-2">
                 <SubmitButton pendingText="Saving…">
-                  {kind === "income" ? "Add income" : "Add expense"}
+                  Add {actionLabel}
                 </SubmitButton>
                 <button
                   type="button"

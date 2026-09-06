@@ -33,6 +33,31 @@ async function applySplits(
 
 export type AccountWithBalance = Account & { balance: number };
 
+// Supabase/PostgREST silently caps an unpaginated select at 1000 rows — past
+// that, later pages just vanish from the result with no error. Once total
+// transaction count crosses 1000 this under-counted every account's balance.
+// Page through in fixed-size chunks so a growing history can never do that
+// again.
+const PAGE_SIZE = 1000;
+async function fetchAllTransactionDeltas(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+): Promise<{ account_id: string | null; to_account_id: string | null; kind: string; amount: number }[]> {
+  const rows: { account_id: string | null; to_account_id: string | null; kind: string; amount: number }[] = [];
+  let from = 0;
+  for (;;) {
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("account_id, to_account_id, kind, amount")
+      .is("deleted_at", null)
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    rows.push(...(data ?? []));
+    if (!data || data.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  return rows;
+}
+
 export async function getAccountsWithBalances(): Promise<
   AccountWithBalance[]
 > {
@@ -40,19 +65,15 @@ export async function getAccountsWithBalances(): Promise<
 
   const [
     { data: accounts, error: accountsError },
-    { data: transactions, error: transactionsError },
+    transactions,
   ] = await Promise.all([
     supabase.from("accounts").select("*").order("sort_order").order("created_at"),
-    supabase
-      .from("transactions")
-      .select("account_id, to_account_id, kind, amount")
-      .is("deleted_at", null),
+    fetchAllTransactionDeltas(supabase),
   ]);
 
   // A query error here (e.g. a pending migration) must not silently fall back
   // to starting_balance only — that looks exactly like lost account history.
   if (accountsError) throw accountsError;
-  if (transactionsError) throw transactionsError;
 
   const deltaByAccount = new Map<string, number>();
   for (const t of transactions ?? []) {
@@ -656,6 +677,40 @@ export async function getSafeToSpend(periodId: string): Promise<number> {
     .reduce((sum, r) => sum + r.amount, 0);
 
   return remainingBudget - upcoming;
+}
+
+export type UpcomingBill = {
+  id: string;
+  description: string;
+  amount: number;
+  day_of_month: number;
+  account_id: string | null;
+  category_id: string | null;
+  due: boolean;
+};
+
+// Active expense bills that haven't posted yet this period, for a dashboard
+// "what's coming up" glance — `due` (day_of_month already passed but no
+// transaction generated) surfaces before merely `upcoming` ones.
+export async function getUpcomingBills(periodId: string): Promise<UpcomingBill[]> {
+  const supabase = await createClient();
+  const todayDay = Number(new Date().toISOString().slice(8, 10));
+  const [{ data: recurring }, postedIds] = await Promise.all([
+    supabase
+      .from("recurring_transactions")
+      .select("id, description, amount, day_of_month, account_id, category_id")
+      .eq("kind", "expense")
+      .eq("is_active", true),
+    getPostedRecurringIds(periodId),
+  ]);
+
+  return (recurring ?? [])
+    .filter((r) => !postedIds.has(r.id))
+    .map((r) => ({ ...r, due: r.day_of_month <= todayDay }))
+    .sort((a, b) => {
+      if (a.due !== b.due) return a.due ? -1 : 1;
+      return a.day_of_month - b.day_of_month;
+    });
 }
 
 export type RecurringPricePoint = { txn_date: string; amount: number };

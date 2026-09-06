@@ -429,9 +429,16 @@ function EditRow({
   categories: Category[];
   onDone: () => void;
 }) {
+  const [accountId, setAccountId] = useState(t.account_id ?? "");
+  // Debt accounts store the opposite of what you'd expect (a charge is
+  // "income", a payment is "expense"), so the initial display kind is
+  // un-flipped from the stored value here and re-flipped back on submit.
+  const initialIsDebtAccount = accounts.find((a) => a.id === t.account_id)?.is_debt ?? false;
   const [kind, setKind] = useState<"income" | "expense">(
-    t.kind === "income" ? "income" : "expense",
+    initialIsDebtAccount ? (t.kind === "income" ? "expense" : "income") : t.kind === "income" ? "income" : "expense",
   );
+  const isDebtAccount = accounts.find((a) => a.id === accountId)?.is_debt ?? false;
+  const effectiveKind = isDebtAccount ? (kind === "expense" ? "income" : "expense") : kind;
   const filteredCategories = categories.filter((c) => c.kind === kind);
 
   return (
@@ -439,19 +446,19 @@ function EditRow({
       <td colSpan={8} className="p-4">
         <form
           action={async (formData) => {
+            formData.set("kind", effectiveKind);
             await updateTransaction(t.id, formData);
             onDone();
           }}
           className="grid grid-cols-1 gap-3 sm:grid-cols-3"
         >
           <select
-            name="kind"
             value={kind}
             onChange={(e) => setKind(e.target.value as "income" | "expense")}
             className={fieldClass}
           >
-            <option value="expense">Expense</option>
-            <option value="income">Income</option>
+            <option value="expense">{isDebtAccount ? "Charge" : "Expense"}</option>
+            <option value="income">{isDebtAccount ? "Payment" : "Income"}</option>
           </select>
           <input
             name="description"
@@ -475,7 +482,12 @@ function EditRow({
             defaultValue={t.txn_date}
             className={fieldClass}
           />
-          <select name="account_id" defaultValue={t.account_id ?? ""} className={fieldClass}>
+          <select
+            name="account_id"
+            value={accountId}
+            onChange={(e) => setAccountId(e.target.value)}
+            className={fieldClass}
+          >
             <option value="">—</option>
             {accounts.map((a) => (
               <option key={a.id} value={a.id}>
