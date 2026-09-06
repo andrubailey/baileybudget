@@ -101,6 +101,11 @@ export function TransactionForm({
         </select>
       </div>
 
+      <div className="space-y-1.5 sm:col-span-3">
+        <label className="text-sm font-medium text-text">Notes (optional)</label>
+        <input name="notes" placeholder="Split with Mike, reimbursed by work…" className={fieldClass} />
+      </div>
+
       <div className="space-y-1.5 sm:col-span-2">
         <label className="text-sm font-medium text-text">Tags</label>
         <div className="flex flex-wrap gap-3 pt-1">

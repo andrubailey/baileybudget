@@ -5,8 +5,10 @@ import { createTransaction } from "@/app/actions";
 import { TAG_OPTIONS } from "@/lib/types";
 import type { Account, Category } from "@/lib/types";
 
+// text-base (16px) on mobile prevents iOS Safari's auto-zoom-on-focus; drops
+// back to text-sm at sm: since desktop doesn't have that problem.
 const fieldClass =
-  "w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text outline-none transition-colors focus:border-accent";
+  "w-full rounded-lg border border-border bg-bg px-3 py-2.5 text-base sm:text-sm sm:py-2 text-text outline-none transition-colors focus:border-accent";
 
 const ICONS = {
   income: (
@@ -76,7 +78,7 @@ export function QuickAddButton({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-lg rounded-xl border border-border bg-surface p-6 shadow-xl"
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-surface p-6 shadow-xl"
           >
             <div className="mb-4 flex items-start justify-between">
               <h2 className="text-lg font-semibold text-text">{title}</h2>
@@ -107,7 +109,14 @@ export function QuickAddButton({
 
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-text">Amount</label>
-                <input type="number" step="0.01" name="amount" required className={fieldClass} />
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  name="amount"
+                  required
+                  className={fieldClass}
+                />
               </div>
 
               <div className="space-y-1.5">
@@ -143,6 +152,11 @@ export function QuickAddButton({
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="text-sm font-medium text-text">Notes (optional)</label>
+                <input name="notes" placeholder="Split with Mike, reimbursed by work…" className={fieldClass} />
               </div>
 
               <div className="space-y-1.5 sm:col-span-2">
