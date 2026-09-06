@@ -92,19 +92,6 @@ export default async function DashboardPage({
 
   return (
     <div className="space-y-10">
-      {/* Planned budget for the month */}
-      <div className="flex items-center justify-between gap-4 rounded-xl border border-accent-border bg-accent-soft p-6">
-        <div>
-          <p className="text-sm font-medium text-accent">Planned this month</p>
-          <p className="mt-1 text-sm text-text-muted">
-            Total allocated across all of {period.name}&apos;s budget categories
-          </p>
-        </div>
-        <p className="tabular text-[36px] leading-[44px] font-semibold tracking-[-0.72px] text-accent">
-          {formatMoney(totalPlanned)}
-        </p>
-      </div>
-
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-[30px] font-semibold leading-[38px] text-text">
@@ -118,10 +105,11 @@ export default async function DashboardPage({
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-1 gap-8 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Net" value={summary.net} emphasize />
         <StatCard label="Income" value={summary.income} />
         <StatCard label="Expenses" value={summary.expense} />
+        <StatCard label="Planned" value={totalPlanned} />
       </div>
 
       {/* Quick actions */}
