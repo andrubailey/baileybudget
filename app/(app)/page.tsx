@@ -88,13 +88,8 @@ export default async function DashboardPage({
   const totalPlanned = categoryProgress.reduce((sum, c) => sum + c.planned, 0);
 
   return (
-    <div className="grid grid-cols-1 gap-10 xl:grid-cols-[minmax(280px,320px)_1fr_minmax(280px,320px)] xl:items-start">
-      {/* Financial objectives sidebar */}
-      <div className="order-2 xl:order-1">
-        <ObjectivesSection objectives={objectives} />
-      </div>
-
-      <div className="order-1 min-w-0 space-y-10 xl:order-2">
+    <div className="grid grid-cols-1 gap-10 xl:grid-cols-[1fr_minmax(280px,320px)] xl:items-start">
+      <div className="min-w-0 space-y-10">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="text-[30px] font-semibold leading-[38px] text-text">
@@ -168,17 +163,11 @@ export default async function DashboardPage({
               {categoryProgress.map((c) => {
                 const pct = c.planned > 0 ? Math.min(100, (c.actual / c.planned) * 100) : 0;
                 return (
-                  <div key={c.id} className="px-5 py-4">
-                    <div className="flex justify-between text-sm">
-                      <span className="font-medium text-text">{c.name}</span>
-                      <span
-                        className={`tabular ${c.overBudget ? "text-[#f04438]" : "text-text-muted"}`}
-                      >
-                        {formatMoney(c.actual)}{" "}
-                        <span className="text-text-faint">/ {formatMoney(c.planned)}</span>
-                      </span>
-                    </div>
-                    <div className="mt-2 h-1.5 w-full rounded-full bg-bg">
+                  <div key={c.id} className="flex items-center gap-3 px-5 py-2.5">
+                    <span className="w-28 shrink-0 truncate text-sm font-medium text-text">
+                      {c.name}
+                    </span>
+                    <div className="h-1.5 min-w-0 flex-1 rounded-full bg-bg">
                       <div
                         className="h-1.5 rounded-full"
                         style={{
@@ -187,6 +176,14 @@ export default async function DashboardPage({
                         }}
                       />
                     </div>
+                    <span
+                      className={`tabular w-32 shrink-0 text-right text-xs ${
+                        c.overBudget ? "text-[#f04438]" : "text-text-muted"
+                      }`}
+                    >
+                      {formatMoney(c.actual)}{" "}
+                      <span className="text-text-faint">/ {formatMoney(c.planned)}</span>
+                    </span>
                   </div>
                 );
               })}
@@ -279,25 +276,29 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      {/* Accounts sidebar */}
-      <div className="order-3 space-y-4">
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-lg font-semibold text-text">Accounts</h2>
-          <span className="tabular text-sm text-text-muted">
-            {formatMoney(activeAccounts.reduce((sum, a) => sum + a.balance, 0))} total
-          </span>
+      {/* Right sidebar: financial objectives above accounts */}
+      <div className="space-y-10">
+        <ObjectivesSection objectives={objectives} />
+
+        <div className="space-y-4">
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-lg font-semibold text-text">Accounts</h2>
+            <span className="tabular text-sm text-text-muted">
+              {formatMoney(activeAccounts.reduce((sum, a) => sum + a.balance, 0))} total
+            </span>
+          </div>
+          {activeAccounts.length === 0 ? (
+            <p className="text-sm text-text-muted">
+              No accounts yet.{" "}
+              <Link href="/accounts" className="text-accent underline underline-offset-2">
+                Add one
+              </Link>
+              .
+            </p>
+          ) : (
+            <DashboardAccountList accounts={activeAccounts} />
+          )}
         </div>
-        {activeAccounts.length === 0 ? (
-          <p className="text-sm text-text-muted">
-            No accounts yet.{" "}
-            <Link href="/accounts" className="text-accent underline underline-offset-2">
-              Add one
-            </Link>
-            .
-          </p>
-        ) : (
-          <DashboardAccountList accounts={activeAccounts} />
-        )}
       </div>
     </div>
   );
