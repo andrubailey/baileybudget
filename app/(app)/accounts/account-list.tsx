@@ -9,16 +9,7 @@ import {
 } from "@/app/actions";
 import { formatMoney, progressColor } from "@/lib/format";
 import type { AccountWithBalance } from "@/lib/queries";
-
-const BANK_BADGE_CLASSES: Record<string, string> = {
-  Chase: "bg-accent-soft text-accent",
-  "CIT Bank": "bg-bg text-text-muted",
-  Amex: "bg-[#e0f7fa] text-[#0e7490]",
-};
-
-function bankBadgeClass(bank: string) {
-  return BANK_BADGE_CLASSES[bank] ?? "bg-bg text-text-faint";
-}
+import { BankLogo } from "./bank-logo";
 
 export function AccountList({
   accounts,
@@ -80,13 +71,7 @@ export function AccountList({
               <div>
                 <div className="flex items-center gap-2">
                   <p className="font-medium text-text">{a.name}</p>
-                  {a.bank && (
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${bankBadgeClass(a.bank)}`}
-                    >
-                      {a.bank}
-                    </span>
-                  )}
+                  {a.bank && <BankLogo bank={a.bank} />}
                 </div>
                 <p className="tabular mt-1 text-2xl font-semibold text-text">
                   {formatMoney(a.balance)}
@@ -154,18 +139,18 @@ export function AccountList({
               }}
               className="mt-4 flex items-center gap-2"
             >
-              <input
+              <select
                 name="bank"
-                list="bank-options"
                 defaultValue={a.bank ?? ""}
-                placeholder="Set bank"
                 className="w-full rounded-md border border-border bg-bg px-2 py-1 text-xs text-text outline-none focus:border-accent"
-              />
-              <datalist id="bank-options">
+              >
+                <option value="">No bank</option>
                 {bankOptions.map((b) => (
-                  <option key={b} value={b} />
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
                 ))}
-              </datalist>
+              </select>
               <button
                 type="submit"
                 className="shrink-0 rounded-md border border-border px-2 py-1 text-xs font-medium text-text-muted hover:bg-bg"

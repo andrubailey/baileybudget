@@ -36,12 +36,14 @@ export function AddAccountForm() {
       </div>
       <div className="space-y-1.5">
         <label className="text-sm font-medium text-text">Bank</label>
-        <input name="bank" list="bank-options" placeholder="Chase" className={fieldClass} />
-        <datalist id="bank-options">
+        <select name="bank" defaultValue="" className={fieldClass}>
+          <option value="">No bank</option>
           {BANK_OPTIONS.map((b) => (
-            <option key={b} value={b} />
+            <option key={b} value={b}>
+              {b}
+            </option>
           ))}
-        </datalist>
+        </select>
       </div>
       <div className="space-y-1.5">
         <label className="text-sm font-medium text-text">Starting balance</label>
