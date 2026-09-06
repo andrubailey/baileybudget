@@ -94,8 +94,13 @@ export default async function DashboardPage({
   const totalPlanned = categoryProgress.reduce((sum, c) => sum + c.planned, 0);
 
   return (
-    <div className="grid grid-cols-1 gap-8 xl:grid-cols-[1fr_340px] xl:items-start">
-    <div className="space-y-10">
+    <div className="grid grid-cols-1 gap-8 xl:grid-cols-[340px_1fr_340px] xl:items-start">
+      {/* Financial objectives sidebar */}
+      <div className="order-2 xl:order-1">
+        <ObjectivesSection objectives={objectives} />
+      </div>
+
+      <div className="order-1 space-y-10 xl:order-2">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-[30px] font-semibold leading-[38px] text-text">
@@ -268,13 +273,10 @@ export default async function DashboardPage({
           )}
         </div>
       </div>
-
-      {/* Financial objectives */}
-      <ObjectivesSection objectives={objectives} />
     </div>
 
     {/* Accounts sidebar */}
-    <div className="space-y-4">
+    <div className="order-3 space-y-4">
       <div className="flex items-baseline justify-between">
         <h2 className="text-lg font-semibold text-text">Accounts</h2>
         <span className="tabular text-sm text-text-muted">
