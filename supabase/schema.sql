@@ -39,23 +39,32 @@ create table if not exists budget_lines (
   unique (category_id, period_id)
 );
 
+-- kind='transfer' moves money between two of the household's own accounts
+-- (account_id -> to_account_id) without counting as income or expense.
 create table if not exists transactions (
   id uuid primary key default gen_random_uuid(),
-  kind text not null check (kind in ('income', 'expense')),
+  kind text not null check (kind in ('income', 'expense', 'transfer')),
   description text not null,
   amount numeric not null,
   txn_date date not null default current_date,
   account_id uuid references accounts(id) on delete set null,
+  to_account_id uuid references accounts(id) on delete set null,
   category_id uuid references categories(id) on delete set null,
   period_id uuid not null references periods(id) on delete cascade,
   tags text[] not null default '{}',
   created_by uuid references auth.users(id),
+  created_by_email text,
+  notes text,
+  cleared boolean not null default false,
+  deleted_at timestamptz,
   created_at timestamptz not null default now()
 );
 
 create index if not exists transactions_period_idx on transactions(period_id);
 create index if not exists transactions_account_idx on transactions(account_id);
+create index if not exists transactions_to_account_idx on transactions(to_account_id);
 create index if not exists transactions_category_idx on transactions(category_id);
+create index if not exists transactions_deleted_at_idx on transactions(deleted_at);
 create index if not exists budget_lines_period_idx on budget_lines(period_id);
 
 create table if not exists objectives (

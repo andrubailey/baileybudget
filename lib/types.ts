@@ -40,17 +40,24 @@ export type BudgetLine = {
   created_at: string;
 };
 
+// For kind='transfer', account_id is the "from" account and to_account_id is
+// the "to" account; category_id is unused (transfers aren't income/expense).
 export type Transaction = {
   id: string;
-  kind: "income" | "expense";
+  kind: "income" | "expense" | "transfer";
   description: string;
   amount: number;
   txn_date: string;
   account_id: string | null;
+  to_account_id: string | null;
   category_id: string | null;
   period_id: string;
   tags: string[];
+  notes: string | null;
+  cleared: boolean;
+  deleted_at: string | null;
   created_by: string | null;
+  created_by_email: string | null;
   created_at: string;
 };
 
