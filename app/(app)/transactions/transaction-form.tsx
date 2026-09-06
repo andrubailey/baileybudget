@@ -7,8 +7,9 @@ import { SubmitButton } from "@/app/(app)/submit-button";
 import { useToast } from "@/app/(app)/toast";
 import { formatMoney, formatDate } from "@/lib/format";
 
+// text-base (16px) on mobile prevents iOS Safari's auto-zoom-on-focus.
 const fieldClass =
-  "w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text outline-none transition-colors focus:border-accent";
+  "w-full rounded-lg border border-border bg-bg px-3 py-2.5 text-base sm:py-2 sm:text-sm text-text outline-none transition-colors focus:border-accent";
 
 type DuplicateMatch = { id: string; description: string; amount: number; txn_date: string };
 

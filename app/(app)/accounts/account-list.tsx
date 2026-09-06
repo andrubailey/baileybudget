@@ -247,7 +247,7 @@ export function AccountList({
                 name="goal"
                 defaultValue={a.goal ?? ""}
                 placeholder="Set goal"
-                className="w-full rounded-md border border-border bg-bg px-2 py-1 text-xs text-text outline-none focus:border-accent"
+                className="w-full rounded-md border border-border bg-bg px-2 py-1.5 text-base sm:py-1 sm:text-xs text-text outline-none focus:border-accent"
               />
               <SubmitButton
                 pendingText="Saving…"
@@ -268,7 +268,7 @@ export function AccountList({
               <select
                 name="bank"
                 defaultValue={a.bank ?? ""}
-                className="w-full rounded-md border border-border bg-bg px-2 py-1 text-xs text-text outline-none focus:border-accent"
+                className="w-full rounded-md border border-border bg-bg px-2 py-1.5 text-base sm:py-1 sm:text-xs text-text outline-none focus:border-accent"
               >
                 <option value="">No bank</option>
                 {bankOptions.map((b) => (
@@ -296,7 +296,7 @@ export function AccountList({
               <select
                 name="account_type"
                 defaultValue={a.account_type ?? ""}
-                className="w-full rounded-md border border-border bg-bg px-2 py-1 text-xs text-text outline-none focus:border-accent"
+                className="w-full rounded-md border border-border bg-bg px-2 py-1.5 text-base sm:py-1 sm:text-xs text-text outline-none focus:border-accent"
               >
                 <option value="">Unspecified type</option>
                 {ACCOUNT_TYPES.map((t) => (
@@ -326,7 +326,7 @@ export function AccountList({
                 name="login_url"
                 defaultValue={a.login_url ?? ""}
                 placeholder={defaultLoginUrl(a.bank) ?? "Login page URL"}
-                className="w-full rounded-md border border-border bg-bg px-2 py-1 text-xs text-text outline-none focus:border-accent"
+                className="w-full rounded-md border border-border bg-bg px-2 py-1.5 text-base sm:py-1 sm:text-xs text-text outline-none focus:border-accent"
               />
               <SubmitButton
                 pendingText="Saving…"
@@ -352,7 +352,7 @@ export function AccountList({
                   name="low_balance_alert"
                   defaultValue={a.low_balance_alert ?? ""}
                   placeholder="Low balance alert"
-                  className="w-full rounded-md border border-border bg-bg px-2 py-1 text-xs text-text outline-none focus:border-accent"
+                  className="w-full rounded-md border border-border bg-bg px-2 py-1.5 text-base sm:py-1 sm:text-xs text-text outline-none focus:border-accent"
                 />
                 <SubmitButton
                   pendingText="Saving…"

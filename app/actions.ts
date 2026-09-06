@@ -5,11 +5,31 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import {
   findPossibleDuplicateTransactions,
+  getAccountsWithBalances,
+  getCategories,
   getRecurringPriceHistory,
   getTransactionHistory,
   suggestCategoryForDescription,
 } from "@/lib/queries";
+import { getPeriods, pickPeriod } from "@/lib/periods";
 import { cleanMerchantDescription } from "@/lib/merchant-name";
+
+// Data the mobile floating quick-add buttons need, fetched client-side on
+// mount since (unlike the dashboard) they aren't already sitting in a
+// server component's props.
+export async function getQuickAddContext() {
+  const periods = await getPeriods();
+  const period = pickPeriod(periods);
+  const [accounts, categories] = await Promise.all([
+    getAccountsWithBalances(),
+    getCategories(),
+  ]);
+  return {
+    periodId: period?.id ?? null,
+    accounts: accounts.filter((a) => a.is_active),
+    categories,
+  };
+}
 
 export async function signOut() {
   const supabase = await createClient();

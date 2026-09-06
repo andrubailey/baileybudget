@@ -15,8 +15,9 @@ import { SubmitButton } from "@/app/(app)/submit-button";
 import { BankLogo } from "@/app/(app)/accounts/bank-logo";
 import { getAvatarColors } from "@/lib/avatar-colors";
 
+// text-base (16px) on mobile prevents iOS Safari's auto-zoom-on-focus.
 const fieldClass =
-  "w-full rounded-md border border-border bg-bg px-2 py-1 text-sm text-text outline-none focus:border-accent";
+  "w-full rounded-md border border-border bg-bg px-2 py-1.5 text-base sm:py-1 sm:text-sm text-text outline-none focus:border-accent";
 
 function initials(name: string) {
   const parts = name.trim().split(/\s+/);
@@ -223,7 +224,7 @@ export function TransactionsTable({
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]">
+      <div className="overflow-x-auto rounded-xl border border-border bg-surface shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]">
         <table className="w-full text-left">
           <thead>
             <tr className="border-b border-border bg-bg">
@@ -263,7 +264,13 @@ export function TransactionsTable({
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
-                      <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-black/5 bg-bg text-xs font-semibold text-text-faint">
+                      <span
+                        className="flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
+                        style={{
+                          backgroundColor: getAvatarColors(t.id).bg,
+                          color: getAvatarColors(t.id).text,
+                        }}
+                      >
                         {initials(t.description)}
                       </span>
                       <div className="min-w-0">

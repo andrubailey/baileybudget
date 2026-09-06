@@ -44,11 +44,15 @@ export function QuickAddButton({
   periodId,
   accounts,
   categories,
+  renderTrigger,
 }: {
   kind: "income" | "expense";
   periodId: string;
   accounts: Account[];
   categories: Category[];
+  // Lets a different UI (e.g. a mobile floating action button) open this
+  // same modal instead of the default card trigger below.
+  renderTrigger?: (open: () => void) => React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [categoryId, setCategoryId] = useState("");
@@ -152,29 +156,33 @@ export function QuickAddButton({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="flex items-start gap-3 rounded-xl border border-border bg-surface p-5 text-left shadow-[0px_1px_1px_0px_rgba(16,24,40,0.05)] transition-shadow hover:shadow-md"
-      >
-        <span
-          className="flex size-12 shrink-0 items-center justify-center rounded-lg"
-          style={{ backgroundColor: bg }}
+      {renderTrigger ? (
+        renderTrigger(() => setOpen(true))
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex items-start gap-3 rounded-xl border border-border bg-surface p-5 text-left shadow-[0px_1px_1px_0px_rgba(16,24,40,0.05)] transition-shadow hover:shadow-md"
         >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            {ICONS[kind]}
-          </svg>
-        </span>
-        <div>
-          <p className="flex items-center gap-1.5 text-base font-semibold text-text-2">
-            {title}
-            <kbd className="rounded border border-border bg-bg px-1.5 py-0.5 text-[11px] font-medium text-text-faint">
-              {shortcutKey.toUpperCase()}
-            </kbd>
-          </p>
-          <p className="text-sm text-text-muted">{subtitle}</p>
-        </div>
-      </button>
+          <span
+            className="flex size-12 shrink-0 items-center justify-center rounded-lg"
+            style={{ backgroundColor: bg }}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+              {ICONS[kind]}
+            </svg>
+          </span>
+          <div>
+            <p className="flex items-center gap-1.5 text-base font-semibold text-text-2">
+              {title}
+              <kbd className="rounded border border-border bg-bg px-1.5 py-0.5 text-[11px] font-medium text-text-faint">
+                {shortcutKey.toUpperCase()}
+              </kbd>
+            </p>
+            <p className="text-sm text-text-muted">{subtitle}</p>
+          </div>
+        </button>
+      )}
 
       {open && (
         <div

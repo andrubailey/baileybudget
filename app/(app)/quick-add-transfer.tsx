@@ -6,15 +6,18 @@ import type { Account } from "@/lib/types";
 import { SubmitButton } from "@/app/(app)/submit-button";
 import { useToast } from "@/app/(app)/toast";
 
+// text-base (16px) on mobile prevents iOS Safari's auto-zoom-on-focus.
 const fieldClass =
-  "w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text outline-none transition-colors focus:border-accent";
+  "w-full rounded-lg border border-border bg-bg px-3 py-2.5 text-base sm:text-sm sm:py-2 text-text outline-none transition-colors focus:border-accent";
 
 export function QuickAddTransferButton({
   periodId,
   accounts,
+  renderTrigger,
 }: {
   periodId: string;
   accounts: Account[];
+  renderTrigger?: (open: () => void) => React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const showToast = useToast();
@@ -27,30 +30,34 @@ export function QuickAddTransferButton({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="flex items-start gap-3 rounded-xl border border-border bg-surface p-5 text-left shadow-[0px_1px_1px_0px_rgba(16,24,40,0.05)] transition-shadow hover:shadow-md"
-      >
-        <span
-          className="flex size-12 shrink-0 items-center justify-center rounded-lg"
-          style={{ backgroundColor: "#e0f2fe" }}
+      {renderTrigger ? (
+        renderTrigger(() => setOpen(true))
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex items-start gap-3 rounded-xl border border-border bg-surface p-5 text-left shadow-[0px_1px_1px_0px_rgba(16,24,40,0.05)] transition-shadow hover:shadow-md"
         >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path
-              d="M7 7h11l-3-3M17 17H6l3 3"
-              stroke="#0ba5ec"
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </span>
-        <div>
-          <p className="text-base font-semibold text-text-2">Add transfer</p>
-          <p className="text-sm text-text-muted">Move money between accounts</p>
-        </div>
-      </button>
+          <span
+            className="flex size-12 shrink-0 items-center justify-center rounded-lg"
+            style={{ backgroundColor: "#e0f2fe" }}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M7 7h11l-3-3M17 17H6l3 3"
+                stroke="#0ba5ec"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </span>
+          <div>
+            <p className="text-base font-semibold text-text-2">Add transfer</p>
+            <p className="text-sm text-text-muted">Move money between accounts</p>
+          </div>
+        </button>
+      )}
 
       {open && (
         <div
@@ -59,7 +66,7 @@ export function QuickAddTransferButton({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-lg rounded-xl border border-border bg-surface p-6 shadow-xl"
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-surface p-6 shadow-xl"
           >
             <div className="mb-4 flex items-start justify-between">
               <h2 className="text-lg font-semibold text-text">Add transfer</h2>

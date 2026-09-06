@@ -4,8 +4,9 @@ import { useState } from "react";
 import { createAccount } from "@/app/actions";
 import { ACCOUNT_TYPE_LABELS, ACCOUNT_TYPES, BANK_OPTIONS } from "@/lib/types";
 
+// text-base (16px) on mobile prevents iOS Safari's auto-zoom-on-focus.
 const fieldClass =
-  "w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text outline-none transition-colors focus:border-accent";
+  "w-full rounded-lg border border-border bg-bg px-3 py-2.5 text-base sm:py-2 sm:text-sm text-text outline-none transition-colors focus:border-accent";
 
 export function AddAccountForm() {
   const [open, setOpen] = useState(false);

@@ -14,10 +14,14 @@ export function MobileNav() {
   const [open, setOpen] = useState(false);
 
   // Auto-close the drawer whenever the route changes (link tap navigates,
-  // then this cleans up rather than leaving the drawer stuck open).
-  useEffect(() => {
+  // then this cleans up rather than leaving the drawer stuck open). Adjusting
+  // state during render on a prop/param change is the pattern React's docs
+  // recommend over an effect for this — it avoids an extra render pass.
+  const [lastPathname, setLastPathname] = useState(pathname);
+  if (pathname !== lastPathname) {
+    setLastPathname(pathname);
     setOpen(false);
-  }, [pathname]);
+  }
 
   // Lock body scroll while the drawer is open so the page behind it doesn't
   // scroll along with the drawer's own content on touch devices.
