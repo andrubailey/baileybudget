@@ -13,6 +13,7 @@ import { formatMoney } from "@/lib/format";
 import { RangeSwitcher } from "@/app/(app)/range-switcher";
 import { DashboardAccountList } from "@/app/(app)/dashboard-account-list";
 import { QuickAddButton } from "@/app/(app)/quick-add";
+import { QuickAddTransferButton } from "@/app/(app)/quick-add-transfer";
 import { ExpenseDonutChart } from "@/app/(app)/expense-donut";
 import { ObjectivesSection } from "@/app/(app)/objectives-section";
 
@@ -115,7 +116,7 @@ export default async function DashboardPage({
         </div>
 
         {/* Quick actions */}
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
           <QuickAddButton
             kind="income"
             periodId={currentPeriod!.id}
@@ -127,6 +128,10 @@ export default async function DashboardPage({
             periodId={currentPeriod!.id}
             accounts={activeAccounts}
             categories={categories}
+          />
+          <QuickAddTransferButton
+            periodId={currentPeriod!.id}
+            accounts={activeAccounts}
           />
           <QuickAction
             href="/accounts"
@@ -144,7 +149,7 @@ export default async function DashboardPage({
           />
         </div>
 
-        {/* Category breakdown + transactions */}
+        {/* Category breakdown + budget categories */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[384px_1fr]">
           <div className="flex flex-col items-center gap-6 rounded-xl border border-border bg-surface p-5 shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]">
             <div className="flex w-full items-center">
@@ -157,113 +162,119 @@ export default async function DashboardPage({
             )}
           </div>
 
-          <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-surface shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]">
-            <div className="flex items-center justify-between p-6">
-              <div>
-                <p className="text-lg font-semibold text-text">Recent transactions</p>
-                <p className="text-sm text-text-muted">
-                  {range.label}, {transactions.length} logged
-                </p>
-              </div>
-              <Link
-                href="/transactions"
-                className="rounded-md border border-border px-3 py-1.5 text-sm font-semibold text-text-muted hover:bg-bg"
-              >
-                View all
-              </Link>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="border-b border-border bg-bg">
-                    <th className="px-6 py-2 text-xs font-medium text-text-muted">
-                      Description
-                    </th>
-                    <th className="px-6 py-2 text-xs font-medium text-text-muted">Account</th>
-                    <th className="px-6 py-2 text-xs font-medium text-text-muted">Date</th>
-                    <th className="px-6 py-2 text-right text-xs font-medium text-text-muted">
-                      Amount
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentTransactions.map((t) => (
-                    <tr key={t.id} className="border-b border-border last:border-b-0">
-                      <td className="px-6 py-3">
-                        <div className="flex items-center gap-3">
-                          <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-black/5 bg-bg text-xs font-semibold text-text-faint">
-                            {initials(t.description)}
-                          </span>
-                          <span className="text-sm font-medium text-text">
-                            {t.description}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-3 text-sm text-text-muted">
-                        {t.account_id ? accountById.get(t.account_id) : "—"}
-                      </td>
-                      <td className="px-6 py-3 text-sm text-text-muted">{t.txn_date}</td>
-                      <td
-                        className={`tabular px-6 py-3 text-right text-sm font-medium ${
-                          t.kind === "income" ? "text-success" : "text-text"
-                        }`}
+          <div className="min-w-0">
+            <h2 className="mb-4 text-lg font-semibold text-text">Budget categories</h2>
+            <div className="divide-y divide-border rounded-xl border border-border bg-surface">
+              {categoryProgress.map((c) => {
+                const pct = c.planned > 0 ? Math.min(100, (c.actual / c.planned) * 100) : 0;
+                return (
+                  <div key={c.id} className="px-5 py-4">
+                    <div className="flex justify-between text-sm">
+                      <span className="font-medium text-text">{c.name}</span>
+                      <span
+                        className={`tabular ${c.overBudget ? "text-[#f04438]" : "text-text-muted"}`}
                       >
-                        {t.kind === "income" ? "+" : "-"}
-                        {formatMoney(t.amount)}
-                      </td>
-                    </tr>
-                  ))}
-                  {recentTransactions.length === 0 && (
-                    <tr>
-                      <td colSpan={4} className="px-6 py-10 text-center text-sm text-text-muted">
-                        No transactions logged for this range yet.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                        {formatMoney(c.actual)}{" "}
+                        <span className="text-text-faint">/ {formatMoney(c.planned)}</span>
+                      </span>
+                    </div>
+                    <div className="mt-2 h-1.5 w-full rounded-full bg-bg">
+                      <div
+                        className="h-1.5 rounded-full"
+                        style={{
+                          width: `${pct}%`,
+                          backgroundColor: c.overBudget ? "#f04438" : "var(--accent)",
+                        }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+              {categoryProgress.length === 0 && (
+                <p className="px-5 py-8 text-sm text-text-muted">
+                  No expense categories yet.{" "}
+                  <Link href="/categories" className="text-accent underline underline-offset-2">
+                    Add one
+                  </Link>
+                  .
+                </p>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Budget categories */}
-        <div>
-          <h2 className="mb-4 text-lg font-semibold text-text">Budget categories</h2>
-          <div className="divide-y divide-border rounded-xl border border-border bg-surface">
-            {categoryProgress.map((c) => {
-              const pct = c.planned > 0 ? Math.min(100, (c.actual / c.planned) * 100) : 0;
-              return (
-                <div key={c.id} className="px-5 py-4">
-                  <div className="flex justify-between text-sm">
-                    <span className="font-medium text-text">{c.name}</span>
-                    <span
-                      className={`tabular ${c.overBudget ? "text-[#f04438]" : "text-text-muted"}`}
-                    >
-                      {formatMoney(c.actual)}{" "}
-                      <span className="text-text-faint">/ {formatMoney(c.planned)}</span>
-                    </span>
-                  </div>
-                  <div className="mt-2 h-1.5 w-full rounded-full bg-bg">
-                    <div
-                      className="h-1.5 rounded-full"
-                      style={{
-                        width: `${pct}%`,
-                        backgroundColor: c.overBudget ? "#f04438" : "var(--accent)",
-                      }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-            {categoryProgress.length === 0 && (
-              <p className="px-5 py-8 text-sm text-text-muted">
-                No expense categories yet.{" "}
-                <Link href="/categories" className="text-accent underline underline-offset-2">
-                  Add one
-                </Link>
-                .
+        {/* Recent transactions */}
+        <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-surface shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]">
+          <div className="flex items-center justify-between p-6">
+            <div>
+              <p className="text-lg font-semibold text-text">Recent transactions</p>
+              <p className="text-sm text-text-muted">
+                {range.label}, {transactions.length} logged
               </p>
-            )}
+            </div>
+            <Link
+              href="/transactions"
+              className="rounded-md border border-border px-3 py-1.5 text-sm font-semibold text-text-muted hover:bg-bg"
+            >
+              View all
+            </Link>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-border bg-bg">
+                  <th className="px-6 py-2 text-xs font-medium text-text-muted">
+                    Description
+                  </th>
+                  <th className="px-6 py-2 text-xs font-medium text-text-muted">Account</th>
+                  <th className="px-6 py-2 text-xs font-medium text-text-muted">Date</th>
+                  <th className="px-6 py-2 text-right text-xs font-medium text-text-muted">
+                    Amount
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentTransactions.map((t) => (
+                  <tr key={t.id} className="border-b border-border last:border-b-0">
+                    <td className="px-6 py-3">
+                      <div className="flex items-center gap-3">
+                        <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-black/5 bg-bg text-xs font-semibold text-text-faint">
+                          {initials(t.description)}
+                        </span>
+                        <span className="text-sm font-medium text-text">
+                          {t.description}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-3 text-sm text-text-muted">
+                      {t.kind === "transfer"
+                        ? `${t.account_id ? (accountById.get(t.account_id) ?? "—") : "—"} → ${
+                            t.to_account_id ? (accountById.get(t.to_account_id) ?? "—") : "—"
+                          }`
+                        : t.account_id
+                          ? accountById.get(t.account_id)
+                          : "—"}
+                    </td>
+                    <td className="px-6 py-3 text-sm text-text-muted">{t.txn_date}</td>
+                    <td
+                      className={`tabular px-6 py-3 text-right text-sm font-medium ${
+                        t.kind === "income" ? "text-success" : "text-text"
+                      }`}
+                    >
+                      {t.kind === "income" ? "+" : t.kind === "expense" ? "-" : ""}
+                      {formatMoney(t.amount)}
+                    </td>
+                  </tr>
+                ))}
+                {recentTransactions.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-6 py-10 text-center text-sm text-text-muted">
+                      No transactions logged for this range yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
