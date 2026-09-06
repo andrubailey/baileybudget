@@ -126,7 +126,7 @@ const MANAGE_LINKS = [
   },
 ];
 
-const NAV_GROUPS: { label: string | null; links: typeof PRIMARY_LINKS }[] = [
+export const NAV_GROUPS: { label: string | null; links: typeof PRIMARY_LINKS }[] = [
   { label: null, links: PRIMARY_LINKS },
   { label: "Manage", links: MANAGE_LINKS },
 ];
@@ -163,7 +163,7 @@ export function Sidebar() {
 
   return (
     <aside
-      className={`sticky top-0 flex h-screen shrink-0 flex-col bg-hero-bg transition-[width] duration-150 ${
+      className={`sticky top-0 hidden h-screen shrink-0 flex-col bg-hero-bg transition-[width] duration-150 lg:flex ${
         collapsed ? "w-[72px]" : "w-64"
       }`}
     >

@@ -60,9 +60,9 @@ export function AssistantWidget() {
   }
 
   return (
-    <div className="fixed bottom-5 right-5 z-40">
+    <div className="fixed right-4 bottom-4 z-40 sm:right-5 sm:bottom-5">
       {open && (
-        <div className="mb-3 flex h-[480px] w-[360px] flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-xl">
+        <div className="mb-3 flex h-[min(480px,70vh)] w-[calc(100vw-2rem)] max-w-[360px] flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-xl">
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <p className="text-sm font-semibold text-text">Budget assistant</p>
             <button
