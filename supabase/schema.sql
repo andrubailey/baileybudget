@@ -58,6 +58,17 @@ create index if not exists transactions_account_idx on transactions(account_id);
 create index if not exists transactions_category_idx on transactions(category_id);
 create index if not exists budget_lines_period_idx on budget_lines(period_id);
 
+create table if not exists objectives (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  status text not null default 'Not Started'
+    check (status in ('Not Started', 'In Progress', 'On Hold', 'Achieved')),
+  start_date date,
+  end_date date,
+  notes text,
+  created_at timestamptz not null default now()
+);
+
 -- Row Level Security: this is a 2-person shared household budget.
 -- Any authenticated user (you + your wife) can read/write everything —
 -- no per-user partitioning, since the whole point is shared data.
@@ -67,6 +78,7 @@ alter table periods enable row level security;
 alter table categories enable row level security;
 alter table budget_lines enable row level security;
 alter table transactions enable row level security;
+alter table objectives enable row level security;
 
 drop policy if exists "authenticated read accounts" on accounts;
 drop policy if exists "authenticated write accounts" on accounts;
@@ -92,3 +104,8 @@ drop policy if exists "authenticated read transactions" on transactions;
 drop policy if exists "authenticated write transactions" on transactions;
 create policy "authenticated read transactions" on transactions for select to authenticated using (true);
 create policy "authenticated write transactions" on transactions for all to authenticated using (true) with check (true);
+
+drop policy if exists "authenticated read objectives" on objectives;
+drop policy if exists "authenticated write objectives" on objectives;
+create policy "authenticated read objectives" on objectives for select to authenticated using (true);
+create policy "authenticated write objectives" on objectives for all to authenticated using (true) with check (true);

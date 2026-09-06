@@ -41,7 +41,7 @@ export function DashboardAccountList({
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-4">
       {order.map((a) => {
         const goalPct =
           a.goal && a.goal > 0

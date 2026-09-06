@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import type { Account, BudgetLine, Category, Transaction } from "@/lib/types";
+import type { Account, BudgetLine, Category, Objective, Transaction } from "@/lib/types";
 
 export type AccountWithBalance = Account & { balance: number };
 
@@ -66,7 +66,12 @@ export type CategoryProgress = Category & {
   actual: number;
   remaining: number;
   overBudget: boolean;
-  transactions: { id: string; description: string }[];
+  transactions: {
+    id: string;
+    description: string;
+    amount: number;
+    txn_date: string;
+  }[];
 };
 
 export async function getCategoryProgress(
@@ -87,7 +92,7 @@ export async function getCategoryProgress(
         .eq("period_id", periodId),
       supabase
         .from("transactions")
-        .select("id, category_id, amount, description")
+        .select("id, category_id, amount, description, txn_date")
         .eq("period_id", periodId)
         .eq("kind", "expense")
         .order("txn_date", { ascending: false }),
@@ -101,11 +106,11 @@ export async function getCategoryProgress(
   const actualByCategory = new Map<string, number>();
   const transactionsByCategory = new Map<
     string,
-    { id: string; description: string }[]
+    { id: string; description: string; amount: number; txn_date: string }[]
   >();
   for (const t of (transactions ?? []) as Pick<
     Transaction,
-    "id" | "category_id" | "amount" | "description"
+    "id" | "category_id" | "amount" | "description" | "txn_date"
   >[]) {
     if (!t.category_id) continue;
     actualByCategory.set(
@@ -113,7 +118,12 @@ export async function getCategoryProgress(
       (actualByCategory.get(t.category_id) ?? 0) + t.amount,
     );
     const list = transactionsByCategory.get(t.category_id) ?? [];
-    list.push({ id: t.id, description: t.description });
+    list.push({
+      id: t.id,
+      description: t.description,
+      amount: t.amount,
+      txn_date: t.txn_date,
+    });
     transactionsByCategory.set(t.category_id, list);
   }
 
@@ -138,6 +148,16 @@ export async function getCategories(): Promise<Category[]> {
     .select("*")
     .order("kind")
     .order("name");
+  return data ?? [];
+}
+
+export async function getObjectives(): Promise<Objective[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("objectives")
+    .select("*")
+    .order("start_date", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: false });
   return data ?? [];
 }
 

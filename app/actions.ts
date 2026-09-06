@@ -132,6 +132,34 @@ export async function createTransaction(formData: FormData) {
   revalidatePath("/");
 }
 
+export async function createObjective(formData: FormData) {
+  const supabase = await createClient();
+  const name = String(formData.get("name") ?? "").trim();
+  const status = String(formData.get("status") ?? "Not Started");
+  const start_date = String(formData.get("start_date") ?? "") || null;
+  const end_date = String(formData.get("end_date") ?? "") || null;
+  const notes = String(formData.get("notes") ?? "").trim() || null;
+
+  if (!name) return;
+
+  await supabase
+    .from("objectives")
+    .insert({ name, status, start_date, end_date, notes });
+  revalidatePath("/");
+}
+
+export async function updateObjectiveStatus(id: string, status: string) {
+  const supabase = await createClient();
+  await supabase.from("objectives").update({ status }).eq("id", id);
+  revalidatePath("/");
+}
+
+export async function deleteObjective(id: string) {
+  const supabase = await createClient();
+  await supabase.from("objectives").delete().eq("id", id);
+  revalidatePath("/");
+}
+
 export async function deleteTransaction(id: string) {
   const supabase = await createClient();
   await supabase.from("transactions").delete().eq("id", id);

@@ -4,6 +4,7 @@ import {
   getAccountsWithBalances,
   getCategories,
   getCategoryProgress,
+  getObjectives,
   getPeriodSummary,
   getTransactions,
 } from "@/lib/queries";
@@ -12,6 +13,7 @@ import { PeriodSwitcher } from "@/app/(app)/period-switcher";
 import { DashboardAccountList } from "@/app/(app)/dashboard-account-list";
 import { QuickAddButton } from "@/app/(app)/quick-add";
 import { ExpenseDonutChart } from "@/app/(app)/expense-donut";
+import { ObjectivesSection } from "@/app/(app)/objectives-section";
 
 const CATEGORY_COLORS = [
   "#9e77ed",
@@ -49,13 +51,14 @@ export default async function DashboardPage({
     );
   }
 
-  const [accounts, categories, summary, categoryProgress, transactions] =
+  const [accounts, categories, summary, categoryProgress, transactions, objectives] =
     await Promise.all([
       getAccountsWithBalances(),
       getCategories(),
       getPeriodSummary(period.id),
       getCategoryProgress(period.id),
       getTransactions(period.id),
+      getObjectives(),
     ]);
 
   const activeAccounts = accounts.filter((a) => a.is_active);
@@ -91,6 +94,7 @@ export default async function DashboardPage({
   const totalPlanned = categoryProgress.reduce((sum, c) => sum + c.planned, 0);
 
   return (
+    <div className="grid grid-cols-1 gap-8 xl:grid-cols-[1fr_340px] xl:items-start">
     <div className="space-y-10">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
@@ -224,27 +228,6 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      {/* Accounts */}
-      <div>
-        <div className="mb-4 flex items-baseline justify-between">
-          <h2 className="text-lg font-semibold text-text">Accounts</h2>
-          <span className="tabular text-sm text-text-muted">
-            {formatMoney(activeAccounts.reduce((sum, a) => sum + a.balance, 0))} total
-          </span>
-        </div>
-        {activeAccounts.length === 0 ? (
-          <p className="text-sm text-text-muted">
-            No accounts yet.{" "}
-            <Link href="/accounts" className="text-accent underline underline-offset-2">
-              Add one
-            </Link>
-            .
-          </p>
-        ) : (
-          <DashboardAccountList accounts={activeAccounts} />
-        )}
-      </div>
-
       {/* Budget categories */}
       <div>
         <h2 className="mb-4 text-lg font-semibold text-text">Budget categories</h2>
@@ -285,6 +268,31 @@ export default async function DashboardPage({
           )}
         </div>
       </div>
+
+      {/* Financial objectives */}
+      <ObjectivesSection objectives={objectives} />
+    </div>
+
+    {/* Accounts sidebar */}
+    <div className="space-y-4">
+      <div className="flex items-baseline justify-between">
+        <h2 className="text-lg font-semibold text-text">Accounts</h2>
+        <span className="tabular text-sm text-text-muted">
+          {formatMoney(activeAccounts.reduce((sum, a) => sum + a.balance, 0))} total
+        </span>
+      </div>
+      {activeAccounts.length === 0 ? (
+        <p className="text-sm text-text-muted">
+          No accounts yet.{" "}
+          <Link href="/accounts" className="text-accent underline underline-offset-2">
+            Add one
+          </Link>
+          .
+        </p>
+      ) : (
+        <DashboardAccountList accounts={activeAccounts} />
+      )}
+    </div>
     </div>
   );
 }

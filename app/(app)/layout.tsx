@@ -6,7 +6,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-full flex-1 flex-col">
       <header className="border-b border-border bg-surface">
-        <div className="mx-auto flex h-[72px] max-w-[1280px] items-center justify-between px-8">
+        <div className="mx-auto flex h-[72px] max-w-[1600px] items-center justify-between px-8">
           <div className="flex items-center gap-2">
             <span className="flex size-8 items-center justify-center rounded-lg bg-accent text-sm font-bold text-white">
               H
@@ -26,7 +26,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </form>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-[1280px] flex-1 px-8 py-10">
+      <main className="mx-auto w-full max-w-[1600px] flex-1 px-8 py-10">
         {children}
       </main>
       <AssistantWidget />

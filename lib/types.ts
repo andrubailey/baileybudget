@@ -49,6 +49,23 @@ export type Transaction = {
   created_at: string;
 };
 
+export type Objective = {
+  id: string;
+  name: string;
+  status: "Not Started" | "In Progress" | "On Hold" | "Achieved";
+  start_date: string | null;
+  end_date: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+export const OBJECTIVE_STATUSES = [
+  "Not Started",
+  "In Progress",
+  "On Hold",
+  "Achieved",
+] as const;
+
 export const TAG_OPTIONS = [
   "Personal",
   "Business",
