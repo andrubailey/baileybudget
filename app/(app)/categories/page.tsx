@@ -4,15 +4,8 @@ import { upsertBudgetLine } from "@/app/actions";
 import { formatMoney } from "@/lib/format";
 import { PeriodSwitcher } from "@/app/(app)/period-switcher";
 import { AddCategoryForm } from "./add-category-form";
-
-const CATEGORY_COLORS = [
-  "#9e77ed",
-  "#f04438",
-  "#0ba5ec",
-  "#17b26a",
-  "#4e5ba6",
-  "#f79009",
-];
+import { CopyBudgetButton } from "./copy-budget-button";
+import { getCategoryIcon } from "@/lib/category-icons";
 
 export default async function CategoriesPage({
   searchParams,
@@ -29,6 +22,9 @@ export default async function CategoriesPage({
   ]);
 
   const incomeCategories = categories.filter((c) => c.kind === "income");
+  const previousPeriod = period
+    ? periods[periods.findIndex((p) => p.id === period.id) + 1]
+    : undefined;
 
   return (
     <div className="space-y-8">
@@ -42,7 +38,16 @@ export default async function CategoriesPage({
         {period && <PeriodSwitcher periods={periods} selectedId={period.id} />}
       </div>
 
-      <AddCategoryForm />
+      <div className="flex flex-wrap gap-3">
+        <AddCategoryForm />
+        {period && previousPeriod && (
+          <CopyBudgetButton
+            fromPeriodId={previousPeriod.id}
+            fromPeriodName={previousPeriod.name}
+            toPeriodId={period.id}
+          />
+        )}
+      </div>
 
       {!period ? (
         <p className="text-sm text-text-muted">
@@ -62,7 +67,7 @@ export default async function CategoriesPage({
               </tr>
             </thead>
             <tbody>
-              {expenseProgress.map((c, i) => {
+              {expenseProgress.map((c) => {
                 const remColor =
                   c.remaining > 0
                     ? "text-success"
@@ -75,11 +80,8 @@ export default async function CategoriesPage({
                   <tr key={c.id} className="border-b border-border last:border-b-0">
                     <td className="px-6 py-3">
                       <div className="flex items-center gap-2.5">
-                        <span
-                          className="flex size-6 shrink-0 items-center justify-center rounded-md text-[11px] font-semibold text-white"
-                          style={{ backgroundColor: CATEGORY_COLORS[i % CATEGORY_COLORS.length] }}
-                        >
-                          {c.name.slice(0, 1).toUpperCase()}
+                        <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-bg text-sm">
+                          {getCategoryIcon(c.name)}
                         </span>
                         <span className="text-sm font-medium text-text">{c.name}</span>
                       </div>
@@ -150,7 +152,8 @@ export default async function CategoriesPage({
         <h2 className="text-sm font-medium text-text-muted">Income categories</h2>
         <ul className="mt-2 space-y-1 text-sm">
           {incomeCategories.map((c) => (
-            <li key={c.id} className="text-text">
+            <li key={c.id} className="flex items-center gap-2 text-text">
+              <span>{getCategoryIcon(c.name)}</span>
               {c.name}
             </li>
           ))}

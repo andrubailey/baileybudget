@@ -159,6 +159,25 @@ export function Sidebar() {
           {!collapsed && <span>Collapse</span>}
         </button>
 
+        <a
+          href="/api/export"
+          title={collapsed ? "Export data" : undefined}
+          className={`mb-1 flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-text-muted transition-colors hover:bg-bg ${
+            collapsed ? "justify-center" : ""
+          }`}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="shrink-0">
+            <path
+              d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14"
+              stroke="currentColor"
+              strokeWidth={1.6}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          {!collapsed && <span>Export data</span>}
+        </a>
+
         <form action={signOut}>
           <button
             type="submit"

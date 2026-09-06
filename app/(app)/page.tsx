@@ -5,6 +5,7 @@ import {
   getAccountsWithBalances,
   getCategories,
   getCategoryProgressForRange,
+  getNeedsWantsSavings,
   getObjectives,
   getPeriodSummaryForRange,
   getTransactionsForRange,
@@ -16,6 +17,7 @@ import { QuickAddButton } from "@/app/(app)/quick-add";
 import { QuickAddTransferButton } from "@/app/(app)/quick-add-transfer";
 import { ExpenseDonutChart } from "@/app/(app)/expense-donut";
 import { ObjectivesSection } from "@/app/(app)/objectives-section";
+import { getCategoryIcon } from "@/lib/category-icons";
 
 const CATEGORY_COLORS = [
   "#9e77ed",
@@ -45,15 +47,23 @@ export default async function DashboardPage({
   const periods = await getPeriods();
   const currentPeriod = pickPeriod(periods);
 
-  const [accounts, categories, summary, categoryProgress, transactions, objectives] =
-    await Promise.all([
-      getAccountsWithBalances(),
-      getCategories(),
-      getPeriodSummaryForRange(range.start, range.end),
-      getCategoryProgressForRange(range.start, range.end),
-      getTransactionsForRange(range.start, range.end),
-      getObjectives(),
-    ]);
+  const [
+    accounts,
+    categories,
+    summary,
+    categoryProgress,
+    transactions,
+    objectives,
+    needsWantsSavings,
+  ] = await Promise.all([
+    getAccountsWithBalances(),
+    getCategories(),
+    getPeriodSummaryForRange(range.start, range.end),
+    getCategoryProgressForRange(range.start, range.end),
+    getTransactionsForRange(range.start, range.end),
+    getObjectives(),
+    getNeedsWantsSavings(range.start, range.end),
+  ]);
 
   const activeAccounts = accounts.filter((a) => a.is_active);
   const accountById = new Map(accounts.map((a) => [a.id, a.name]));
@@ -110,6 +120,11 @@ export default async function DashboardPage({
           <StatCard label="Planned" value={totalPlanned} />
         </div>
 
+        {/* Needs / Wants / Savings */}
+        {needsWantsSavings.income > 0 && (
+          <NeedsWantsSavingsCard data={needsWantsSavings} />
+        )}
+
         {/* Quick actions */}
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
           <QuickAddButton
@@ -164,8 +179,9 @@ export default async function DashboardPage({
                 const pct = c.planned > 0 ? Math.min(100, (c.actual / c.planned) * 100) : 0;
                 return (
                   <div key={c.id} className="flex items-center gap-3 px-5 py-2.5">
-                    <span className="w-28 shrink-0 truncate text-sm font-medium text-text">
-                      {c.name}
+                    <span className="flex w-28 shrink-0 items-center gap-1.5 truncate text-sm font-medium text-text">
+                      <span className="shrink-0">{getCategoryIcon(c.name)}</span>
+                      <span className="truncate">{c.name}</span>
                     </span>
                     <div className="h-1.5 min-w-0 flex-1 rounded-full bg-bg">
                       <div
@@ -323,6 +339,46 @@ function StatCard({
       >
         {formatMoney(value)}
       </p>
+    </div>
+  );
+}
+
+function NeedsWantsSavingsCard({
+  data,
+}: {
+  data: { needs: number; wants: number; savings: number; income: number };
+}) {
+  const { needs, wants, savings, income } = data;
+  const pct = (v: number) => Math.max(0, (v / income) * 100);
+  const segments = [
+    { label: "Needs", value: needs, pct: pct(needs), color: "#0ba5ec" },
+    { label: "Wants", value: wants, pct: pct(wants), color: "#f79009" },
+    { label: "Savings", value: savings, pct: pct(Math.max(savings, 0)), color: "#17b26a" },
+  ];
+
+  return (
+    <div className="rounded-xl border border-border bg-surface p-5 shadow-[0px_1px_1px_0px_rgba(16,24,40,0.05)]">
+      <p className="mb-3 text-sm font-semibold text-text-2">Needs / Wants / Savings</p>
+      <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-bg">
+        {segments.map((s) => (
+          <div
+            key={s.label}
+            style={{ width: `${s.pct}%`, backgroundColor: s.color }}
+            className="h-full first:rounded-l-full last:rounded-r-full"
+          />
+        ))}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
+        {segments.map((s) => (
+          <div key={s.label} className="flex items-center gap-2 text-sm">
+            <span className="size-2.5 rounded-full" style={{ backgroundColor: s.color }} />
+            <span className="text-text-muted">{s.label}</span>
+            <span className="tabular font-medium text-text">
+              {formatMoney(s.value)} ({s.pct.toFixed(0)}%)
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
