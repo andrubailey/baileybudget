@@ -1,15 +1,19 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import {
   deleteTransaction,
+  getHistoryForTransaction,
   restoreTransaction,
   toggleTransactionCleared,
   updateTransaction,
 } from "@/app/actions";
-import { formatMoney } from "@/lib/format";
-import { TAG_OPTIONS } from "@/lib/types";
-import type { Account, Category, Transaction } from "@/lib/types";
+import { formatMoney, formatDate } from "@/lib/format";
+import type { Account, Category, Transaction, TransactionHistoryEntry } from "@/lib/types";
+import type { SplitDetail } from "@/lib/queries";
+import { SubmitButton } from "@/app/(app)/submit-button";
+import { BankLogo } from "@/app/(app)/accounts/bank-logo";
+import { getAvatarColors } from "@/lib/avatar-colors";
 
 const fieldClass =
   "w-full rounded-md border border-border bg-bg px-2 py-1 text-sm text-text outline-none focus:border-accent";
@@ -28,15 +32,24 @@ export function TransactionsTable({
   transactions,
   accounts,
   categories,
+  splitsByTransaction,
+  initialCategoryFilter,
+  initialAccountFilter,
 }: {
   transactions: Transaction[];
   accounts: Account[];
   categories: Category[];
+  splitsByTransaction?: Map<string, SplitDetail[]>;
+  initialCategoryFilter?: string;
+  initialAccountFilter?: string;
 }) {
   const [search, setSearch] = useState("");
-  const [accountFilter, setAccountFilter] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
+  const [accountFilter, setAccountFilter] = useState(initialAccountFilter ?? "");
+  const [categoryFilter, setCategoryFilter] = useState(initialCategoryFilter ?? "");
+  const [kindFilter, setKindFilter] = useState<"" | "income" | "expense" | "transfer">("");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [historyId, setHistoryId] = useState<string | null>(null);
+  const [historyEntries, setHistoryEntries] = useState<TransactionHistoryEntry[]>([]);
   const [undoRow, setUndoRow] = useState<{ id: string; description: string } | null>(
     null,
   );
@@ -45,12 +58,17 @@ export function TransactionsTable({
     () => new Map(accounts.map((a) => [a.id, a.name])),
     [accounts],
   );
+  const accountBankById = useMemo(
+    () => new Map(accounts.map((a) => [a.id, a.bank])),
+    [accounts],
+  );
   const categoryById = useMemo(
     () => new Map(categories.map((c) => [c.id, c.name])),
     [categories],
   );
 
   const filtered = transactions.filter((t) => {
+    if (kindFilter && t.kind !== kindFilter) return false;
     if (accountFilter && t.account_id !== accountFilter && t.to_account_id !== accountFilter) {
       return false;
     }
@@ -60,7 +78,6 @@ export function TransactionsTable({
       const haystack = [
         t.description,
         t.notes ?? "",
-        t.tags.join(" "),
         t.category_id ? (categoryById.get(t.category_id) ?? "") : "",
         t.account_id ? (accountById.get(t.account_id) ?? "") : "",
       ]
@@ -70,6 +87,13 @@ export function TransactionsTable({
     }
     return true;
   });
+
+  const filteredIncome = filtered
+    .filter((t) => t.kind === "income")
+    .reduce((sum, t) => sum + t.amount, 0);
+  const filteredExpense = filtered
+    .filter((t) => t.kind === "expense")
+    .reduce((sum, t) => sum + t.amount, 0);
 
   async function handleDelete(t: Transaction) {
     await deleteTransaction(t.id);
@@ -85,12 +109,64 @@ export function TransactionsTable({
     setUndoRow(null);
   }
 
+  async function toggleHistory(id: string) {
+    if (historyId === id) {
+      setHistoryId(null);
+      return;
+    }
+    setHistoryId(id);
+    const entries = await getHistoryForTransaction(id);
+    setHistoryEntries(entries);
+  }
+
+  const exportHref = (() => {
+    const params = new URLSearchParams();
+    if (categoryFilter) params.set("category", categoryFilter);
+    const qs = params.toString();
+    return qs ? `/api/export?${qs}` : null;
+  })();
+
+  const KIND_TABS: { value: typeof kindFilter; label: string }[] = [
+    { value: "", label: "All" },
+    { value: "income", label: "Income" },
+    { value: "expense", label: "Expenses" },
+    { value: "transfer", label: "Transfers" },
+  ];
+
   return (
     <div>
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <div className="flex rounded-lg border border-border bg-surface p-1">
+          {KIND_TABS.map((tab) => (
+            <button
+              key={tab.label}
+              type="button"
+              onClick={() => setKindFilter(tab.value)}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                kindFilter === tab.value
+                  ? "bg-accent-soft text-accent"
+                  : "text-text-muted hover:bg-bg"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        {(kindFilter === "" || kindFilter === "income" || kindFilter === "expense") && (
+          <span className="tabular text-xs text-text-muted">
+            {kindFilter !== "expense" && (
+              <span className="text-success">+{formatMoney(filteredIncome)}</span>
+            )}
+            {kindFilter === "" && " · "}
+            {kindFilter !== "income" && <span>-{formatMoney(filteredExpense)}</span>}
+          </span>
+        )}
+      </div>
+
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <input
           type="text"
-          placeholder="Search description, notes, tags…"
+          placeholder="Search description, notes…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full max-w-xs rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text outline-none focus:border-accent"
@@ -119,10 +195,18 @@ export function TransactionsTable({
             </option>
           ))}
         </select>
-        {(search || accountFilter || categoryFilter) && (
+        {(search || accountFilter || categoryFilter || kindFilter) && (
           <span className="text-xs text-text-faint">
             {filtered.length} of {transactions.length}
           </span>
+        )}
+        {exportHref && (
+          <a
+            href={exportHref}
+            className="ml-auto text-xs font-medium text-accent underline underline-offset-2"
+          >
+            Export this filter
+          </a>
         )}
       </div>
 
@@ -147,7 +231,6 @@ export function TransactionsTable({
               <th className="px-4 py-2 text-xs font-medium text-text-muted">Description</th>
               <th className="px-4 py-2 text-xs font-medium text-text-muted">Category</th>
               <th className="px-4 py-2 text-xs font-medium text-text-muted">Account</th>
-              <th className="px-4 py-2 text-xs font-medium text-text-muted">Tags</th>
               <th className="px-4 py-2 text-xs font-medium text-text-muted">Date</th>
               <th className="px-4 py-2 text-xs font-medium text-text-muted">By</th>
               <th className="px-4 py-2 text-right text-xs font-medium text-text-muted">
@@ -167,7 +250,8 @@ export function TransactionsTable({
                   onDone={() => setEditingId(null)}
                 />
               ) : (
-                <tr key={t.id} className="border-b border-border last:border-b-0">
+                <Fragment key={t.id}>
+                <tr className="border-b border-border last:border-b-0">
                   <td className="px-4 py-3">
                     <input
                       type="checkbox"
@@ -183,8 +267,13 @@ export function TransactionsTable({
                         {initials(t.description)}
                       </span>
                       <div className="min-w-0">
-                        <span className="block truncate text-sm font-medium text-text">
-                          {t.description}
+                        <span className="flex items-center gap-1.5 truncate text-sm font-medium text-text">
+                          <span className="truncate">{t.description}</span>
+                          {t.recurring_transaction_id && (
+                            <span className="shrink-0 text-xs" title="Recurring">
+                              🔁
+                            </span>
+                          )}
                         </span>
                         {t.notes && (
                           <span className="block truncate text-xs text-text-faint">
@@ -195,21 +284,49 @@ export function TransactionsTable({
                     </div>
                   </td>
                   <td className="px-4 py-3 text-sm text-text-muted">
-                    {t.category_id ? categoryById.get(t.category_id) : "—"}
+                    {t.category_id ? (
+                      categoryById.get(t.category_id)
+                    ) : splitsByTransaction?.has(t.id) ? (
+                      <span
+                        className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent"
+                        title={splitsByTransaction
+                          .get(t.id)!
+                          .map((s) => `${s.category_id ? (categoryById.get(s.category_id) ?? "—") : "—"}: ${formatMoney(s.amount)}`)
+                          .join(", ")}
+                      >
+                        Split ({splitsByTransaction.get(t.id)!.length})
+                      </span>
+                    ) : (
+                      "—"
+                    )}
                   </td>
                   <td className="px-4 py-3 text-sm text-text-muted">
-                    {t.kind === "transfer"
-                      ? `${t.account_id ? (accountById.get(t.account_id) ?? "—") : "—"} → ${
-                          t.to_account_id ? (accountById.get(t.to_account_id) ?? "—") : "—"
-                        }`
-                      : t.account_id
-                        ? accountById.get(t.account_id)
-                        : "—"}
+                    {t.kind === "transfer" ? (
+                      <div className="flex items-center gap-1.5">
+                        {t.account_id && accountBankById.get(t.account_id) && (
+                          <BankLogo bank={accountBankById.get(t.account_id)!} size="sm" />
+                        )}
+                        <span>{t.account_id ? (accountById.get(t.account_id) ?? "—") : "—"}</span>
+                        <span>→</span>
+                        {t.to_account_id && accountBankById.get(t.to_account_id) && (
+                          <BankLogo bank={accountBankById.get(t.to_account_id)!} size="sm" />
+                        )}
+                        <span>
+                          {t.to_account_id ? (accountById.get(t.to_account_id) ?? "—") : "—"}
+                        </span>
+                      </div>
+                    ) : t.account_id ? (
+                      <div className="flex items-center gap-1.5">
+                        {accountBankById.get(t.account_id) && (
+                          <BankLogo bank={accountBankById.get(t.account_id)!} size="sm" />
+                        )}
+                        <span>{accountById.get(t.account_id)}</span>
+                      </div>
+                    ) : (
+                      "—"
+                    )}
                   </td>
-                  <td className="px-4 py-3 text-sm text-text-muted">
-                    {t.tags.length > 0 ? t.tags.join(", ") : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-text-muted">{t.txn_date}</td>
+                  <td className="px-4 py-3 text-sm text-text-muted">{formatDate(t.txn_date)}</td>
                   <td className="px-4 py-3">
                     {creatorInitial(t.created_by_email) && (
                       <span
@@ -240,6 +357,13 @@ export function TransactionsTable({
                     )}
                     <button
                       type="button"
+                      onClick={() => toggleHistory(t.id)}
+                      className="mr-3 text-xs text-text-faint hover:text-accent"
+                    >
+                      History
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => handleDelete(t)}
                       className="text-xs text-text-faint hover:text-[#f04438]"
                     >
@@ -247,11 +371,33 @@ export function TransactionsTable({
                     </button>
                   </td>
                 </tr>
+                {historyId === t.id && (
+                  <tr className="border-b border-border bg-bg/40 last:border-b-0">
+                    <td colSpan={8} className="px-4 py-3">
+                      {historyEntries.length === 0 ? (
+                        <p className="text-xs text-text-muted">No edits recorded for this transaction yet.</p>
+                      ) : (
+                        <ul className="space-y-1.5">
+                          {historyEntries.map((h) => (
+                            <li key={h.id} className="text-xs text-text-muted">
+                              <span className="font-medium text-text">
+                                {h.edited_by_email ?? "Someone"}
+                              </span>{" "}
+                              edited this on {formatDate(h.edited_at.slice(0, 10))} — previously &ldquo;
+                              {String(h.snapshot.description)}&rdquo; for {formatMoney(Number(h.snapshot.amount))}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ),
             )}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-6 py-10 text-center text-sm text-text-muted">
+                <td colSpan={8} className="px-6 py-10 text-center text-sm text-text-muted">
                   {transactions.length === 0
                     ? "No transactions logged for this period yet."
                     : "No transactions match your search/filters."}
@@ -283,7 +429,7 @@ function EditRow({
 
   return (
     <tr className="border-b border-border bg-bg/40 last:border-b-0">
-      <td colSpan={9} className="p-4">
+      <td colSpan={8} className="p-4">
         <form
           action={async (formData) => {
             await updateTransaction(t.id, formData);
@@ -348,27 +494,13 @@ function EditRow({
             placeholder="Notes"
             className={fieldClass}
           />
-          <div className="flex flex-wrap items-center gap-3 sm:col-span-3">
-            {TAG_OPTIONS.map((tag) => (
-              <label key={tag} className="flex items-center gap-1.5 text-xs text-text-muted">
-                <input
-                  type="checkbox"
-                  name="tags"
-                  value={tag}
-                  defaultChecked={t.tags.includes(tag)}
-                  className="h-4 w-4 accent-[var(--accent)]"
-                />
-                {tag}
-              </label>
-            ))}
-          </div>
           <div className="flex gap-2 sm:col-span-3">
-            <button
-              type="submit"
+            <SubmitButton
+              pendingText="Saving…"
               className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-white transition-opacity hover:opacity-90"
             >
               Save
-            </button>
+            </SubmitButton>
             <button
               type="button"
               onClick={onDone}

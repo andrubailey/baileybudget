@@ -5,7 +5,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "@/app/actions";
 
-const NAV_LINKS = [
+// Daily-use pages first; setup/maintenance pages grouped under their own
+// label so the nav doesn't read as 7 equally-weighted items.
+const PRIMARY_LINKS = [
   {
     href: "/",
     label: "Dashboard",
@@ -32,6 +34,60 @@ const NAV_LINKS = [
     ),
   },
   {
+    href: "/recurring",
+    label: "Recurring",
+    icon: (
+      <path
+        d="M4 12a8 8 0 0 1 14.5-4.5M20 12a8 8 0 0 1-14.5 4.5M17 4v4h-4M7 20v-4h4"
+        stroke="currentColor"
+        strokeWidth={1.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    ),
+  },
+  {
+    href: "/planning",
+    label: "Planning",
+    icon: (
+      <path
+        d="M4 4h16v16H4V4Zm0 6h16M9 4v16"
+        stroke="currentColor"
+        strokeWidth={1.6}
+        strokeLinejoin="round"
+      />
+    ),
+  },
+  {
+    href: "/calendar",
+    label: "Calendar",
+    icon: (
+      <path
+        d="M7 3v3M17 3v3M4 8h16M5 5h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z"
+        stroke="currentColor"
+        strokeWidth={1.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    ),
+  },
+  {
+    href: "/weekly-recap",
+    label: "Weekly Recap",
+    icon: (
+      <path
+        d="M4 19V5m5 14V9m5 10V13m5 6V7"
+        stroke="currentColor"
+        strokeWidth={1.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    ),
+  },
+];
+
+const MANAGE_LINKS = [
+  {
     href: "/categories",
     label: "Categories",
     icon: (
@@ -55,6 +111,24 @@ const NAV_LINKS = [
       />
     ),
   },
+  {
+    href: "/import",
+    label: "Import",
+    icon: (
+      <path
+        d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14"
+        stroke="currentColor"
+        strokeWidth={1.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    ),
+  },
+];
+
+const NAV_GROUPS: { label: string | null; links: typeof PRIMARY_LINKS }[] = [
+  { label: null, links: PRIMARY_LINKS },
+  { label: "Manage", links: MANAGE_LINKS },
 ];
 
 const COLLAPSE_KEY = "sidebar-collapsed";
@@ -89,55 +163,69 @@ export function Sidebar() {
 
   return (
     <aside
-      className={`sticky top-0 flex h-screen shrink-0 flex-col border-r border-border bg-surface transition-[width] duration-150 ${
-        collapsed ? "w-[72px]" : "w-60"
+      className={`sticky top-0 flex h-screen shrink-0 flex-col bg-hero-bg transition-[width] duration-150 ${
+        collapsed ? "w-[72px]" : "w-64"
       }`}
     >
-      <div className="flex h-[72px] shrink-0 items-center gap-2 border-b border-border px-4">
+      <div className="flex h-[72px] shrink-0 items-center gap-2 px-5">
         <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-sm font-bold text-white">
-          H
+          B
         </span>
         {!collapsed && (
-          <span className="truncate text-lg font-bold tracking-tight text-text">
-            household<span className="text-accent">budget</span>
+          <span className="truncate text-lg font-bold tracking-tight text-hero-text">
+            Bailey<span className="text-accent">Budget</span>
           </span>
         )}
       </div>
 
-      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
-        {NAV_LINKS.map((link) => {
-          const active =
-            link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
-          return (
-            <Link
-              key={link.href}
-              href={link.href}
-              title={collapsed ? link.label : undefined}
-              className={`flex items-center gap-3 rounded-md px-3 py-2.5 text-[15px] font-semibold transition-colors ${
-                active ? "bg-accent-soft text-accent" : "text-text-muted hover:bg-bg"
-              } ${collapsed ? "justify-center" : ""}`}
-            >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                className="shrink-0"
-              >
-                {link.icon}
-              </svg>
-              {!collapsed && <span className="truncate">{link.label}</span>}
-            </Link>
-          );
-        })}
+      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-4 py-2">
+        {NAV_GROUPS.map((group, groupIndex) => (
+          <div key={group.label ?? groupIndex} className={groupIndex > 0 ? "mt-4" : undefined}>
+            {group.label && !collapsed && (
+              <p className="px-3 pb-1 text-[11px] font-semibold tracking-wide text-hero-text-muted uppercase">
+                {group.label}
+              </p>
+            )}
+            {group.label && collapsed && (
+              <div className="mx-3 mb-2 border-t border-hero-border" />
+            )}
+            {group.links.map((link) => {
+              const active =
+                link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  title={collapsed ? link.label : undefined}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] font-medium transition-colors ${
+                    active
+                      ? "bg-hero-bg-2 text-hero-text"
+                      : "text-hero-text-muted hover:bg-hero-bg-2/60 hover:text-hero-text"
+                  } ${collapsed ? "justify-center" : ""}`}
+                >
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    className="shrink-0"
+                  >
+                    {link.icon}
+                  </svg>
+                  {!collapsed && <span className="truncate">{link.label}</span>}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
-      <div className="shrink-0 border-t border-border p-3">
+      <div className="shrink-0 px-4 py-4">
         <button
           type="button"
           onClick={toggle}
           title={collapsed ? "Expand" : "Collapse"}
-          className={`mb-1 flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-text-muted transition-colors hover:bg-bg ${
+          className={`mb-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-hero-text-muted transition-colors hover:bg-hero-bg-2/60 hover:text-hero-text ${
             collapsed ? "justify-center" : ""
           }`}
         >
@@ -162,7 +250,7 @@ export function Sidebar() {
         <a
           href="/api/export"
           title={collapsed ? "Export data" : undefined}
-          className={`mb-1 flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-text-muted transition-colors hover:bg-bg ${
+          className={`mb-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-hero-text-muted transition-colors hover:bg-hero-bg-2/60 hover:text-hero-text ${
             collapsed ? "justify-center" : ""
           }`}
         >
@@ -182,7 +270,7 @@ export function Sidebar() {
           <button
             type="submit"
             title={collapsed ? "Sign out" : undefined}
-            className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-text-muted transition-colors hover:bg-bg ${
+            className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-hero-text-muted transition-colors hover:bg-hero-bg-2/60 hover:text-hero-text ${
               collapsed ? "justify-center" : ""
             }`}
           >

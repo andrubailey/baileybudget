@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { createAccount } from "@/app/actions";
-import { BANK_OPTIONS } from "@/lib/types";
+import { ACCOUNT_TYPE_LABELS, ACCOUNT_TYPES, BANK_OPTIONS } from "@/lib/types";
 
 const fieldClass =
   "w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text outline-none transition-colors focus:border-accent";
@@ -58,6 +58,17 @@ export function AddAccountForm() {
       <div className="space-y-1.5">
         <label className="text-sm font-medium text-text">Goal (optional)</label>
         <input type="number" step="0.01" name="goal" className={fieldClass} />
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium text-text">Account type (optional)</label>
+        <select name="account_type" defaultValue="" className={fieldClass}>
+          <option value="">Unspecified</option>
+          {ACCOUNT_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {ACCOUNT_TYPE_LABELS[t]}
+            </option>
+          ))}
+        </select>
       </div>
       <div className="flex gap-2 sm:col-span-4">
         <button

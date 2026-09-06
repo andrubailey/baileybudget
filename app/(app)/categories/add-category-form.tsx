@@ -50,6 +50,18 @@ export function AddCategoryForm() {
         <input type="checkbox" id="is_need" name="is_need" className="h-4 w-4 accent-[var(--accent)]" />
         <label htmlFor="is_need" className="text-sm text-text">Need (vs. want)</label>
       </div>
+      <div className="flex items-end gap-2 pb-2.5">
+        <input type="checkbox" id="rollover" name="rollover" className="h-4 w-4 accent-[var(--accent)]" />
+        <label htmlFor="rollover" className="text-sm text-text">Roll over unspent budget</label>
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium text-text">Group (optional)</label>
+        <input
+          name="group_name"
+          placeholder="Food, Housing..."
+          className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text outline-none transition-colors focus:border-accent"
+        />
+      </div>
       <div className="flex gap-2 sm:col-span-3">
         <button
           type="submit"

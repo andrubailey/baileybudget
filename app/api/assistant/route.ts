@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
-import { TAG_OPTIONS } from "@/lib/types";
 
 const MODEL = "claude-opus-5";
 
@@ -30,10 +29,6 @@ const LOG_TRANSACTION_TOOL: Anthropic.Tool = {
       category_name: {
         type: "string",
         description: "Category name, if mentioned or obvious from context",
-      },
-      tags: {
-        type: "array",
-        items: { type: "string", enum: [...TAG_OPTIONS] },
       },
     },
     required: ["kind", "description", "amount", "txn_date"],
@@ -104,7 +99,6 @@ Today's date is ${today}.
 Known accounts: ${accountList.map((a) => a.name).join(", ") || "(none yet)"}
 Known expense categories: ${categoryList.filter((c) => c.kind === "expense").map((c) => c.name).join(", ") || "(none yet)"}
 Known income categories: ${categoryList.filter((c) => c.kind === "income").map((c) => c.name).join(", ") || "(none yet)"}
-Available tags: ${TAG_OPTIONS.join(", ")}
 
 When the user describes a transaction, call log_transaction with your best interpretation. Match account_name/category_name to the known lists above when possible — small wording differences are fine, they'll be matched loosely. If a field is truly unclear (e.g. no amount given), ask instead of guessing. After logging, confirm briefly in plain language (one short sentence).`;
 
@@ -164,7 +158,6 @@ When the user describes a transaction, call log_transaction with your best inter
         txn_date: string;
         account_name?: string;
         category_name?: string;
-        tags?: string[];
       };
 
       const period = periodList.find(
@@ -195,7 +188,6 @@ When the user describes a transaction, call log_transaction with your best inter
         account_id: account?.id ?? null,
         category_id: category?.id ?? null,
         period_id: period.id,
-        tags: input.tags ?? [],
         created_by: user.id,
       });
 

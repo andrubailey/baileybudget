@@ -5,7 +5,19 @@ const BANK_LOGOS: Record<string, string> = {
   Amex: "/logos/amex.svg",
 };
 
-export function BankLogo({ bank }: { bank: string }) {
+const SIZE_CLASSES = {
+  sm: "h-5",
+  md: "h-9",
+  lg: "h-14",
+} as const;
+
+export function BankLogo({
+  bank,
+  size = "md",
+}: {
+  bank: string;
+  size?: keyof typeof SIZE_CLASSES;
+}) {
   const src = BANK_LOGOS[bank];
 
   if (!src) {
@@ -17,7 +29,9 @@ export function BankLogo({ bank }: { bank: string }) {
   }
 
   return (
-    <span className="inline-flex h-6 items-center rounded-md border border-border bg-white p-0.5">
+    <span
+      className={`inline-flex items-center rounded-md border border-border bg-white p-1 ${SIZE_CLASSES[size]}`}
+    >
       {/* eslint-disable-next-line @next/next/no-img-element -- small static local logo, no need for next/image */}
       <img src={src} alt={bank} className="h-full w-auto rounded-sm object-contain" />
     </span>

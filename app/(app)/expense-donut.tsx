@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { formatMoney } from "@/lib/format";
+import { getCategoryIcon } from "@/lib/category-icons";
 
 type SegmentTransaction = {
   id: string;
@@ -70,9 +71,7 @@ export function ExpenseDonutChart({ segments }: { segments: DonutSegment[] }) {
               onMouseLeave={() => setHovered(null)}
               onClick={() => setSelected(a)}
             >
-              <title>
-                {a.name}: {formatMoney(a.actual)} ({a.pct.toFixed(1)}%)
-              </title>
+              <title>{`${a.name}: ${formatMoney(a.actual)} (${a.pct.toFixed(1)}%)`}</title>
             </circle>
           ))}
         </svg>
@@ -104,7 +103,10 @@ export function ExpenseDonutChart({ segments }: { segments: DonutSegment[] }) {
             className="flex items-center gap-2 border-b border-border px-2 py-3 text-left last:border-b-0 hover:bg-bg"
           >
             <span className="size-3 shrink-0 rounded-full" style={{ backgroundColor: a.color }} />
-            <span className="flex-1 truncate text-[15px] text-text">{a.name}</span>
+            <span className="flex flex-1 items-center gap-1.5 truncate text-[15px] text-text">
+              <span className="shrink-0">{getCategoryIcon(a.name)}</span>
+              <span className="truncate">{a.name}</span>
+            </span>
             <span className="tabular text-[15px] text-text-faint">{a.pct.toFixed(1)}%</span>
           </button>
         ))}
@@ -121,7 +123,9 @@ export function ExpenseDonutChart({ segments }: { segments: DonutSegment[] }) {
           >
             <div className="mb-4 flex items-start justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-text">{selected.name}</h2>
+                <h2 className="text-lg font-semibold text-text">
+                  {getCategoryIcon(selected.name)} {selected.name}
+                </h2>
                 <p className="text-sm text-text-muted">
                   {formatMoney(selected.actual)} · {selected.pct.toFixed(1)}% of spend
                 </p>

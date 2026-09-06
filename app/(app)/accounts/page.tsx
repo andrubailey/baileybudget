@@ -1,10 +1,14 @@
-import { getAccountsWithBalances } from "@/lib/queries";
+import { getAccountsWithBalances, getNetWorthHistory } from "@/lib/queries";
 import { BANK_OPTIONS } from "@/lib/types";
 import { AccountList } from "./account-list";
 import { AddAccountForm } from "./add-account-form";
+import { NetWorthChart } from "./net-worth-chart";
 
 export default async function AccountsPage() {
-  const accounts = await getAccountsWithBalances();
+  const [accounts, netWorthHistory] = await Promise.all([
+    getAccountsWithBalances(),
+    getNetWorthHistory(),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -14,6 +18,11 @@ export default async function AccountsPage() {
           Bank accounts, cards, or savings goals. Balance updates
           automatically from transactions.
         </p>
+      </div>
+
+      <div className="rounded-xl border border-border bg-surface p-5 shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]">
+        <h2 className="mb-3 text-sm font-medium text-text-muted">Net worth over time</h2>
+        <NetWorthChart points={netWorthHistory} />
       </div>
 
       <AddAccountForm />

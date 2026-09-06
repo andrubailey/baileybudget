@@ -6,9 +6,28 @@ export function formatMoney(value: number): string {
   });
 }
 
+// Formats a "YYYY-MM-DD" date string for display without shifting timezone
+// (parsing as UTC keeps the day the same regardless of the viewer's locale).
+export function formatDate(iso: string): string {
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 // Red under a third of the way to goal, amber in the middle third, green in the final third.
 export function progressColor(pct: number): string {
   if (pct < 33) return "#f04438";
   if (pct < 66) return "#f79009";
   return "#17b26a";
+}
+
+// Inverse of progressColor: for "% of budget spent" style bars, where LOW is
+// good and going over is bad, not the "closer to goal is better" case above.
+export function spendColor(pct: number): string {
+  if (pct < 70) return "#17b26a";
+  if (pct < 100) return "#f79009";
+  return "#f04438";
 }

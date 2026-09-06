@@ -1,15 +1,22 @@
 import { getPeriods, pickPeriod } from "@/lib/periods";
-import { getTransactions, getCategories, getAccountsWithBalances } from "@/lib/queries";
+import {
+  getTransactions,
+  getCategories,
+  getAccountsWithBalances,
+  getSplitsByTransaction,
+} from "@/lib/queries";
 import { PeriodSwitcher } from "@/app/(app)/period-switcher";
 import { TransactionForm } from "./transaction-form";
 import { TransactionsTable } from "./transactions-table";
+import { ReassignToMeButton } from "./reassign-to-me-button";
 
 export default async function TransactionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string }>;
+  searchParams: Promise<{ period?: string; category?: string; account?: string }>;
 }) {
-  const { period: requestedPeriod } = await searchParams;
+  const { period: requestedPeriod, category: initialCategoryFilter, account: initialAccountFilter } =
+    await searchParams;
   const periods = await getPeriods();
   const period = pickPeriod(periods, requestedPeriod);
 
@@ -18,6 +25,10 @@ export default async function TransactionsPage({
     getCategories(),
     period ? getTransactions(period.id) : Promise.resolve([]),
   ]);
+
+  const splitsByTransaction = await getSplitsByTransaction(
+    transactions.filter((t) => t.category_id === null).map((t) => t.id),
+  );
 
   return (
     <div className="space-y-8">
@@ -28,7 +39,10 @@ export default async function TransactionsPage({
             Log income and expenses as they happen.
           </p>
         </div>
-        {period && <PeriodSwitcher periods={periods} selectedId={period.id} />}
+        <div className="flex items-center gap-2">
+          <ReassignToMeButton />
+          {period && <PeriodSwitcher periods={periods} selectedId={period.id} />}
+        </div>
       </div>
 
       {!period ? (
@@ -48,6 +62,9 @@ export default async function TransactionsPage({
             transactions={transactions}
             accounts={accounts}
             categories={categories}
+            splitsByTransaction={splitsByTransaction}
+            initialCategoryFilter={initialCategoryFilter}
+            initialAccountFilter={initialAccountFilter}
           />
         </>
       )}

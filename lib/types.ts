@@ -6,7 +6,38 @@ export type Account = {
   is_active: boolean;
   bank: string | null;
   sort_order: number;
+  // Debt accounts (loans, credit cards you're paying down) track payoff
+  // progress toward `goal` (usually 0) instead of savings progress.
+  is_debt: boolean;
+  // Dashboard shows a warning banner when balance drops below this.
+  low_balance_alert: number | null;
+  // Purely descriptive — doesn't change balance math, just labeling/icons.
+  account_type: AccountType | null;
+  // Direct link to this account's bank login page — falls back to
+  // BANK_LOGIN_URLS[bank] when unset.
+  login_url: string | null;
   created_at: string;
+};
+
+export const ACCOUNT_TYPES = [
+  "checking",
+  "savings",
+  "credit_card",
+  "loan",
+  "cash",
+  "investment",
+  "other",
+] as const;
+export type AccountType = (typeof ACCOUNT_TYPES)[number];
+
+export const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
+  checking: "Checking",
+  savings: "Savings",
+  credit_card: "Credit card",
+  loan: "Loan",
+  cash: "Cash",
+  investment: "Investment",
+  other: "Other",
 };
 
 export const BANK_OPTIONS = [
@@ -15,6 +46,16 @@ export const BANK_OPTIONS = [
   "CIT Bank",
   "Amex",
 ] as const;
+
+// Default login link per bank, used when an account doesn't set its own
+// login_url. Editable per-account since some (like Chase) land on an
+// account-specific dashboard URL rather than a generic login page.
+export const BANK_LOGIN_URLS: Record<(typeof BANK_OPTIONS)[number], string> = {
+  Chase: "https://secure.chase.com/web/auth/dashboard#/dashboard/summary/863809471/DDA/CHK",
+  "Chase for Business": "https://secure.chase.com/web/auth/dashboard#/dashboard/summary/863809471/DDA/CHK",
+  "CIT Bank": "https://secure.citbank.com/CITConsumer/#/Login",
+  Amex: "https://www.americanexpress.com/en-us/account/login?inav=en_us_menu_login",
+};
 
 export type Period = {
   id: string;
@@ -29,6 +70,15 @@ export type Category = {
   name: string;
   kind: "income" | "expense";
   is_need: boolean;
+  // If true, an unspent (or overspent) amount carries into next period's
+  // planned amount instead of resetting to whatever's typed in.
+  rollover: boolean;
+  // Freeform label for rolling up related categories (e.g. all "Food"
+  // subcategories) in the dashboard and planning grid.
+  group_name: string | null;
+  // Manual override for the keyword-guessed icon in lib/category-icons.ts —
+  // null falls back to the guess.
+  icon: string | null;
   created_at: string;
 };
 
@@ -37,6 +87,26 @@ export type BudgetLine = {
   category_id: string;
   period_id: string;
   planned_amount: number;
+  created_at: string;
+};
+
+export type RecurringTransaction = {
+  id: string;
+  kind: "income" | "expense";
+  description: string;
+  amount: number;
+  account_id: string | null;
+  category_id: string | null;
+  day_of_month: number;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type TransactionSplit = {
+  id: string;
+  transaction_id: string;
+  category_id: string | null;
+  amount: number;
   created_at: string;
 };
 
@@ -52,12 +122,12 @@ export type Transaction = {
   to_account_id: string | null;
   category_id: string | null;
   period_id: string;
-  tags: string[];
   notes: string | null;
   cleared: boolean;
   deleted_at: string | null;
   created_by: string | null;
   created_by_email: string | null;
+  recurring_transaction_id: string | null;
   created_at: string;
 };
 
@@ -68,7 +138,18 @@ export type Objective = {
   start_date: string | null;
   end_date: string | null;
   notes: string | null;
+  // When set, progress tracks this account's real balance against its goal
+  // instead of being tracked manually.
+  linked_account_id: string | null;
   created_at: string;
+};
+
+export type TransactionHistoryEntry = {
+  id: string;
+  transaction_id: string;
+  edited_by_email: string | null;
+  edited_at: string;
+  snapshot: Record<string, unknown>;
 };
 
 export const OBJECTIVE_STATUSES = [
@@ -76,12 +157,4 @@ export const OBJECTIVE_STATUSES = [
   "In Progress",
   "On Hold",
   "Achieved",
-] as const;
-
-export const TAG_OPTIONS = [
-  "Personal",
-  "Business",
-  "Recurring",
-  "Savings",
-  "Pending",
 ] as const;

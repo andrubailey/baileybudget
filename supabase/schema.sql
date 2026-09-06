@@ -27,6 +27,7 @@ create table if not exists categories (
   name text not null,
   kind text not null check (kind in ('income', 'expense')),
   is_need boolean not null default false,
+  icon text,
   created_at timestamptz not null default now()
 );
 
@@ -51,13 +52,15 @@ create table if not exists transactions (
   to_account_id uuid references accounts(id) on delete set null,
   category_id uuid references categories(id) on delete set null,
   period_id uuid not null references periods(id) on delete cascade,
-  tags text[] not null default '{}',
   created_by uuid references auth.users(id),
   created_by_email text,
   notes text,
   cleared boolean not null default false,
   deleted_at timestamptz,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- A transfer moves money between accounts, it isn't spend against a
+  -- budget category, so it can never carry a category_id.
+  constraint transactions_transfer_no_category check (kind <> 'transfer' or category_id is null)
 );
 
 create index if not exists transactions_period_idx on transactions(period_id);

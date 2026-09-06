@@ -39,7 +39,7 @@ export default function LoginPage() {
         className="w-full max-w-sm space-y-5 rounded-xl border border-border bg-surface p-8 shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]"
       >
         <div>
-          <h1 className="text-xl font-semibold text-text">Household Budget</h1>
+          <h1 className="text-xl font-semibold text-text">Bailey Budget</h1>
           <p className="mt-1 text-sm text-text-muted">
             Sign in to view your shared budget.
           </p>
