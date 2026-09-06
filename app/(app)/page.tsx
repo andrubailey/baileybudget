@@ -11,6 +11,7 @@ import { formatMoney } from "@/lib/format";
 import { PeriodSwitcher } from "@/app/(app)/period-switcher";
 import { DashboardAccountList } from "@/app/(app)/dashboard-account-list";
 import { QuickAddButton } from "@/app/(app)/quick-add";
+import { ExpenseDonutChart } from "@/app/(app)/expense-donut";
 
 const CATEGORY_COLORS = [
   "#9e77ed",
@@ -65,32 +66,45 @@ export default async function DashboardPage({
     .filter((c) => c.actual > 0)
     .sort((a, b) => b.actual - a.actual);
   const top = spendingCategories.slice(0, 6);
-  const restTotal = spendingCategories
-    .slice(6)
-    .reduce((sum, c) => sum + c.actual, 0);
+  const rest = spendingCategories.slice(6);
+  const restTotal = rest.reduce((sum, c) => sum + c.actual, 0);
   const segments = [
     ...top.map((c, i) => ({
       name: c.name,
       actual: c.actual,
       color: CATEGORY_COLORS[i % CATEGORY_COLORS.length],
+      transactions: c.transactions,
     })),
-    ...(restTotal > 0 ? [{ name: "Other", actual: restTotal, color: OTHER_COLOR }] : []),
+    ...(restTotal > 0
+      ? [
+          {
+            name: "Other",
+            actual: restTotal,
+            color: OTHER_COLOR,
+            transactions: rest.flatMap((c) => c.transactions),
+          },
+        ]
+      : []),
   ];
-  const totalSpend = segments.reduce((sum, s) => sum + s.actual, 0);
-  let cumulative = 0;
-  const gradientStops = segments
-    .map((s) => {
-      const pct = totalSpend > 0 ? (s.actual / totalSpend) * 100 : 0;
-      const start = cumulative;
-      cumulative += pct;
-      return `${s.color} ${start}% ${cumulative}%`;
-    })
-    .join(", ");
 
   const recentTransactions = transactions.slice(0, 7);
+  const totalPlanned = categoryProgress.reduce((sum, c) => sum + c.planned, 0);
 
   return (
     <div className="space-y-10">
+      {/* Planned budget for the month */}
+      <div className="flex items-center justify-between gap-4 rounded-xl border border-accent-border bg-accent-soft p-6">
+        <div>
+          <p className="text-sm font-medium text-accent">Planned this month</p>
+          <p className="mt-1 text-sm text-text-muted">
+            Total allocated across all of {period.name}&apos;s budget categories
+          </p>
+        </div>
+        <p className="tabular text-[36px] leading-[44px] font-semibold tracking-[-0.72px] text-accent">
+          {formatMoney(totalPlanned)}
+        </p>
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-[30px] font-semibold leading-[38px] text-text">
@@ -149,32 +163,7 @@ export default async function DashboardPage({
           {segments.length === 0 ? (
             <p className="py-16 text-sm text-text-muted">No expenses logged yet.</p>
           ) : (
-            <>
-              <div className="relative size-[200px] shrink-0">
-                <div
-                  className="size-full rounded-full"
-                  style={{ background: `conic-gradient(${gradientStops})` }}
-                />
-                <div className="absolute inset-[18%] rounded-full bg-surface" />
-              </div>
-              <div className="flex w-full flex-col">
-                {segments.map((s) => (
-                  <div
-                    key={s.name}
-                    className="flex items-center gap-2 border-b border-border px-2 py-3 last:border-b-0"
-                  >
-                    <span
-                      className="size-3 shrink-0 rounded-full"
-                      style={{ backgroundColor: s.color }}
-                    />
-                    <span className="flex-1 truncate text-[15px] text-text">{s.name}</span>
-                    <span className="tabular text-[15px] text-text-faint">
-                      {totalSpend > 0 ? ((s.actual / totalSpend) * 100).toFixed(1) : "0"}%
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </>
+            <ExpenseDonutChart segments={segments} />
           )}
         </div>
 
