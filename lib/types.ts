@@ -9,7 +9,12 @@ export type Account = {
   created_at: string;
 };
 
-export const BANK_OPTIONS = ["Chase", "CIT Bank", "Amex"] as const;
+export const BANK_OPTIONS = [
+  "Chase",
+  "Chase for Business",
+  "CIT Bank",
+  "Amex",
+] as const;
 
 export type Period = {
   id: string;

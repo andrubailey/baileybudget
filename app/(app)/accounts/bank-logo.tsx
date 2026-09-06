@@ -1,13 +1,14 @@
-const BANK_STYLES: Record<string, { bg: string; fg: string; label: string }> = {
-  Chase: { bg: "#117aca", fg: "#ffffff", label: "Chase" },
-  "CIT Bank": { bg: "#0b2545", fg: "#ffffff", label: "CIT Bank" },
-  Amex: { bg: "#006fcf", fg: "#ffffff", label: "AMEX" },
+const BANK_LOGOS: Record<string, string> = {
+  Chase: "/logos/chase.jpg",
+  "Chase for Business": "/logos/chase-business.jpeg",
+  "CIT Bank": "/logos/cit-bank.png",
+  Amex: "/logos/amex.svg",
 };
 
 export function BankLogo({ bank }: { bank: string }) {
-  const style = BANK_STYLES[bank];
+  const src = BANK_LOGOS[bank];
 
-  if (!style) {
+  if (!src) {
     return (
       <span className="rounded-full bg-bg px-2 py-0.5 text-[11px] font-medium text-text-faint">
         {bank}
@@ -16,11 +17,9 @@ export function BankLogo({ bank }: { bank: string }) {
   }
 
   return (
-    <span
-      className="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-bold tracking-tight"
-      style={{ backgroundColor: style.bg, color: style.fg }}
-    >
-      {style.label}
+    <span className="inline-flex h-6 items-center rounded-md border border-border bg-white p-0.5">
+      {/* eslint-disable-next-line @next/next/no-img-element -- small static local logo, no need for next/image */}
+      <img src={src} alt={bank} className="h-full w-auto rounded-sm object-contain" />
     </span>
   );
 }
