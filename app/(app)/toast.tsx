@@ -28,7 +28,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`pointer-events-auto rounded-lg border px-4 py-2.5 text-sm font-medium shadow-lg ${
+            className={`animate-toast-in pointer-events-auto rounded-lg border px-4 py-2.5 text-sm font-medium shadow-raised ${
               t.tone === "error"
                 ? "border-[#fda29b] bg-[#fef3f2] text-[#b42318]"
                 : "border-accent-border bg-accent-soft text-accent"

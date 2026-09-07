@@ -29,7 +29,7 @@ export function AddAccountForm() {
         createAccount(formData);
         setOpen(false);
       }}
-      className="grid max-w-2xl grid-cols-1 gap-4 rounded-xl border border-border bg-surface p-6 shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)] sm:grid-cols-4"
+      className="grid max-w-2xl grid-cols-1 gap-4 rounded-xl border border-border bg-surface p-6 shadow-card sm:grid-cols-4"
     >
       <div className="space-y-1.5 sm:col-span-1">
         <label className="text-sm font-medium text-text">Name</label>

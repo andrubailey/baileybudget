@@ -124,6 +124,9 @@ export type Transaction = {
   period_id: string;
   notes: string | null;
   cleared: boolean;
+  // A planned purchase one spouse flagged for the other to see before/after
+  // it happens — separate from `cleared`, which is about bank reconciliation.
+  pending_approval: boolean;
   deleted_at: string | null;
   created_by: string | null;
   created_by_email: string | null;

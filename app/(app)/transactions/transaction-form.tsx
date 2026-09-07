@@ -99,7 +99,7 @@ export function TransactionForm({
   return (
     <form
       action={handleSubmit}
-      className="grid max-w-3xl grid-cols-1 gap-4 rounded-xl border border-border bg-surface p-6 shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)] sm:grid-cols-3"
+      className="grid max-w-3xl grid-cols-1 gap-4 rounded-xl border border-border bg-surface p-6 shadow-card sm:grid-cols-3"
     >
       <input type="hidden" name="period_id" value={periodId} />
       <input type="hidden" name="kind" value={effectiveKind} />

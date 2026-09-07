@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { LogoMark } from "@/app/(app)/logo-mark";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -36,10 +37,11 @@ export default function LoginPage() {
     <main className="flex flex-1 items-center justify-center px-4">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm space-y-5 rounded-xl border border-border bg-surface p-8 shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]"
+        className="w-full max-w-sm space-y-5 rounded-xl border border-border bg-surface p-8 shadow-card"
       >
         <div>
-          <h1 className="text-xl font-semibold text-text">Bailey Budget</h1>
+          <LogoMark size={40} />
+          <h1 className="mt-3 text-xl font-semibold text-text">Bailey Budget</h1>
           <p className="mt-1 text-sm text-text-muted">
             Sign in to view your shared budget.
           </p>

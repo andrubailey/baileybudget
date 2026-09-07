@@ -86,7 +86,7 @@ export function MobileQuickActions() {
         onClick={() => setOpen((v) => !v)}
         aria-label={open ? "Close quick add menu" : "Open quick add menu"}
         aria-expanded={open}
-        className="flex size-12 items-center justify-center rounded-full bg-accent text-white shadow-lg transition-transform hover:scale-105"
+        className="flex size-12 items-center justify-center rounded-full bg-accent text-white shadow-raised transition-transform hover:scale-105"
       >
         <svg
           width="22"
@@ -119,7 +119,7 @@ function ActionButton({
     <button
       type="button"
       onClick={onClick}
-      className="flex items-center gap-2.5 rounded-full bg-surface py-1.5 pr-4 pl-1.5 shadow-lg"
+      className="flex items-center gap-2.5 rounded-full bg-surface py-1.5 pr-4 pl-1.5 shadow-raised"
     >
       <span
         className="flex size-9 shrink-0 items-center justify-center rounded-full"

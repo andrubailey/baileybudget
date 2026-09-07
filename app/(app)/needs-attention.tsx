@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { StatusPill } from "@/app/(app)/status-pill";
 
 type AttentionItem = { key: string; message: string; href?: string };
 
@@ -8,7 +9,10 @@ type AttentionItem = { key: string; message: string; href?: string };
 export function NeedsAttention({ items }: { items: AttentionItem[] }) {
   return (
     <div className="rounded-xl border border-[#fedf89] bg-[#fffaeb] p-4">
-      <p className="text-sm font-semibold text-[#93370d]">Needs attention</p>
+      <div className="flex items-center gap-2">
+        <StatusPill variant="warning">{items.length}</StatusPill>
+        <p className="text-sm font-semibold text-[#93370d]">Needs attention</p>
+      </div>
       <ul className="mt-2 space-y-1.5">
         {items.map((item) => (
           <li key={item.key} className="text-sm text-[#93370d]">

@@ -122,7 +122,7 @@ export function CsvImport({ accounts, categories }: { accounts: Account[]; categ
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border border-border bg-surface p-6 shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]">
+      <div className="rounded-xl border border-border bg-surface p-6 shadow-card">
         <label className="text-sm font-medium text-text">Bank statement CSV</label>
         <input
           type="file"
@@ -133,7 +133,7 @@ export function CsvImport({ accounts, categories }: { accounts: Account[]; categ
       </div>
 
       {headers.length > 0 && (
-        <div className="space-y-4 rounded-xl border border-border bg-surface p-6 shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]">
+        <div className="space-y-4 rounded-xl border border-border bg-surface p-6 shadow-card">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <ColumnSelect label="Date column" value={dateCol} onChange={setDateCol} options={headers} />
             <ColumnSelect label="Description column" value={descCol} onChange={setDescCol} options={headers} />

@@ -45,7 +45,7 @@ export default async function WeeklyRecapPage() {
         <StatCard label="Net" value={summary.net} emphasize />
       </div>
 
-      <div className="rounded-xl border border-border bg-surface p-5 shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]">
+      <div className="rounded-xl border border-border bg-surface p-5 shadow-card">
         <p className="text-sm text-text-muted">
           You spent{" "}
           <span className={`tabular font-medium ${expenseChange > 0 ? "text-[#f04438]" : "text-success"}`}>
@@ -55,7 +55,7 @@ export default async function WeeklyRecapPage() {
         </p>
       </div>
 
-      <div className="rounded-xl border border-border bg-surface p-5 shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]">
+      <div className="rounded-xl border border-border bg-surface p-5 shadow-card">
         <p className="mb-3 text-sm font-medium text-text-muted">Top categories this week</p>
         <ul className="space-y-2">
           {topCategories.map((c) => (
@@ -68,7 +68,7 @@ export default async function WeeklyRecapPage() {
         </ul>
       </div>
 
-      <div className="rounded-xl border border-border bg-surface p-5 shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]">
+      <div className="rounded-xl border border-border bg-surface p-5 shadow-card">
         <p className="mb-3 text-sm font-medium text-text-muted">{transactions.length} transactions logged this week</p>
         <ul className="divide-y divide-border">
           {transactions.slice(0, 10).map((t) => (
@@ -88,7 +88,7 @@ export default async function WeeklyRecapPage() {
 
 function StatCard({ label, value, emphasize }: { label: string; value: number; emphasize?: boolean }) {
   return (
-    <div className="flex flex-col gap-1.5 rounded-xl border border-border bg-surface p-5 shadow-[0px_1px_1px_0px_rgba(16,24,40,0.05)]">
+    <div className="flex flex-col gap-1.5 rounded-xl border border-border bg-surface p-5 shadow-card">
       <p className="text-sm font-medium text-text-muted">{label}</p>
       <p className={`tabular text-2xl font-semibold ${emphasize ? "text-accent" : "text-text"}`}>
         {formatMoney(value)}

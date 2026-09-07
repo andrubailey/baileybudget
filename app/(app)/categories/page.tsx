@@ -14,6 +14,8 @@ import { AddCategoryForm } from "./add-category-form";
 import { CopyBudgetButton } from "./copy-budget-button";
 import { DeleteCategoryButton } from "./delete-category-button";
 import { getCategoryIcon } from "@/lib/category-icons";
+import { getCategoryColor } from "@/lib/category-colors";
+import { StatusPill } from "@/app/(app)/status-pill";
 
 export default async function CategoriesPage({
   searchParams,
@@ -63,7 +65,7 @@ export default async function CategoriesPage({
           reloading the page.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border bg-surface shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]">
+        <div className="overflow-x-auto rounded-xl border border-border bg-surface shadow-card">
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-border bg-bg">
@@ -88,9 +90,13 @@ export default async function CategoriesPage({
                 const shownTxns = c.transactions.slice(0, 4);
                 const extraCount = c.transactions.length - shownTxns.length;
                 return (
-                  <tr key={c.id} className="border-b border-border last:border-b-0">
+                  <tr key={c.id} className="border-b border-border last:border-b-0 hover:bg-bg even:bg-bg/40">
                     <td className="px-6 py-3">
                       <div className="flex items-center gap-2.5">
+                        <span
+                          className="size-2 shrink-0 rounded-full"
+                          style={{ backgroundColor: getCategoryColor(c.id) }}
+                        />
                         <form
                           action={async (formData: FormData) => {
                             "use server";
@@ -186,7 +192,10 @@ export default async function CategoriesPage({
                       {formatMoney(c.actual)}
                     </td>
                     <td className={`tabular px-6 py-3 text-sm font-medium ${remColor}`}>
-                      {formatMoney(c.remaining)}
+                      <div className="flex items-center gap-1.5">
+                        {formatMoney(c.remaining)}
+                        {c.remaining < 0 && <StatusPill variant="danger">Over</StatusPill>}
+                      </div>
                     </td>
                     <td className="px-6 py-3">
                       <div className="flex flex-wrap gap-1.5">

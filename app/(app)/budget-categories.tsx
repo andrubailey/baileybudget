@@ -5,6 +5,9 @@ import { useState, useTransition } from "react";
 import { upsertBudgetLine } from "@/app/actions";
 import { formatMoney } from "@/lib/format";
 import { getCategoryIcon } from "@/lib/category-icons";
+import { getCategoryColor } from "@/lib/category-colors";
+import { StatusPill } from "@/app/(app)/status-pill";
+import { EmptyState } from "@/app/(app)/empty-state";
 import type { CategoryProgress } from "@/lib/queries";
 
 export function BudgetCategoriesCard({
@@ -29,7 +32,7 @@ export function BudgetCategoriesCard({
         )}
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-surface shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]">
+      <div className="overflow-x-auto rounded-xl border border-border bg-surface shadow-card">
         <table className="w-full text-left">
           <thead>
             <tr className="border-b border-border bg-bg">
@@ -46,11 +49,15 @@ export function BudgetCategoriesCard({
             ))}
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-6 py-10 text-center text-sm text-text-muted">
-                  No expense categories yet.{" "}
-                  <Link href="/categories" className="text-accent underline underline-offset-2">
-                    Add one
-                  </Link>
+                <td colSpan={5} className="px-6 py-4">
+                  <EmptyState
+                    message="No expense categories yet."
+                    action={
+                      <Link href="/categories" className="text-xs text-accent underline underline-offset-2">
+                        Add one
+                      </Link>
+                    }
+                  />
                 </td>
               </tr>
             )}
@@ -82,11 +89,16 @@ function CategoryRow({
     });
   }
 
+  const color = getCategoryColor(c.id);
+
   return (
-    <tr className="border-b border-border last:border-b-0">
+    <tr className="border-b border-border last:border-b-0 hover:bg-bg even:bg-bg/40">
       <td className="px-6 py-3">
         <div className="flex items-center gap-2.5">
-          <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-bg text-sm">
+          <span
+            className="flex size-7 shrink-0 items-center justify-center rounded-full text-sm"
+            style={{ backgroundColor: `${color}26` }}
+          >
             {getCategoryIcon(c.name, c.icon)}
           </span>
           <span className="text-sm font-medium text-text">{c.name}</span>
@@ -130,6 +142,7 @@ function CategoryRow({
               ? `${formatMoney(c.remaining)} left`
               : `${formatMoney(Math.abs(c.remaining))} over`}
           </span>
+          {c.overBudget && <StatusPill variant="danger">Over</StatusPill>}
         </div>
       </td>
       <td className="px-6 py-3 text-right">

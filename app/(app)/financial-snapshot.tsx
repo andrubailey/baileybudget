@@ -9,7 +9,7 @@ export function FinancialSnapshot({
   topCategory: { name: string; actual: number } | null;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-surface p-5 shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]">
+    <div className="rounded-xl border border-border bg-surface p-5 shadow-card">
       <p className="text-heading text-text">Last 90 days</p>
 
       <div className="mt-4 space-y-2.5">

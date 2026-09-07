@@ -36,7 +36,7 @@ export function QuickAddTransferButton({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="flex items-start gap-3 rounded-xl border border-border bg-surface p-5 text-left shadow-[0px_1px_1px_0px_rgba(16,24,40,0.05)] transition-shadow hover:shadow-md"
+          className="flex items-start gap-3 rounded-xl border border-border bg-surface p-5 text-left shadow-card transition-shadow hover:shadow-md"
         >
           <span
             className="flex size-12 shrink-0 items-center justify-center rounded-lg"
@@ -61,12 +61,12 @@ export function QuickAddTransferButton({
 
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          className="animate-modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
           onClick={() => setOpen(false)}
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-surface p-6 shadow-xl"
+            className="animate-modal-panel max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-surface p-6 shadow-modal"
           >
             <div className="mb-4 flex items-start justify-between">
               <h2 className="text-lg font-semibold text-text">Add transfer</h2>

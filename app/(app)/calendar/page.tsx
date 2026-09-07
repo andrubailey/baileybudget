@@ -45,7 +45,7 @@ export default async function CalendarPage() {
         </p>
       </div>
 
-      <div className="rounded-xl border border-border bg-surface p-4 shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]">
+      <div className="rounded-xl border border-border bg-surface p-4 shadow-card">
         <div className="grid grid-cols-7 gap-1 text-center text-xs font-medium text-text-faint">
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
             <div key={d} className="py-1">
@@ -88,7 +88,7 @@ export default async function CalendarPage() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-border bg-surface p-5 shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]">
+      <div className="rounded-xl border border-border bg-surface p-5 shadow-card">
         <p className="mb-3 text-sm font-medium text-text-muted">This month&apos;s recurring total</p>
         <div className="flex flex-wrap gap-6 text-sm">
           <span>

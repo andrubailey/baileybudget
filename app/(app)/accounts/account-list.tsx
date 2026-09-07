@@ -17,6 +17,9 @@ import { ACCOUNT_TYPE_LABELS, ACCOUNT_TYPES, BANK_LOGIN_URLS } from "@/lib/types
 import { BankLogo } from "./bank-logo";
 import { SubmitButton } from "@/app/(app)/submit-button";
 import { useToast } from "@/app/(app)/toast";
+import { getAccountColor } from "@/lib/account-colors";
+import { StatusPill } from "@/app/(app)/status-pill";
+import { EmptyState } from "@/app/(app)/empty-state";
 
 function defaultLoginUrl(bank: string | null): string | null {
   if (!bank) return null;
@@ -75,7 +78,7 @@ export function AccountList({
   }
 
   if (order.length === 0) {
-    return <p className="text-sm text-text-muted">No accounts yet — add your first one above.</p>;
+    return <EmptyState message="No accounts yet — add your first one above." />;
   }
 
   return (
@@ -109,6 +112,7 @@ export function AccountList({
         const belowAlert =
           !a.is_debt && a.low_balance_alert !== null && a.balance < a.low_balance_alert;
         const loginUrl = a.login_url || defaultLoginUrl(a.bank);
+        const accountColor = getAccountColor(a.account_type, a.is_debt);
         return (
           <div
             key={a.id}
@@ -117,18 +121,22 @@ export function AccountList({
             onDragOver={(e) => handleDragOver(e, a.id)}
             onDrop={handleDrop}
             onDragEnd={handleDrop}
-            className={`cursor-grab rounded-xl border border-border bg-surface p-5 shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)] active:cursor-grabbing ${
+            style={{ borderLeftColor: accountColor, borderLeftWidth: 3 }}
+            className={`cursor-grab rounded-xl border border-border bg-surface p-5 shadow-card active:cursor-grabbing ${
               draggedId === a.id ? "opacity-50" : ""
             }`}
           >
             <div className="flex items-start justify-between">
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent-soft">
+                  <span
+                    className="flex size-8 shrink-0 items-center justify-center rounded-full"
+                    style={{ backgroundColor: `${accountColor}26` }}
+                  >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                       <path
                         d="M3 10h18M6 6h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z"
-                        stroke="var(--accent)"
+                        stroke={accountColor}
                         strokeWidth={1.6}
                         strokeLinejoin="round"
                       />
@@ -152,9 +160,9 @@ export function AccountList({
                   {a.is_debt && <span className="ml-1 text-sm font-normal text-text-faint">owed</span>}
                 </p>
                 {belowAlert && (
-                  <p className="mt-1 text-xs font-medium text-[#f04438]">
-                    ⚠ Below your {formatMoney(a.low_balance_alert!)} alert threshold
-                  </p>
+                  <StatusPill variant="danger" className="mt-1.5">
+                    Below your {formatMoney(a.low_balance_alert!)} alert threshold
+                  </StatusPill>
                 )}
                 {loginUrl && (
                   <a

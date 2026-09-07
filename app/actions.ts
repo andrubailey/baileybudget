@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { generateToken, hashToken } from "@/lib/tokens";
 import {
   findPossibleDuplicateTransactions,
   getAccountsWithBalances,
@@ -292,6 +293,7 @@ export async function createTransaction(formData: FormData) {
   const category_id = String(formData.get("category_id") ?? "") || null;
   const period_id = String(formData.get("period_id") ?? "");
   const notes = String(formData.get("notes") ?? "").trim() || null;
+  const pending_approval = formData.get("pending_approval") === "on";
 
   if (!description || !amount || !txn_date || !period_id) return;
 
@@ -308,10 +310,18 @@ export async function createTransaction(formData: FormData) {
     category_id,
     period_id,
     notes,
+    pending_approval,
     created_by: user?.id ?? null,
     created_by_email: user?.email ?? null,
   });
 
+  revalidatePath("/transactions");
+  revalidatePath("/");
+}
+
+export async function toggleTransactionPendingApproval(id: string, pending_approval: boolean) {
+  const supabase = await createClient();
+  await supabase.from("transactions").update({ pending_approval }).eq("id", id);
   revalidatePath("/transactions");
   revalidatePath("/");
 }
@@ -692,4 +702,48 @@ export async function createSplitTransaction(
 
   revalidatePath("/transactions");
   revalidatePath("/");
+}
+
+export type ApiTokenSummary = {
+  id: string;
+  label: string;
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+};
+
+export async function listApiTokens(): Promise<ApiTokenSummary[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("api_tokens")
+    .select("id, label, created_at, last_used_at, revoked_at")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
+// Returns the raw token exactly once — only its hash is stored, so this is
+// the only chance to see/copy it.
+export async function createApiToken(label: string): Promise<string> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const raw = generateToken();
+  const { error } = await supabase.from("api_tokens").insert({
+    token_hash: hashToken(raw),
+    label: label.trim() || "Shortcuts token",
+    created_by_email: user?.email ?? null,
+  });
+  if (error) throw error;
+
+  revalidatePath("/settings");
+  return raw;
+}
+
+export async function revokeApiToken(id: string) {
+  const supabase = await createClient();
+  await supabase.from("api_tokens").update({ revoked_at: new Date().toISOString() }).eq("id", id);
+  revalidatePath("/settings");
 }

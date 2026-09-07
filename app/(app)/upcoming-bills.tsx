@@ -22,7 +22,7 @@ export function UpcomingBillsCard({
   const shown = bills.slice(0, 5);
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-5 shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]">
+    <div className="rounded-xl border border-border bg-surface p-5 shadow-card">
       <div className="mb-3 flex items-baseline justify-between">
         <p className="text-heading text-text">Upcoming bills</p>
         <Link href="/recurring" className="text-xs font-medium text-accent underline underline-offset-2">

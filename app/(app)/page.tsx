@@ -224,6 +224,14 @@ export default async function DashboardPage({
         href: "/categories",
         severity: (c.actual - c.planned) / Math.max(c.planned, 1),
       })),
+    ...transactions
+      .filter((t) => t.pending_approval)
+      .map((t) => ({
+        key: `pending-${t.id}`,
+        message: `"${t.description}" (${formatMoney(t.amount)}) is flagged — ask before buying`,
+        href: "/transactions",
+        severity: 0.5,
+      })),
     ...objectives
       .filter((o) => {
         if (o.status === "Achieved" || !o.end_date) return false;
@@ -399,7 +407,7 @@ export default async function DashboardPage({
 
         {/* Category breakdown + budget categories */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[384px_1fr]">
-          <div className="flex flex-col items-center gap-6 rounded-xl border border-border bg-surface p-5 shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]">
+          <div className="flex flex-col items-center gap-6 rounded-xl border border-border bg-surface p-5 shadow-card">
             <div className="flex w-full items-center">
               <p className="text-heading text-text-2">Expenses by category</p>
             </div>
@@ -420,7 +428,7 @@ export default async function DashboardPage({
         </div>
 
         {/* Recent transactions */}
-        <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-surface shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]">
+        <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-surface shadow-card">
           <div className="flex items-center justify-between p-6">
             <div>
               <p className="text-heading text-text">Recent transactions</p>
@@ -597,7 +605,7 @@ function StatCard({
       ? "text-accent"
       : "text-text";
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-6 shadow-[0px_1px_1px_0px_rgba(16,24,40,0.05)]">
+    <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-6 shadow-card">
       <div className="flex items-center gap-2.5">
         {icon && (
           <span
@@ -645,7 +653,7 @@ function QuickAction({
   return (
     <Link
       href={href}
-      className="flex items-start gap-3 rounded-xl border border-border bg-surface p-5 shadow-[0px_1px_1px_0px_rgba(16,24,40,0.05)] transition-shadow hover:shadow-md"
+      className="flex items-start gap-3 rounded-xl border border-border bg-surface p-5 shadow-card transition-shadow hover:shadow-md"
     >
       <span
         className="flex size-12 shrink-0 items-center justify-center rounded-lg"

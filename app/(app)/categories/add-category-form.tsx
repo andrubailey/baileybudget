@@ -24,7 +24,7 @@ export function AddCategoryForm() {
         createCategory(formData);
         setOpen(false);
       }}
-      className="grid max-w-xl grid-cols-1 gap-4 rounded-xl border border-border bg-surface p-6 shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)] sm:grid-cols-3"
+      className="grid max-w-xl grid-cols-1 gap-4 rounded-xl border border-border bg-surface p-6 shadow-card sm:grid-cols-3"
     >
       <div className="space-y-1.5">
         <label className="text-sm font-medium text-text">Name</label>

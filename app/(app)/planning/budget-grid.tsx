@@ -15,7 +15,7 @@ export function BudgetGrid({
   periods: Period[];
 }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-border bg-surface shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]">
+    <div className="overflow-x-auto rounded-xl border border-border bg-surface shadow-card">
       <table className="w-full text-left">
         <thead>
           <tr className="border-b border-border bg-bg">

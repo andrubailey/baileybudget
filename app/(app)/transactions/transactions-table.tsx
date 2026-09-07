@@ -1,11 +1,12 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
 import {
   deleteTransaction,
   getHistoryForTransaction,
   restoreTransaction,
   toggleTransactionCleared,
+  toggleTransactionPendingApproval,
   updateTransaction,
 } from "@/app/actions";
 import { formatMoney, formatDate } from "@/lib/format";
@@ -14,6 +15,7 @@ import type { SplitDetail } from "@/lib/queries";
 import { SubmitButton } from "@/app/(app)/submit-button";
 import { BankLogo } from "@/app/(app)/accounts/bank-logo";
 import { getAvatarColors } from "@/lib/avatar-colors";
+import { getAccountColor } from "@/lib/account-colors";
 
 // text-base (16px) on mobile prevents iOS Safari's auto-zoom-on-focus.
 const fieldClass =
@@ -27,6 +29,21 @@ function initials(name: string) {
 function creatorInitial(email: string | null) {
   if (!email) return null;
   return email.trim()[0]?.toUpperCase() ?? null;
+}
+
+// Turns a transaction_history snapshot row (recorded right before an edit)
+// back into FormData shaped like what updateTransaction expects, so "undo"
+// can just replay the same action instead of needing a separate code path.
+function snapshotToFormData(snapshot: Record<string, unknown>): FormData {
+  const fd = new FormData();
+  fd.set("kind", String(snapshot.kind ?? "expense"));
+  fd.set("description", String(snapshot.description ?? ""));
+  fd.set("amount", String(snapshot.amount ?? "0"));
+  fd.set("txn_date", String(snapshot.txn_date ?? ""));
+  fd.set("account_id", snapshot.account_id ? String(snapshot.account_id) : "");
+  fd.set("category_id", snapshot.category_id ? String(snapshot.category_id) : "");
+  fd.set("notes", snapshot.notes ? String(snapshot.notes) : "");
+  return fd;
 }
 
 export function TransactionsTable({
@@ -54,6 +71,9 @@ export function TransactionsTable({
   const [undoRow, setUndoRow] = useState<{ id: string; description: string } | null>(
     null,
   );
+  const [editUndo, setEditUndo] = useState<{ id: string; snapshot: Record<string, unknown> } | null>(
+    null,
+  );
 
   const accountById = useMemo(
     () => new Map(accounts.map((a) => [a.id, a.name])),
@@ -61,6 +81,10 @@ export function TransactionsTable({
   );
   const accountBankById = useMemo(
     () => new Map(accounts.map((a) => [a.id, a.bank])),
+    [accounts],
+  );
+  const accountColorById = useMemo(
+    () => new Map(accounts.map((a) => [a.id, getAccountColor(a.account_type, a.is_debt)])),
     [accounts],
   );
   const categoryById = useMemo(
@@ -95,6 +119,7 @@ export function TransactionsTable({
   const filteredExpense = filtered
     .filter((t) => t.kind === "expense")
     .reduce((sum, t) => sum + t.amount, 0);
+  const uncleared = filtered.filter((t) => !t.cleared);
 
   async function handleDelete(t: Transaction) {
     await deleteTransaction(t.id);
@@ -108,6 +133,30 @@ export function TransactionsTable({
     if (!undoRow) return;
     await restoreTransaction(undoRow.id);
     setUndoRow(null);
+  }
+
+  // After an edit saves, transaction_history already has the pre-edit state
+  // recorded (see updateTransaction) — grab it and offer to replay it back,
+  // the same undo pattern as delete, instead of edits being final.
+  async function handleEditSaved(id: string) {
+    setEditingId(null);
+    const entries = await getHistoryForTransaction(id);
+    const previous = entries[0];
+    if (!previous) return;
+    setEditUndo({ id, snapshot: previous.snapshot });
+    setTimeout(() => {
+      setEditUndo((current) => (current?.id === id ? null : current));
+    }, 8000);
+  }
+
+  async function handleUndoEdit() {
+    if (!editUndo) return;
+    await updateTransaction(editUndo.id, snapshotToFormData(editUndo.snapshot));
+    setEditUndo(null);
+  }
+
+  async function handleMarkAllCleared() {
+    await Promise.all(uncleared.map((t) => toggleTransactionCleared(t.id, true)));
   }
 
   async function toggleHistory(id: string) {
@@ -201,6 +250,15 @@ export function TransactionsTable({
             {filtered.length} of {transactions.length}
           </span>
         )}
+        {uncleared.length > 0 && (
+          <button
+            type="button"
+            onClick={handleMarkAllCleared}
+            className="text-xs font-medium text-accent hover:underline"
+          >
+            Mark {uncleared.length} cleared
+          </button>
+        )}
         {exportHref && (
           <a
             href={exportHref}
@@ -224,7 +282,44 @@ export function TransactionsTable({
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-surface shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]">
+      {editUndo && (
+        <div className="mb-4 flex items-center justify-between rounded-lg border border-accent-border bg-accent-soft px-4 py-2.5 text-sm">
+          <span className="text-accent">Transaction edited.</span>
+          <button
+            type="button"
+            onClick={handleUndoEdit}
+            className="font-semibold text-accent underline underline-offset-2"
+          >
+            Undo
+          </button>
+        </div>
+      )}
+
+      {/* Mobile: swipeable cards. Desktop: full table. A table row can't be
+          reliably transform-animated for swipe gestures across browsers, so
+          small screens get their own list instead of a squeezed table. */}
+      <div className="space-y-2 sm:hidden">
+        {filtered.map((t) => (
+          <MobileTransactionCard
+            key={t.id}
+            transaction={t}
+            accountName={t.account_id ? (accountById.get(t.account_id) ?? "—") : "—"}
+            accountColor={t.account_id ? accountColorById.get(t.account_id) : undefined}
+            categoryName={t.category_id ? (categoryById.get(t.category_id) ?? null) : null}
+            onDelete={() => handleDelete(t)}
+            onToggleCleared={(cleared) => toggleTransactionCleared(t.id, cleared)}
+          />
+        ))}
+        {filtered.length === 0 && (
+          <p className="rounded-xl border border-dashed border-border py-10 text-center text-sm text-text-muted">
+            {transactions.length === 0
+              ? "No transactions logged for this period yet."
+              : "No transactions match your search/filters."}
+          </p>
+        )}
+      </div>
+
+      <div className="hidden overflow-x-auto rounded-xl border border-border bg-surface shadow-card sm:block">
         <table className="w-full text-left">
           <thead>
             <tr className="border-b border-border bg-bg">
@@ -248,11 +343,12 @@ export function TransactionsTable({
                   transaction={t}
                   accounts={accounts}
                   categories={categories}
-                  onDone={() => setEditingId(null)}
+                  onCancel={() => setEditingId(null)}
+                  onSaved={() => handleEditSaved(t.id)}
                 />
               ) : (
                 <Fragment key={t.id}>
-                <tr className="border-b border-border last:border-b-0">
+                <tr className="border-b border-border last:border-b-0 hover:bg-bg even:bg-bg/40">
                   <td className="px-4 py-3">
                     <input
                       type="checkbox"
@@ -280,6 +376,16 @@ export function TransactionsTable({
                             <span className="shrink-0 text-xs" title="Recurring">
                               🔁
                             </span>
+                          )}
+                          {t.pending_approval && (
+                            <button
+                              type="button"
+                              onClick={() => toggleTransactionPendingApproval(t.id, false)}
+                              title="Needs approval — click to approve"
+                              className="shrink-0 rounded-full bg-[#fef0c7] px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap text-[#93370d] hover:bg-[#fde3a7]"
+                            >
+                              Needs approval
+                            </button>
                           )}
                         </span>
                         {t.notes && (
@@ -310,11 +416,23 @@ export function TransactionsTable({
                   <td className="px-4 py-3 text-sm text-text-muted">
                     {t.kind === "transfer" ? (
                       <div className="flex items-center gap-1.5">
+                        {t.account_id && (
+                          <span
+                            className="size-1.5 shrink-0 rounded-full"
+                            style={{ backgroundColor: accountColorById.get(t.account_id) }}
+                          />
+                        )}
                         {t.account_id && accountBankById.get(t.account_id) && (
                           <BankLogo bank={accountBankById.get(t.account_id)!} size="sm" />
                         )}
                         <span>{t.account_id ? (accountById.get(t.account_id) ?? "—") : "—"}</span>
                         <span>→</span>
+                        {t.to_account_id && (
+                          <span
+                            className="size-1.5 shrink-0 rounded-full"
+                            style={{ backgroundColor: accountColorById.get(t.to_account_id) }}
+                          />
+                        )}
                         {t.to_account_id && accountBankById.get(t.to_account_id) && (
                           <BankLogo bank={accountBankById.get(t.to_account_id)!} size="sm" />
                         )}
@@ -324,6 +442,10 @@ export function TransactionsTable({
                       </div>
                     ) : t.account_id ? (
                       <div className="flex items-center gap-1.5">
+                        <span
+                          className="size-1.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: accountColorById.get(t.account_id) }}
+                        />
                         {accountBankById.get(t.account_id) && (
                           <BankLogo bank={accountBankById.get(t.account_id)!} size="sm" />
                         )}
@@ -418,16 +540,121 @@ export function TransactionsTable({
   );
 }
 
+// Swipe left to reveal Delete, swipe right to reveal a Mark cleared toggle —
+// mirrors common mobile mail/messaging apps instead of requiring a tap into
+// a cramped inline edit form just to clear or remove a row.
+function MobileTransactionCard({
+  transaction: t,
+  accountName,
+  accountColor,
+  categoryName,
+  onDelete,
+  onToggleCleared,
+}: {
+  transaction: Transaction;
+  accountName: string;
+  accountColor: string | undefined;
+  categoryName: string | null;
+  onDelete: () => void;
+  onToggleCleared: (cleared: boolean) => void;
+}) {
+  const [dragX, setDragX] = useState(0);
+  const startX = useRef<number | null>(null);
+  const dragging = useRef(false);
+  const SWIPE_THRESHOLD = 72;
+
+  function handleTouchStart(e: React.TouchEvent) {
+    startX.current = e.touches[0].clientX;
+    dragging.current = true;
+  }
+
+  function handleTouchMove(e: React.TouchEvent) {
+    if (!dragging.current || startX.current === null) return;
+    const delta = e.touches[0].clientX - startX.current;
+    setDragX(Math.max(-120, Math.min(120, delta)));
+  }
+
+  function handleTouchEnd() {
+    dragging.current = false;
+    if (dragX <= -SWIPE_THRESHOLD) {
+      onDelete();
+    } else if (dragX >= SWIPE_THRESHOLD) {
+      onToggleCleared(!t.cleared);
+    }
+    setDragX(0);
+  }
+
+  return (
+    <div className="relative overflow-hidden rounded-xl">
+      <div className="absolute inset-0 flex items-center justify-between px-4">
+        <span className="text-xs font-semibold text-success">
+          {t.cleared ? "Mark pending" : "Mark cleared"}
+        </span>
+        <span className="text-xs font-semibold text-[#f04438]">Delete</span>
+      </div>
+      <div
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        style={{ transform: `translateX(${dragX}px)`, transition: dragging.current ? "none" : "transform 150ms" }}
+        className="relative flex items-center gap-3 rounded-xl border border-border bg-surface p-3.5 shadow-card"
+      >
+        <span
+          className="flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
+          style={{
+            backgroundColor: getAvatarColors(t.id).bg,
+            color: getAvatarColors(t.id).text,
+          }}
+        >
+          {initials(t.description)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="flex items-center gap-1.5 truncate text-sm font-medium text-text">
+            <span className="truncate">{t.description}</span>
+            {t.pending_approval && (
+              <span className="shrink-0 rounded-full bg-[#fef0c7] px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap text-[#93370d]">
+                Needs approval
+              </span>
+            )}
+          </p>
+          <p className="flex items-center gap-1.5 truncate text-xs text-text-faint">
+            {accountColor && (
+              <span
+                className="size-1.5 shrink-0 rounded-full"
+                style={{ backgroundColor: accountColor }}
+              />
+            )}
+            <span className="truncate">{accountName}</span>
+            {categoryName && <span>· {categoryName}</span>}
+            <span>· {formatDate(t.txn_date)}</span>
+          </p>
+        </div>
+        <span
+          className={`tabular shrink-0 text-sm font-medium ${
+            t.kind === "income" ? "text-success" : "text-text"
+          }`}
+        >
+          {t.kind === "income" ? "+" : t.kind === "expense" ? "-" : ""}
+          {formatMoney(t.amount)}
+        </span>
+        {!t.cleared && <span className="size-1.5 shrink-0 rounded-full bg-[#f79009]" title="Pending" />}
+      </div>
+    </div>
+  );
+}
+
 function EditRow({
   transaction: t,
   accounts,
   categories,
-  onDone,
+  onCancel,
+  onSaved,
 }: {
   transaction: Transaction;
   accounts: Account[];
   categories: Category[];
-  onDone: () => void;
+  onCancel: () => void;
+  onSaved: () => void;
 }) {
   const [accountId, setAccountId] = useState(t.account_id ?? "");
   // Debt accounts store the opposite of what you'd expect (a charge is
@@ -448,7 +675,7 @@ function EditRow({
           action={async (formData) => {
             formData.set("kind", effectiveKind);
             await updateTransaction(t.id, formData);
-            onDone();
+            onSaved();
           }}
           className="grid grid-cols-1 gap-3 sm:grid-cols-3"
         >
@@ -522,7 +749,7 @@ function EditRow({
             </SubmitButton>
             <button
               type="button"
-              onClick={onDone}
+              onClick={onCancel}
               className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-text-muted hover:bg-bg"
             >
               Cancel

@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "@/app/actions";
+import { LogoMark } from "@/app/(app)/logo-mark";
+import { PresenceIndicator } from "@/app/(app)/presence-indicator";
 
 // Daily-use pages first; setup/maintenance pages grouped under their own
 // label so the nav doesn't read as 7 equally-weighted items.
@@ -16,6 +18,19 @@ const PRIMARY_LINKS = [
         d="M4 12h6V4H4v8Zm0 8h6v-6H4v6Zm10 0h6v-8h-6v8Zm0-16v6h6V4h-6Z"
         stroke="currentColor"
         strokeWidth={1.6}
+        strokeLinejoin="round"
+      />
+    ),
+  },
+  {
+    href: "/today",
+    label: "Today",
+    icon: (
+      <path
+        d="M12 8v4l2.5 2.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+        stroke="currentColor"
+        strokeWidth={1.6}
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
     ),
@@ -124,6 +139,18 @@ const MANAGE_LINKS = [
       />
     ),
   },
+  {
+    href: "/settings",
+    label: "Settings",
+    icon: (
+      <path
+        d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm7.4-3a7.4 7.4 0 0 1-.1 1.2l2 1.6-2 3.4-2.4-1a7.4 7.4 0 0 1-2 1.2l-.4 2.6h-4l-.4-2.6a7.4 7.4 0 0 1-2-1.2l-2.4 1-2-3.4 2-1.6a7.4 7.4 0 0 1 0-2.4l-2-1.6 2-3.4 2.4 1a7.4 7.4 0 0 1 2-1.2L9.6 3h4l.4 2.6a7.4 7.4 0 0 1 2 1.2l2.4-1 2 3.4-2 1.6c.1.4.1.8.1 1.2Z"
+        stroke="currentColor"
+        strokeWidth={1.3}
+        strokeLinejoin="round"
+      />
+    ),
+  },
 ];
 
 export const NAV_GROUPS: { label: string | null; links: typeof PRIMARY_LINKS }[] = [
@@ -168,15 +195,19 @@ export function Sidebar() {
       }`}
     >
       <div className="flex h-[72px] shrink-0 items-center gap-2 px-5">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-sm font-bold text-white">
-          B
-        </span>
+        <LogoMark size={32} />
         {!collapsed && (
           <span className="truncate text-lg font-bold tracking-tight text-hero-text">
             Bailey<span className="text-accent">Budget</span>
           </span>
         )}
       </div>
+
+      {!collapsed && (
+        <div className="px-5 pb-2">
+          <PresenceIndicator />
+        </div>
+      )}
 
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-4 py-2">
         {NAV_GROUPS.map((group, groupIndex) => (

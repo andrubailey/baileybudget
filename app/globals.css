@@ -78,3 +78,46 @@ body {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* Elevation scale — three tiers instead of hand-tuned shadow-[...] values
+   repeated (with slight drift) across every card/modal in the app. */
+.shadow-card {
+  box-shadow: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
+}
+.shadow-raised {
+  box-shadow: 0px 4px 8px -2px rgba(16, 24, 40, 0.08), 0px 2px 4px -2px rgba(16, 24, 40, 0.05);
+}
+.shadow-modal {
+  box-shadow: 0px 20px 24px -4px rgba(16, 24, 40, 0.12), 0px 8px 8px -4px rgba(16, 24, 40, 0.04);
+}
+
+/* Modal enter animation — a quick fade + scale instead of popping in
+   instantly. Respect reduced-motion preferences. */
+@keyframes modal-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes modal-panel-in {
+  from { opacity: 0; transform: translateY(4px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-modal-backdrop {
+  animation: modal-backdrop-in 150ms ease-out;
+}
+.animate-modal-panel {
+  animation: modal-panel-in 150ms ease-out;
+}
+.animate-toast-in {
+  animation: toast-in 150ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-modal-backdrop,
+  .animate-modal-panel,
+  .animate-toast-in {
+    animation: none;
+  }
+}

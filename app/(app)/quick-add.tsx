@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   checkDuplicateTransaction,
   createSplitTransaction,
@@ -62,9 +62,14 @@ export function QuickAddButton({
   const [duplicates, setDuplicates] = useState<DuplicateMatch[] | null>(null);
   const [pendingFormData, setPendingFormData] = useState<FormData | null>(null);
   const [accountId, setAccountId] = useState("");
+  const [keepOpen, setKeepOpen] = useState(false);
+  const descriptionRef = useRef<HTMLInputElement>(null);
   const { bg, title, subtitle } = CONFIG[kind];
   const kindCategories = categories.filter((c) => c.kind === kind);
   const showToast = useToast();
+
+  const lastAccountKey = `quick-add-last-account-${kind}`;
+  const lastCategoryKey = `quick-add-last-category-${kind}`;
 
   // Debt accounts (credit cards, loans) store the opposite of what you'd
   // naturally expect: a new charge is recorded as "income" (it increases
@@ -102,6 +107,35 @@ export function QuickAddButton({
     return () => window.removeEventListener("keydown", handleKeydown);
   }, [open, shortcutKey]);
 
+  // Prefill from whatever was used last time this modal was opened for this
+  // kind, so a recurring-ish purchase doesn't mean re-picking the same
+  // account and category every single time.
+  useEffect(() => {
+    if (!open) return;
+    try {
+      const savedAccount = localStorage.getItem(lastAccountKey);
+      if (savedAccount && accounts.some((a) => a.id === savedAccount)) {
+        setAccountId(savedAccount);
+      }
+      const savedCategory = localStorage.getItem(lastCategoryKey);
+      if (savedCategory && kindCategories.some((c) => c.id === savedCategory)) {
+        setCategoryId(savedCategory);
+      }
+    } catch {
+      // ignore — localStorage unavailable
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  function rememberChoices() {
+    try {
+      if (accountId) localStorage.setItem(lastAccountKey, accountId);
+      if (categoryId) localStorage.setItem(lastCategoryKey, categoryId);
+    } catch {
+      // ignore
+    }
+  }
+
   async function handleDescriptionBlur(description: string) {
     if (kind !== "expense" || categoryTouched || !description.trim()) return;
     const suggestion = await suggestCategory(description);
@@ -117,6 +151,18 @@ export function QuickAddButton({
     setDuplicates(null);
     setPendingFormData(null);
     setAccountId("");
+    setKeepOpen(false);
+  }
+
+  // For batch-entering a stack of receipts: keeps the modal open, keeps the
+  // account/category (usually the same for a run of similar purchases), and
+  // only clears the fields that change per-transaction.
+  function resetForNextEntry() {
+    setSplitRows([{ category_id: "", amount: "" }]);
+    setDuplicates(null);
+    setPendingFormData(null);
+    descriptionRef.current?.form?.reset();
+    descriptionRef.current?.focus();
   }
 
   async function submitFormData(formData: FormData) {
@@ -130,8 +176,13 @@ export function QuickAddButton({
     } else {
       await createTransaction(formData);
     }
-    resetForm();
+    rememberChoices();
     showToast(`${actionLabel[0].toUpperCase()}${actionLabel.slice(1)} logged`);
+    if (keepOpen) {
+      resetForNextEntry();
+    } else {
+      resetForm();
+    }
   }
 
   async function handleSubmit(formData: FormData) {
@@ -180,7 +231,7 @@ export function QuickAddButton({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="flex items-start gap-3 rounded-xl border border-border bg-surface p-5 text-left shadow-[0px_1px_1px_0px_rgba(16,24,40,0.05)] transition-shadow hover:shadow-md"
+          className="flex items-start gap-3 rounded-xl border border-border bg-surface p-5 text-left shadow-card transition-shadow hover:shadow-md"
         >
           <span
             className="flex size-12 shrink-0 items-center justify-center rounded-lg"
@@ -204,12 +255,12 @@ export function QuickAddButton({
 
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          className="animate-modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
           onClick={resetForm}
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-surface p-6 shadow-xl"
+            className="animate-modal-panel max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-surface p-6 shadow-modal"
           >
             <div className="mb-4 flex items-start justify-between">
               <h2 className="text-lg font-semibold text-text">{title}</h2>
@@ -230,6 +281,7 @@ export function QuickAddButton({
               <div className="space-y-1.5 sm:col-span-2">
                 <label className="text-sm font-medium text-text">Description</label>
                 <input
+                  ref={descriptionRef}
                   name="description"
                   required
                   placeholder={kind === "income" ? "Paycheck" : "Whole Foods"}
@@ -383,6 +435,20 @@ export function QuickAddButton({
                 <input name="notes" placeholder="Split with Mike, reimbursed by work…" className={fieldClass} />
               </div>
 
+              {kind === "expense" && (
+                <div className="flex items-center gap-2 sm:col-span-2">
+                  <input
+                    type="checkbox"
+                    id="pending-approval-toggle"
+                    name="pending_approval"
+                    className="h-4 w-4 accent-[var(--accent)]"
+                  />
+                  <label htmlFor="pending-approval-toggle" className="text-sm text-text-muted">
+                    Ask before buying — flag for the other person to see
+                  </label>
+                </div>
+              )}
+
               {duplicates && duplicates.length > 0 && (
                 <div className="space-y-2 rounded-lg border border-[#f79009] bg-[#fffaeb] p-3 sm:col-span-2">
                   <p className="text-sm font-medium text-[#b54708]">
@@ -416,6 +482,19 @@ export function QuickAddButton({
                   </div>
                 </div>
               )}
+
+              <div className="flex items-center gap-2 sm:col-span-2">
+                <input
+                  type="checkbox"
+                  id="keep-open-toggle"
+                  checked={keepOpen}
+                  onChange={(e) => setKeepOpen(e.target.checked)}
+                  className="h-4 w-4 accent-[var(--accent)]"
+                />
+                <label htmlFor="keep-open-toggle" className="text-sm text-text-muted">
+                  Keep open to add another
+                </label>
+              </div>
 
               <div className="flex items-center gap-3 sm:col-span-2">
                 <SubmitButton pendingText="Saving…">

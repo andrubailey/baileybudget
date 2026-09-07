@@ -119,7 +119,7 @@ export function ExpenseDonutChart({ segments }: { segments: DonutSegment[] }) {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-xl"
+            className="w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-modal"
           >
             <div className="mb-4 flex items-start justify-between">
               <div>

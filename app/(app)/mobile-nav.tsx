@@ -5,6 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "@/app/actions";
 import { NAV_GROUPS } from "./sidebar";
+import { LogoMark } from "@/app/(app)/logo-mark";
+import { PresenceIndicator } from "@/app/(app)/presence-indicator";
 
 // Small-screen counterpart to the desktop Sidebar: a sticky top bar with a
 // hamburger button that opens a full-height slide-in drawer, since a
@@ -36,13 +38,12 @@ export function MobileNav() {
 
   return (
     <div className="sticky top-0 z-40 flex h-14 shrink-0 items-center justify-between bg-hero-bg px-4 lg:hidden">
-      <div className="flex items-center gap-2">
-        <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-accent text-xs font-bold text-white">
-          B
-        </span>
+      <div className="flex min-w-0 items-center gap-2">
+        <LogoMark size={28} />
         <span className="truncate text-base font-bold tracking-tight text-hero-text">
           Bailey<span className="text-accent">Budget</span>
         </span>
+        <PresenceIndicator compact />
       </div>
       <button
         type="button"
@@ -66,7 +67,7 @@ export function MobileNav() {
             className="absolute inset-0 bg-black/40"
             onClick={() => setOpen(false)}
           />
-          <div className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col bg-hero-bg shadow-xl">
+          <div className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col bg-hero-bg shadow-modal">
             <div className="flex h-14 shrink-0 items-center justify-between px-4">
               <span className="truncate text-base font-bold tracking-tight text-hero-text">
                 Bailey<span className="text-accent">Budget</span>

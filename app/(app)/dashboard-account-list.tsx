@@ -5,6 +5,7 @@ import { reorderAccounts } from "@/app/actions";
 import { formatMoney, progressColor } from "@/lib/format";
 import type { AccountWithBalance } from "@/lib/queries";
 import { BankLogo } from "@/app/(app)/accounts/bank-logo";
+import { getAccountColor } from "@/lib/account-colors";
 
 export function DashboardAccountList({
   accounts,
@@ -74,6 +75,7 @@ export function DashboardAccountList({
         // For debt, a shrinking balance is the good direction, so the
         // trend color is the opposite of a regular account's.
         const deltaIsGood = a.is_debt ? delta < 0 : delta > 0;
+        const accountColor = getAccountColor(a.account_type, a.is_debt);
         return (
           <div
             key={a.id}
@@ -82,17 +84,21 @@ export function DashboardAccountList({
             onDragOver={(e) => handleDragOver(e, a.id)}
             onDrop={handleDrop}
             onDragEnd={handleDrop}
-            className={`cursor-grab rounded-xl border border-border bg-surface p-5 shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)] active:cursor-grabbing ${
+            style={{ borderLeftColor: accountColor, borderLeftWidth: 3 }}
+            className={`cursor-grab rounded-xl border border-border bg-surface p-5 shadow-card active:cursor-grabbing ${
               draggedId === a.id ? "opacity-50" : ""
             }`}
           >
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-2">
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent-soft">
+                <span
+                  className="flex size-8 shrink-0 items-center justify-center rounded-full"
+                  style={{ backgroundColor: `${accountColor}26` }}
+                >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                     <path
                       d="M3 10h18M6 6h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z"
-                      stroke="var(--accent)"
+                      stroke={accountColor}
                       strokeWidth={1.6}
                       strokeLinejoin="round"
                     />
