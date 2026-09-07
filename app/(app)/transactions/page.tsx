@@ -13,10 +13,14 @@ import { ReassignToMeButton } from "./reassign-to-me-button";
 export default async function TransactionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string; category?: string; account?: string }>;
+  searchParams: Promise<{ period?: string; category?: string; account?: string; q?: string }>;
 }) {
-  const { period: requestedPeriod, category: initialCategoryFilter, account: initialAccountFilter } =
-    await searchParams;
+  const {
+    period: requestedPeriod,
+    category: initialCategoryFilter,
+    account: initialAccountFilter,
+    q: initialSearch,
+  } = await searchParams;
   const periods = await getPeriods();
   const period = pickPeriod(periods, requestedPeriod);
 
@@ -65,6 +69,7 @@ export default async function TransactionsPage({
             splitsByTransaction={splitsByTransaction}
             initialCategoryFilter={initialCategoryFilter}
             initialAccountFilter={initialAccountFilter}
+            initialSearch={initialSearch}
           />
         </>
       )}

@@ -53,6 +53,7 @@ export function TransactionsTable({
   splitsByTransaction,
   initialCategoryFilter,
   initialAccountFilter,
+  initialSearch,
 }: {
   transactions: Transaction[];
   accounts: Account[];
@@ -60,8 +61,9 @@ export function TransactionsTable({
   splitsByTransaction?: Map<string, SplitDetail[]>;
   initialCategoryFilter?: string;
   initialAccountFilter?: string;
+  initialSearch?: string;
 }) {
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialSearch ?? "");
   const [accountFilter, setAccountFilter] = useState(initialAccountFilter ?? "");
   const [categoryFilter, setCategoryFilter] = useState(initialCategoryFilter ?? "");
   const [kindFilter, setKindFilter] = useState<"" | "income" | "expense" | "transfer">("");

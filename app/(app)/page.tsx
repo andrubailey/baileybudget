@@ -290,7 +290,7 @@ export default async function DashboardPage({
                 }`}
               />
             </div>
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-4 hidden flex-wrap gap-2 sm:flex">
               <Chip label="Planned" value={formatMoney(totalPlanned)} />
               {balanceTrend && (
                 <Chip
@@ -302,7 +302,7 @@ export default async function DashboardPage({
             </div>
           </div>
 
-          <div className="card-hover flex flex-col justify-between rounded-xl border border-border bg-surface p-5 sm:p-6 shadow-card">
+          <div className="card-hover hidden flex-col justify-between rounded-xl border border-border bg-surface p-5 sm:flex sm:p-6 shadow-card">
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium text-text-muted">My Income</p>
               <span className="text-xs text-text-faint">{range.label}</span>
@@ -314,7 +314,7 @@ export default async function DashboardPage({
                 className="tabular text-[32px] leading-[40px] font-bold tracking-[-0.02em] text-text"
               />
             </div>
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-4 hidden flex-wrap gap-2 sm:flex">
               {incomeTrend && (
                 <Chip
                   label={incomeTrend.pct >= 0 ? "Up" : "Down"}
@@ -326,7 +326,7 @@ export default async function DashboardPage({
             </div>
           </div>
 
-          <div className="card-hover flex flex-col justify-between rounded-xl border border-border bg-surface p-5 sm:p-6 shadow-card">
+          <div className="card-hover hidden flex-col justify-between rounded-xl border border-border bg-surface p-5 sm:flex sm:p-6 shadow-card">
             <div>
               <AnimatedMoney
                 value={summary.expense}
@@ -365,6 +365,21 @@ export default async function DashboardPage({
             ) : (
               <p className="mt-5 text-xs text-text-faint">Set planned amounts to track pace.</p>
             )}
+          </div>
+        </div>
+
+        {/* Mobile-only compact stand-in for the Income/Expense cards above —
+            just the two numbers, no trend chips or pace chart, so the phone
+            view leads with balance + a glance at income/expense, not three
+            full cards worth of detail. */}
+        <div className="grid grid-cols-2 gap-3 sm:hidden">
+          <div className="rounded-xl border border-border bg-surface p-4 shadow-card">
+            <p className="text-xs text-text-faint">Income</p>
+            <p className="tabular mt-0.5 text-lg font-bold text-text">{formatMoney(summary.income)}</p>
+          </div>
+          <div className="rounded-xl border border-border bg-surface p-4 shadow-card">
+            <p className="text-xs text-text-faint">Expenses</p>
+            <p className="tabular mt-0.5 text-lg font-bold text-text">{formatMoney(summary.expense)}</p>
           </div>
         </div>
 

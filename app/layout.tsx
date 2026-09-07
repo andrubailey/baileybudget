@@ -1,11 +1,8 @@
 import type { Metadata, Viewport } from "next";
-import { Archivo } from "next/font/google";
+import { Geist } from "next/font/google";
 import "./globals.css";
 
-// Neue Haas Grotesk itself is a commercial Monotype font with no free CDN
-// distribution — Archivo is a free, open grotesque sans with very similar
-// proportions (squared-off, high-legibility) used here as the stand-in.
-const archivo = Archivo({
+const geist = Geist({
   variable: "--font-main",
   subsets: ["latin"],
 });
@@ -34,7 +31,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${archivo.variable} h-full antialiased`}>
+    <html lang="en" className={`${geist.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
