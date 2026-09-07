@@ -64,19 +64,6 @@ export function AccountList({
     });
   }
 
-  // Touch screens can't drag-reorder easily, so up/down buttons are the
-  // accessible/mobile fallback for the same reorder action.
-  function move(index: number, direction: -1 | 1) {
-    const target = index + direction;
-    if (target < 0 || target >= order.length) return;
-    const next = [...order];
-    [next[index], next[target]] = [next[target], next[index]];
-    setOrder(next);
-    startTransition(() => {
-      reorderAccounts(next.map((a) => a.id));
-    });
-  }
-
   if (order.length === 0) {
     return <EmptyState message="No accounts yet — add your first one above." />;
   }
@@ -94,9 +81,8 @@ export function AccountList({
             : `Show ${deactivatedCount} deactivated account${deactivatedCount === 1 ? "" : "s"}`}
         </button>
       )}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
       {visible.map((a) => {
-        const index = order.findIndex((o) => o.id === a.id);
         const progress =
           !a.is_debt && a.goal && a.goal > 0
             ? Math.min(100, Math.max(0, (a.balance / a.goal) * 100))
@@ -155,7 +141,7 @@ export function AccountList({
                     </span>
                   )}
                 </div>
-                <p className="tabular mt-1 text-2xl font-semibold text-text">
+                <p className="tabular mt-2 text-2xl font-semibold text-text">
                   {formatMoney(a.balance)}
                   {a.is_debt && <span className="ml-1 text-sm font-normal text-text-faint">owed</span>}
                 </p>
@@ -176,34 +162,14 @@ export function AccountList({
                 )}
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <div className="flex gap-0.5">
-                  <button
-                    type="button"
-                    onClick={() => move(index, -1)}
-                    disabled={index === 0}
-                    aria-label={`Move ${a.name} up`}
-                    className="rounded p-0.5 text-text-faint hover:bg-bg disabled:opacity-30"
-                  >
-                    ▲
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => move(index, 1)}
-                    disabled={index === order.length - 1}
-                    aria-label={`Move ${a.name} down`}
-                    className="rounded p-0.5 text-text-faint hover:bg-bg disabled:opacity-30"
-                  >
-                    ▼
-                  </button>
-                </div>
                 <form
                   action={async () => {
                     await toggleAccountActive(a.id, !a.is_active);
                     showToast(a.is_active ? `${a.name} deactivated` : `${a.name} reactivated`);
                   }}
                 >
-                  <button
-                    type="submit"
+                  <SubmitButton
+                    pendingText="…"
                     className={`rounded-full px-2.5 py-1 text-xs font-medium ${
                       a.is_active
                         ? "bg-accent-soft text-accent"
@@ -211,7 +177,7 @@ export function AccountList({
                     }`}
                   >
                     {a.is_active ? "Active" : "Deactivated"}
-                  </button>
+                  </SubmitButton>
                 </form>
               </div>
             </div>
@@ -250,6 +216,10 @@ export function AccountList({
               </div>
             )}
 
+            {/* Settings rows share one consistent rhythm and sit in their own
+                region, set apart from the balance/progress display above
+                (Law of Common Region) instead of a mixed mt-2/mt-4 stack. */}
+            <div className="mt-4 space-y-3 border-t border-border pt-4">
             <form
               action={async (formData: FormData) => {
                 const raw = String(formData.get("goal") ?? "").trim();
@@ -257,7 +227,7 @@ export function AccountList({
                 await updateAccountGoal(a.id, goal);
                 showToast(`${a.name}'s goal saved`);
               }}
-              className="mt-2 flex items-center gap-2"
+              className="flex items-center gap-2"
             >
               <input
                 type="number"
@@ -281,7 +251,7 @@ export function AccountList({
                 await updateAccountBank(a.id, bank);
                 showToast(`${a.name}'s bank saved`);
               }}
-              className="mt-4 flex items-center gap-2"
+              className="flex items-center gap-2"
             >
               <select
                 name="bank"
@@ -309,7 +279,7 @@ export function AccountList({
                 await updateAccountType(a.id, account_type);
                 showToast(`${a.name}'s account type saved`);
               }}
-              className="mt-2 flex items-center gap-2"
+              className="flex items-center gap-2"
             >
               <select
                 name="account_type"
@@ -337,7 +307,7 @@ export function AccountList({
                 await updateAccountLoginUrl(a.id, login_url);
                 showToast(`${a.name}'s login link saved`);
               }}
-              className="mt-2 flex items-center gap-2"
+              className="flex items-center gap-2"
             >
               <input
                 type="url"
@@ -362,7 +332,7 @@ export function AccountList({
                   await updateAccountLowBalanceAlert(a.id, value);
                   showToast(`${a.name}'s alert threshold saved`);
                 }}
-                className="mt-2 flex items-center gap-2"
+                className="flex items-center gap-2"
               >
                 <input
                   type="number"
@@ -381,7 +351,7 @@ export function AccountList({
               </form>
             )}
 
-            <label className="mt-3 flex items-center gap-2 text-xs text-text-muted">
+            <label className="flex items-center gap-2 text-xs text-text-muted">
               <input
                 type="checkbox"
                 checked={a.is_debt}
@@ -390,6 +360,7 @@ export function AccountList({
               />
               This is a debt account (loan, credit card)
             </label>
+            </div>
           </div>
         );
       })}

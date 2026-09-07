@@ -128,7 +128,7 @@ export function AssistantWidget() {
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="text-text-faint hover:text-text"
+              className="-mr-1.5 flex size-9 shrink-0 items-center justify-center rounded-lg text-text-faint hover:bg-bg hover:text-text"
               aria-label="Close"
             >
               ✕
@@ -168,7 +168,7 @@ export function AssistantWidget() {
                 onClick={listening ? stopVoiceInput : startVoiceInput}
                 aria-label={listening ? "Stop voice input" : "Log by voice"}
                 title={listening ? "Stop voice input" : "Log by voice"}
-                className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${
+                className={`flex size-11 shrink-0 items-center justify-center rounded-lg ${
                   listening ? "bg-[#f04438] text-white" : "border border-border text-text-muted hover:bg-bg"
                 }`}
               >

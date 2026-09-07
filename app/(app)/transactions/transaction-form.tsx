@@ -188,7 +188,12 @@ export function TransactionForm({
 
       <div className="space-y-1.5 sm:col-span-3">
         <label className="text-sm font-medium text-text">Notes (optional)</label>
-        <input name="notes" placeholder="Split with Mike, reimbursed by work…" className={fieldClass} />
+        <input
+          name="notes"
+          placeholder="Split with Mike, reimbursed by work…"
+          maxLength={140}
+          className={fieldClass}
+        />
       </div>
 
       {duplicates && duplicates.length > 0 && (

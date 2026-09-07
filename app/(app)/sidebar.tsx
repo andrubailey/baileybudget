@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { signOut } from "@/app/actions";
 import { LogoMark } from "@/app/(app)/logo-mark";
 import { PresenceIndicator } from "@/app/(app)/presence-indicator";
+import { NewTransactionButton } from "@/app/(app)/new-transaction-button";
 
 // Daily-use pages first; setup/maintenance pages grouped under their own
 // label so the nav doesn't read as 7 equally-weighted items.
@@ -92,6 +93,19 @@ const PRIMARY_LINKS = [
     icon: (
       <path
         d="M4 19V5m5 14V9m5 10V13m5 6V7"
+        stroke="currentColor"
+        strokeWidth={1.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    ),
+  },
+  {
+    href: "/trends",
+    label: "Trends",
+    icon: (
+      <path
+        d="M3 17 9 11l4 4 8-8M21 7h-6m6 0v6"
         stroke="currentColor"
         strokeWidth={1.6}
         strokeLinecap="round"
@@ -201,6 +215,10 @@ export function Sidebar() {
             Bailey<span className="text-accent">Budget</span>
           </span>
         )}
+      </div>
+
+      <div className="px-4 pb-2">
+        <NewTransactionButton collapsed={collapsed} />
       </div>
 
       {!collapsed && (

@@ -133,7 +133,7 @@ export function ExpenseDonutChart({ segments }: { segments: DonutSegment[] }) {
               <button
                 type="button"
                 onClick={() => setSelected(null)}
-                className="text-text-faint hover:text-text"
+                className="-mr-1.5 flex size-9 shrink-0 items-center justify-center rounded-lg text-text-faint hover:bg-bg hover:text-text"
                 aria-label="Close"
               >
                 ✕

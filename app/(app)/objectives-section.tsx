@@ -107,7 +107,7 @@ function AddObjectiveForm({
       </div>
       <div className="space-y-1.5 sm:col-span-2">
         <label className="text-sm font-medium text-text">Notes</label>
-        <textarea name="notes" rows={2} className={fieldClass} />
+        <textarea name="notes" rows={2} maxLength={500} className={fieldClass} />
       </div>
       <div className="space-y-1.5 sm:col-span-2">
         <label className="text-sm font-medium text-text">Linked account (optional)</label>
@@ -199,6 +199,7 @@ function EditObjectiveForm({
         <textarea
           name="notes"
           rows={2}
+          maxLength={500}
           defaultValue={objective.notes ?? ""}
           className={fieldClass}
         />

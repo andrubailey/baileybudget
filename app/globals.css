@@ -1,19 +1,21 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #f9fafb;
+  --bg: #f3f4f2;
   --surface: #ffffff;
-  --border: #eceff2;
+  --border: #ecefe9;
   --text: #101828;
   --text-2: #333e47;
   --text-muted: #516778;
   --text-faint: #668091;
-  /* Teal accent — matches the reference fintech design instead of the
-     previous blue. */
-  --accent: #0d9488;
-  --accent-soft: #ccfbf1;
-  --accent-border: #99f6e4;
+  /* Lime-green fintech accent. */
+  --accent: #5b8a00;
+  --accent-bright: #9ae600;
+  --accent-soft: #ecfccb;
+  --accent-border: #d9f99d;
   --success: #17b26a;
+  --danger: #f04438;
+  --warning: #f79009;
 
   /* Dark teal "hero" surface — the sidebar and any dashboard header card
      styled after the reference design's dark panels. */
@@ -22,6 +24,16 @@
   --hero-text: #ffffff;
   --hero-text-muted: rgba(255, 255, 255, 0.65);
   --hero-border: rgba(255, 255, 255, 0.12);
+
+  /* Colorful stat-tile palette for budget/category progress tiles and the
+     Money Flow chart — each tile pairs a background with its own text color
+     so tiles read well regardless of how dark/light the fill is. */
+  --tile-1-bg: #0b3d2e;
+  --tile-1-text: #ffffff;
+  --tile-2-bg: #b6f227;
+  --tile-2-text: #1a2e05;
+  --tile-3-bg: #99f6e4;
+  --tile-3-text: #0f3d3a;
 }
 
 @theme inline {
@@ -33,21 +45,32 @@
   --color-text-muted: var(--text-muted);
   --color-text-faint: var(--text-faint);
   --color-accent: var(--accent);
+  --color-accent-bright: var(--accent-bright);
   --color-accent-soft: var(--accent-soft);
   --color-accent-border: var(--accent-border);
   --color-success: var(--success);
+  --color-danger: var(--danger);
+  --color-warning: var(--warning);
   --color-hero-bg: var(--hero-bg);
   --color-hero-bg-2: var(--hero-bg-2);
   --color-hero-text: var(--hero-text);
   --color-hero-text-muted: var(--hero-text-muted);
   --color-hero-border: var(--hero-border);
-  --font-sans: var(--font-inter);
+  --color-tile-1-bg: var(--tile-1-bg);
+  --color-tile-1-text: var(--tile-1-text);
+  --color-tile-2-bg: var(--tile-2-bg);
+  --color-tile-2-text: var(--tile-2-text);
+  --color-tile-3-bg: var(--tile-3-bg);
+  --color-tile-3-text: var(--tile-3-text);
+  /* Main font — a free grotesque sans standing in for Neue Haas Grotesk
+     (which is a commercial Monotype font, not available on a free CDN). */
+  --font-sans: var(--font-main);
 }
 
 body {
   background-color: var(--bg);
   color: var(--text);
-  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-main), ui-sans-serif, system-ui, sans-serif;
 }
 
 .tabular {
@@ -114,10 +137,45 @@ body {
 .animate-toast-in {
   animation: toast-in 150ms ease-out;
 }
+/* Hover-lift for interactive cards (accounts, quick-add tiles) — a small
+   shadow deepen + rise instead of the flat static shadow used elsewhere. */
+.card-hover {
+  transition: transform 150ms ease-out, box-shadow 150ms ease-out;
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0px 8px 16px -4px rgba(16, 24, 40, 0.1), 0px 4px 6px -2px rgba(16, 24, 40, 0.05);
+}
+
+/* Chart/bar entrance — bars and donut wedges grow in from zero instead of
+   appearing fully drawn, used via inline animationDelay for stagger. */
+@keyframes bar-grow-in {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+.animate-bar-grow {
+  transform-origin: bottom;
+  animation: bar-grow-in 500ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in-up {
+  animation: fade-in-up 400ms ease-out backwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-modal-backdrop,
   .animate-modal-panel,
-  .animate-toast-in {
+  .animate-toast-in,
+  .animate-bar-grow,
+  .animate-fade-in-up,
+  .card-hover {
     animation: none;
+    transition: none;
+  }
+  .card-hover:hover {
+    transform: none;
   }
 }

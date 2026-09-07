@@ -31,6 +31,21 @@ export function RecurringTable({
   const router = useRouter();
   const [historyId, setHistoryId] = useState<string | null>(null);
   const [priceHistory, setPriceHistory] = useState<RecurringPricePoint[]>([]);
+  // Tracks which specific rows have an in-flight toggle/delete, so a tap
+  // shows immediate feedback instead of looking like nothing happened while
+  // the server round-trip is in progress (Doherty Threshold).
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
+
+  function withRowPending(id: string, fn: () => Promise<void>) {
+    setPendingIds((prev) => new Set(prev).add(id));
+    fn().finally(() => {
+      setPendingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    });
+  }
 
   async function toggleHistory(id: string) {
     if (historyId === id) {
@@ -83,7 +98,72 @@ export function RecurringTable({
         </button>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-surface shadow-card">
+      {/* Mobile: compact cards, no horizontal scroll. Desktop: full table. */}
+      <div className="space-y-2 sm:hidden">
+        {items.map((r) => {
+          const s = status(r);
+          const rowPending = pendingIds.has(r.id);
+          return (
+            <div
+              key={r.id}
+              className={`rounded-xl border border-border bg-surface p-3 shadow-card transition-opacity ${
+                rowPending ? "opacity-60" : ""
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-text">
+                  {r.description}
+                </span>
+                <span
+                  className={`tabular shrink-0 text-sm font-medium ${
+                    r.kind === "income" ? "text-success" : "text-text"
+                  }`}
+                >
+                  {r.kind === "income" ? "+" : "-"}
+                  {formatMoney(r.amount)}
+                </span>
+              </div>
+              <div className="mt-1 flex items-center justify-between gap-2">
+                <span className="truncate text-xs text-text-faint">
+                  Day {r.day_of_month} · {accountName(r.account_id)} · {categoryName(r.category_id)}
+                </span>
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${s.className}`}>
+                  {s.label}
+                </span>
+              </div>
+              <div className="mt-2 flex items-center gap-3">
+                <button
+                  type="button"
+                  disabled={rowPending}
+                  onClick={() =>
+                    withRowPending(r.id, () => toggleRecurringActive(r.id, !r.is_active))
+                  }
+                  className={`rounded-md px-2 py-1 text-xs font-medium disabled:opacity-50 ${
+                    r.is_active ? "bg-accent-soft text-accent" : "bg-bg text-text-faint"
+                  }`}
+                >
+                  {r.is_active ? "Active" : "Paused"}
+                </button>
+                <button
+                  type="button"
+                  disabled={rowPending}
+                  onClick={() => withRowPending(r.id, () => deleteRecurringTransaction(r.id))}
+                  className="text-xs font-medium text-text-faint hover:text-[#f04438] disabled:opacity-50"
+                >
+                  {rowPending ? "Deleting…" : "Delete"}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+        {items.length === 0 && (
+          <p className="rounded-xl border border-dashed border-border py-10 text-center text-sm text-text-muted">
+            No recurring transactions yet.
+          </p>
+        )}
+      </div>
+
+      <div className="hidden overflow-x-auto rounded-xl border border-border bg-surface shadow-card sm:block">
         <table className="w-full text-left">
           <thead>
             <tr className="border-b border-border bg-bg">
@@ -100,9 +180,15 @@ export function RecurringTable({
             </tr>
           </thead>
           <tbody>
-            {items.map((r) => (
+            {items.map((r) => {
+              const rowPending = pendingIds.has(r.id);
+              return (
               <Fragment key={r.id}>
-              <tr className="border-b border-border last:border-b-0">
+              <tr
+                className={`border-b border-border last:border-b-0 transition-opacity ${
+                  rowPending ? "opacity-60" : ""
+                }`}
+              >
                 <td className="px-6 py-3 text-sm font-medium text-text">{r.description}</td>
                 <td
                   className={`tabular px-6 py-3 text-sm font-medium ${
@@ -130,8 +216,11 @@ export function RecurringTable({
                 <td className="px-6 py-3">
                   <button
                     type="button"
-                    onClick={() => toggleRecurringActive(r.id, !r.is_active)}
-                    className={`rounded-md px-2 py-1 text-xs font-medium ${
+                    disabled={rowPending}
+                    onClick={() =>
+                      withRowPending(r.id, () => toggleRecurringActive(r.id, !r.is_active))
+                    }
+                    className={`rounded-md px-2 py-1 text-xs font-medium disabled:opacity-50 ${
                       r.is_active ? "bg-accent-soft text-accent" : "bg-bg text-text-faint"
                     }`}
                   >
@@ -148,10 +237,11 @@ export function RecurringTable({
                   </button>
                   <button
                     type="button"
-                    onClick={() => deleteRecurringTransaction(r.id)}
-                    className="text-xs font-medium text-text-faint hover:text-[#f04438]"
+                    disabled={rowPending}
+                    onClick={() => withRowPending(r.id, () => deleteRecurringTransaction(r.id))}
+                    className="text-xs font-medium text-text-faint hover:text-[#f04438] disabled:opacity-50"
                   >
-                    Delete
+                    {rowPending ? "Deleting…" : "Delete"}
                   </button>
                 </td>
               </tr>
@@ -183,7 +273,8 @@ export function RecurringTable({
                 </tr>
               )}
               </Fragment>
-            ))}
+              );
+            })}
             {items.length === 0 && (
               <tr>
                 <td colSpan={8} className="px-6 py-10 text-center text-sm text-text-muted">

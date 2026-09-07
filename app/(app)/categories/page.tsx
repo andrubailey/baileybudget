@@ -65,7 +65,66 @@ export default async function CategoriesPage({
           reloading the page.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border bg-surface shadow-card">
+        <>
+          {/* Mobile: compact cards, no horizontal scroll. Desktop: full table. */}
+          <div className="space-y-2 sm:hidden">
+            {[...expenseProgress]
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((c) => (
+                <div key={c.id} className="rounded-xl border border-border bg-surface p-3 shadow-card">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="size-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: getCategoryColor(c.id) }}
+                    />
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-text">
+                      {getCategoryIcon(c.name, c.icon)} {c.name}
+                    </span>
+                    <DeleteCategoryButton id={c.id} name={c.name} />
+                  </div>
+                  <div className="mt-2 flex items-center justify-between gap-2 text-xs text-text-muted">
+                    <span className="tabular">{formatMoney(c.actual)} actual</span>
+                    <span
+                      className={`tabular font-medium ${
+                        c.remaining > 0 ? "text-success" : c.remaining < 0 ? "text-[#f04438]" : "text-text"
+                      }`}
+                    >
+                      {formatMoney(c.remaining)} rem
+                    </span>
+                  </div>
+                  <form
+                    action={async (formData: FormData) => {
+                      "use server";
+                      const amount = Number(formData.get("planned_amount") ?? 0);
+                      await upsertBudgetLine(c.id, period.id, amount);
+                    }}
+                    className="mt-2 flex items-center gap-2"
+                  >
+                    <input
+                      type="number"
+                      step="0.01"
+                      name="planned_amount"
+                      defaultValue={c.planned}
+                      className="tabular w-full rounded-md border border-border bg-bg px-2 py-1.5 text-base text-text outline-none focus:border-accent"
+                      placeholder="Planned"
+                    />
+                    <button
+                      type="submit"
+                      className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text-muted hover:bg-bg"
+                    >
+                      Save
+                    </button>
+                  </form>
+                </div>
+              ))}
+            {expenseProgress.length === 0 && (
+              <p className="rounded-xl border border-dashed border-border py-10 text-center text-sm text-text-muted">
+                No expense categories yet.
+              </p>
+            )}
+          </div>
+
+          <div className="hidden overflow-x-auto rounded-xl border border-border bg-surface shadow-card sm:block">
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-border bg-bg">
@@ -233,7 +292,8 @@ export default async function CategoriesPage({
               )}
             </tbody>
           </table>
-        </div>
+          </div>
+        </>
       )}
 
       <div>

@@ -418,6 +418,182 @@ export async function getTransactionsForRange(
   return data ?? [];
 }
 
+export type MonthlyTotal = { month: string; income: number; expense: number };
+
+// One row per calendar month in [start, end], even a month with zero
+// activity, so a year-to-date chart never silently skips a quiet month.
+export async function getMonthlyTotals(start: string, end: string): Promise<MonthlyTotal[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("kind, amount, txn_date")
+    .gte("txn_date", start)
+    .lte("txn_date", end)
+    .is("deleted_at", null)
+    .in("kind", ["income", "expense"]);
+  if (error) throw error;
+
+  const byMonth = new Map<string, { income: number; expense: number }>();
+  for (const t of data ?? []) {
+    const month = t.txn_date.slice(0, 7);
+    const bucket = byMonth.get(month) ?? { income: 0, expense: 0 };
+    if (t.kind === "income") bucket.income += t.amount;
+    else bucket.expense += t.amount;
+    byMonth.set(month, bucket);
+  }
+
+  const months: MonthlyTotal[] = [];
+  const cursor = new Date(`${start.slice(0, 7)}-01T00:00:00Z`);
+  const endCursor = new Date(`${end.slice(0, 7)}-01T00:00:00Z`);
+  while (cursor <= endCursor) {
+    const key = cursor.toISOString().slice(0, 7);
+    months.push({ month: key, ...(byMonth.get(key) ?? { income: 0, expense: 0 }) });
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+  }
+  return months;
+}
+
+export type RecurringVsOther = { recurring: number; other: number };
+
+// Splits each month's expense total into "recurring" (linked to a
+// recurring_transactions entry) vs. everything else, so a chart can show
+// how much of a month's spend is fixed bills vs. discretionary.
+export async function getRecurringVsOtherByMonth(
+  start: string,
+  end: string,
+): Promise<Map<string, RecurringVsOther>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("amount, txn_date, recurring_transaction_id")
+    .eq("kind", "expense")
+    .gte("txn_date", start)
+    .lte("txn_date", end)
+    .is("deleted_at", null);
+  if (error) throw error;
+
+  const byMonth = new Map<string, RecurringVsOther>();
+  for (const t of data ?? []) {
+    const month = t.txn_date.slice(0, 7);
+    const bucket = byMonth.get(month) ?? { recurring: 0, other: 0 };
+    if (t.recurring_transaction_id) bucket.recurring += t.amount;
+    else bucket.other += t.amount;
+    byMonth.set(month, bucket);
+  }
+  return byMonth;
+}
+
+// Sum of planned amounts (expense categories only) for a set of periods, so
+// a chart can show "planned" alongside "actual" per month.
+export async function getPlannedTotalsByPeriod(periodIds: string[]): Promise<Map<string, number>> {
+  if (periodIds.length === 0) return new Map();
+  const supabase = await createClient();
+  const [{ data: lines, error }, { data: categories }] = await Promise.all([
+    supabase.from("budget_lines").select("period_id, category_id, planned_amount").in("period_id", periodIds),
+    supabase.from("categories").select("id, kind"),
+  ]);
+  if (error) throw error;
+
+  const expenseCategoryIds = new Set((categories ?? []).filter((c) => c.kind === "expense").map((c) => c.id));
+  const byPeriod = new Map<string, number>();
+  for (const l of lines ?? []) {
+    if (!expenseCategoryIds.has(l.category_id)) continue;
+    byPeriod.set(l.period_id, (byPeriod.get(l.period_id) ?? 0) + l.planned_amount);
+  }
+  return byPeriod;
+}
+
+// Same cumulative-balance approach as getNetWorthHistory, but scoped to
+// is_debt accounts only and NOT netting out transfers — a transfer into a
+// specific debt account changes that account's own balance even though it
+// doesn't move total household net worth.
+export async function getDebtBalanceHistory(): Promise<NetWorthPoint[]> {
+  const supabase = await createClient();
+  const [{ data: accounts }, { data: periods }, { data: transactions }] = await Promise.all([
+    supabase.from("accounts").select("id, starting_balance, is_debt"),
+    supabase.from("periods").select("*").order("start_date", { ascending: true }),
+    supabase
+      .from("transactions")
+      .select("account_id, to_account_id, kind, amount, txn_date")
+      .is("deleted_at", null)
+      .order("txn_date", { ascending: true }),
+  ]);
+
+  const debtAccountIds = new Set((accounts ?? []).filter((a) => a.is_debt).map((a) => a.id));
+  const balanceByAccount = new Map<string, number>();
+  for (const a of accounts ?? []) {
+    if (debtAccountIds.has(a.id)) balanceByAccount.set(a.id, a.starting_balance);
+  }
+
+  const sorted = (transactions ?? []).slice().sort((a, b) => a.txn_date.localeCompare(b.txn_date));
+  let txnIndex = 0;
+  const points: NetWorthPoint[] = [];
+
+  for (const period of (periods ?? []) as { id: string; name: string; end_date: string }[]) {
+    while (txnIndex < sorted.length && sorted[txnIndex].txn_date <= period.end_date) {
+      const t = sorted[txnIndex];
+      if (t.kind === "transfer") {
+        if (t.account_id && balanceByAccount.has(t.account_id)) {
+          balanceByAccount.set(t.account_id, balanceByAccount.get(t.account_id)! - t.amount);
+        }
+        if (t.to_account_id && balanceByAccount.has(t.to_account_id)) {
+          balanceByAccount.set(t.to_account_id, balanceByAccount.get(t.to_account_id)! + t.amount);
+        }
+      } else if (t.account_id && balanceByAccount.has(t.account_id)) {
+        const delta = t.kind === "income" ? t.amount : -t.amount;
+        balanceByAccount.set(t.account_id, balanceByAccount.get(t.account_id)! + delta);
+      }
+      txnIndex += 1;
+    }
+    const total = [...balanceByAccount.values()].reduce((sum, v) => sum + v, 0);
+    points.push({ periodId: period.id, periodName: period.name, endDate: period.end_date, netWorth: total });
+  }
+
+  return points;
+}
+
+export type TopCategoryByMonth = { month: string; categoryName: string; amount: number } | null;
+
+// The single biggest expense category per month, for a "what drove the
+// spike" callout next to the income/expense chart.
+export async function getTopCategoryByMonth(
+  start: string,
+  end: string,
+): Promise<Map<string, TopCategoryByMonth>> {
+  const supabase = await createClient();
+  const [{ data: rows, error }, { data: categories }] = await Promise.all([
+    supabase
+      .from("transactions")
+      .select("amount, txn_date, category_id")
+      .eq("kind", "expense")
+      .not("category_id", "is", null)
+      .gte("txn_date", start)
+      .lte("txn_date", end)
+      .is("deleted_at", null),
+    supabase.from("categories").select("id, name"),
+  ]);
+  if (error) throw error;
+
+  const nameById = new Map((categories ?? []).map((c) => [c.id, c.name]));
+  const byMonthCategory = new Map<string, Map<string, number>>();
+  for (const t of rows ?? []) {
+    const month = t.txn_date.slice(0, 7);
+    const byCategory = byMonthCategory.get(month) ?? new Map<string, number>();
+    byCategory.set(t.category_id!, (byCategory.get(t.category_id!) ?? 0) + t.amount);
+    byMonthCategory.set(month, byCategory);
+  }
+
+  const result = new Map<string, TopCategoryByMonth>();
+  for (const [month, byCategory] of byMonthCategory) {
+    let top: { categoryId: string; amount: number } | null = null;
+    for (const [categoryId, amount] of byCategory) {
+      if (!top || amount > top.amount) top = { categoryId, amount };
+    }
+    result.set(month, top ? { month, categoryName: nameById.get(top.categoryId) ?? "—", amount: top.amount } : null);
+  }
+  return result;
+}
+
 export async function getCategories(): Promise<Category[]> {
   const supabase = await createClient();
   const { data } = await supabase
@@ -744,3 +920,27 @@ export async function getTransactionHistory(
   return data ?? [];
 }
 
+
+export type MonthlyFlowPoint = { periodId: string; label: string; income: number; expense: number };
+
+// Income/expense totals per period, oldest first, for the Money Flow bar
+// chart — separate from getNetWorthHistory, which tracks cumulative balance
+// rather than each month's flow.
+export async function getMonthlyFlow(limit = 12): Promise<MonthlyFlowPoint[]> {
+  const supabase = await createClient();
+  const { data: periods } = await supabase
+    .from("periods")
+    .select("id, name, start_date")
+    .order("start_date", { ascending: false })
+    .limit(limit);
+
+  const ordered = (periods ?? []).slice().reverse();
+  const summaries = await Promise.all(ordered.map((p) => getPeriodSummary(p.id)));
+
+  return ordered.map((p, i) => ({
+    periodId: p.id,
+    label: p.name.split(" ")[0]?.slice(0, 3) ?? p.name,
+    income: summaries[i].income,
+    expense: summaries[i].expense,
+  }));
+}

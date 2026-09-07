@@ -7,6 +7,7 @@ import { signOut } from "@/app/actions";
 import { NAV_GROUPS } from "./sidebar";
 import { LogoMark } from "@/app/(app)/logo-mark";
 import { PresenceIndicator } from "@/app/(app)/presence-indicator";
+import { NewTransactionButton } from "@/app/(app)/new-transaction-button";
 
 // Small-screen counterpart to the desktop Sidebar: a sticky top bar with a
 // hamburger button that opens a full-height slide-in drawer, since a
@@ -45,21 +46,24 @@ export function MobileNav() {
         </span>
         <PresenceIndicator compact />
       </div>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-label="Open menu"
-        className="flex size-9 items-center justify-center rounded-lg text-hero-text-muted hover:bg-hero-bg-2/60 hover:text-hero-text"
-      >
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-          <path
-            d="M4 6h16M4 12h16M4 18h16"
-            stroke="currentColor"
-            strokeWidth={1.8}
-            strokeLinecap="round"
-          />
-        </svg>
-      </button>
+      <div className="flex shrink-0 items-center gap-1">
+        <NewTransactionButton variant="icon" menuAlign="right" />
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label="Open menu"
+          className="flex size-11 items-center justify-center rounded-lg text-hero-text-muted hover:bg-hero-bg-2/60 hover:text-hero-text"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <path
+              d="M4 6h16M4 12h16M4 18h16"
+              stroke="currentColor"
+              strokeWidth={1.8}
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
+      </div>
 
       {open && (
         <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
@@ -76,7 +80,7 @@ export function MobileNav() {
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label="Close menu"
-                className="flex size-9 items-center justify-center rounded-lg text-hero-text-muted hover:bg-hero-bg-2/60 hover:text-hero-text"
+                className="flex size-11 items-center justify-center rounded-lg text-hero-text-muted hover:bg-hero-bg-2/60 hover:text-hero-text"
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                   <path

@@ -1,6 +1,5 @@
 import { Sidebar } from "./sidebar";
 import { MobileNav } from "./mobile-nav";
-import { MobileQuickActions } from "./mobile-quick-actions";
 import { AssistantWidget } from "./assistant-widget";
 import { ToastProvider } from "./toast";
 
@@ -13,7 +12,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <main className="w-full min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
           <div className="mx-auto max-w-[1600px]">{children}</div>
         </main>
-        <MobileQuickActions />
         <AssistantWidget />
       </div>
     </ToastProvider>

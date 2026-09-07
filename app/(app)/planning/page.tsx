@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getPeriods } from "@/lib/periods";
 import { getBudgetGrid } from "@/lib/queries";
 import { BudgetGrid } from "./budget-grid";
@@ -17,7 +18,21 @@ export default async function PlanningPage() {
         </p>
       </div>
 
-      <BudgetGrid rows={rows} periods={orderedPeriods} />
+      {/* A categories × months matrix has no lightweight mobile shape — it's
+          a spreadsheet by nature. Point to the one-month editor instead of
+          forcing a wide, horizontally-scrolling grid onto a phone screen. */}
+      <div className="rounded-xl border border-dashed border-border p-6 text-center sm:hidden">
+        <p className="text-sm text-text-muted">
+          The planning grid needs a wider screen to be usable.
+        </p>
+        <Link href="/categories" className="mt-2 inline-block text-sm font-medium text-accent underline underline-offset-2">
+          Edit this month&apos;s planned amounts instead
+        </Link>
+      </div>
+
+      <div className="hidden sm:block">
+        <BudgetGrid rows={rows} periods={orderedPeriods} />
+      </div>
     </div>
   );
 }

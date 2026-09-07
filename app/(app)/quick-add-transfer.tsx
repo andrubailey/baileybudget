@@ -36,7 +36,7 @@ export function QuickAddTransferButton({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="flex items-start gap-3 rounded-xl border border-border bg-surface p-5 text-left shadow-card transition-shadow hover:shadow-md"
+          className="card-hover flex items-start gap-3 rounded-xl border border-border bg-surface p-5 text-left shadow-card"
         >
           <span
             className="flex size-12 shrink-0 items-center justify-center rounded-lg"
@@ -73,7 +73,7 @@ export function QuickAddTransferButton({
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="text-text-faint hover:text-text"
+                className="-mr-1.5 flex size-9 shrink-0 items-center justify-center rounded-lg text-text-faint hover:bg-bg hover:text-text"
                 aria-label="Close"
               >
                 ✕

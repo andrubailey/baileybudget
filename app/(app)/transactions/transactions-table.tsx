@@ -74,6 +74,7 @@ export function TransactionsTable({
   const [editUndo, setEditUndo] = useState<{ id: string; snapshot: Record<string, unknown> } | null>(
     null,
   );
+  const [markingAllCleared, setMarkingAllCleared] = useState(false);
 
   const accountById = useMemo(
     () => new Map(accounts.map((a) => [a.id, a.name])),
@@ -156,7 +157,12 @@ export function TransactionsTable({
   }
 
   async function handleMarkAllCleared() {
-    await Promise.all(uncleared.map((t) => toggleTransactionCleared(t.id, true)));
+    setMarkingAllCleared(true);
+    try {
+      await Promise.all(uncleared.map((t) => toggleTransactionCleared(t.id, true)));
+    } finally {
+      setMarkingAllCleared(false);
+    }
   }
 
   async function toggleHistory(id: string) {
@@ -254,9 +260,10 @@ export function TransactionsTable({
           <button
             type="button"
             onClick={handleMarkAllCleared}
-            className="text-xs font-medium text-accent hover:underline"
+            disabled={markingAllCleared}
+            className="text-xs font-medium text-accent hover:underline disabled:opacity-50"
           >
-            Mark {uncleared.length} cleared
+            {markingAllCleared ? "Marking…" : `Mark ${uncleared.length} cleared`}
           </button>
         )}
         {exportHref && (
@@ -738,6 +745,7 @@ function EditRow({
             name="notes"
             defaultValue={t.notes ?? ""}
             placeholder="Notes"
+            maxLength={140}
             className={fieldClass}
           />
           <div className="flex gap-2 sm:col-span-3">

@@ -40,26 +40,13 @@ export function DashboardAccountList({
     });
   }
 
-  // Touch screens can't drag-reorder easily, so up/down buttons are the
-  // accessible/mobile fallback for the same reorder action.
-  function move(index: number, direction: -1 | 1) {
-    const target = index + direction;
-    if (target < 0 || target >= order.length) return;
-    const next = [...order];
-    [next[index], next[target]] = [next[target], next[index]];
-    setOrder(next);
-    startTransition(() => {
-      reorderAccounts(next.map((a) => a.id));
-    });
-  }
-
   if (order.length === 0) {
     return null;
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4">
-      {order.map((a, index) => {
+    <div className="grid grid-cols-1 gap-5">
+      {order.map((a) => {
         const goalPct =
           !a.is_debt && a.goal && a.goal > 0
             ? Math.min(100, Math.max(0, (a.balance / a.goal) * 100))
@@ -89,56 +76,34 @@ export function DashboardAccountList({
               draggedId === a.id ? "opacity-50" : ""
             }`}
           >
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <span
-                  className="flex size-8 shrink-0 items-center justify-center rounded-full"
-                  style={{ backgroundColor: `${accountColor}26` }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                    <path
-                      d="M3 10h18M6 6h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z"
-                      stroke={accountColor}
-                      strokeWidth={1.6}
-                      strokeLinejoin="round"
-                    />
-                  </svg>
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span
+                className="flex size-8 shrink-0 items-center justify-center rounded-full"
+                style={{ backgroundColor: `${accountColor}26` }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M3 10h18M6 6h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z"
+                    stroke={accountColor}
+                    strokeWidth={1.6}
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </span>
+              <p className="text-sm font-medium text-text-muted">{a.name}</p>
+              {a.bank && <BankLogo bank={a.bank} />}
+              {a.is_debt && (
+                <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] font-semibold text-text-faint">
+                  Debt
                 </span>
-                <p className="text-sm font-medium text-text-muted">{a.name}</p>
-                {a.bank && <BankLogo bank={a.bank} />}
-                {a.is_debt && (
-                  <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] font-semibold text-text-faint">
-                    Debt
-                  </span>
-                )}
-              </div>
-              <div className="flex shrink-0 gap-0.5">
-                <button
-                  type="button"
-                  onClick={() => move(index, -1)}
-                  disabled={index === 0}
-                  aria-label={`Move ${a.name} up`}
-                  className="rounded p-0.5 text-text-faint hover:bg-bg disabled:opacity-30"
-                >
-                  ▲
-                </button>
-                <button
-                  type="button"
-                  onClick={() => move(index, 1)}
-                  disabled={index === order.length - 1}
-                  aria-label={`Move ${a.name} down`}
-                  className="rounded p-0.5 text-text-faint hover:bg-bg disabled:opacity-30"
-                >
-                  ▼
-                </button>
-              </div>
+              )}
             </div>
-            <p className="tabular mt-1 text-xl font-semibold text-text">
+            <p className="tabular mt-2.5 text-xl font-semibold text-text">
               {formatMoney(a.balance)}
             </p>
             {periodDeltaByAccount && delta !== 0 && (
               <p
-                className={`tabular text-xs font-medium ${deltaIsGood ? "text-success" : "text-[#f04438]"}`}
+                className={`tabular mt-0.5 text-xs font-medium ${deltaIsGood ? "text-success" : "text-[#f04438]"}`}
               >
                 {delta > 0 ? "+" : ""}
                 {formatMoney(delta)} this period

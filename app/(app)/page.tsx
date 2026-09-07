@@ -6,6 +6,7 @@ import {
   getCategories,
   getCategoryProgress,
   getCategoryProgressForRange,
+  getMonthlyFlow,
   getObjectives,
   getPeriodSummaryForRange,
   getSafeToSpend,
@@ -15,11 +16,12 @@ import {
 import { FinancialSnapshot } from "@/app/(app)/financial-snapshot";
 import { BudgetCategoriesCard } from "@/app/(app)/budget-categories";
 import { UpcomingBillsCard } from "@/app/(app)/upcoming-bills";
+import { MoneyFlowChart } from "@/app/(app)/money-flow-chart";
+import { RemainingMonthlyCard } from "@/app/(app)/remaining-monthly";
+import { AnimatedMoney } from "@/app/(app)/animated-number";
 import { formatMoney, formatDate } from "@/lib/format";
 import { RangeSwitcher } from "@/app/(app)/range-switcher";
 import { DashboardAccountList } from "@/app/(app)/dashboard-account-list";
-import { QuickAddButton } from "@/app/(app)/quick-add";
-import { QuickAddTransferButton } from "@/app/(app)/quick-add-transfer";
 import { ExpenseDonutChart } from "@/app/(app)/expense-donut";
 import { ObjectivesSection } from "@/app/(app)/objectives-section";
 import { getCategoryColor } from "@/lib/category-colors";
@@ -81,6 +83,7 @@ export default async function DashboardPage({
     safeToSpend,
     currentPeriodProgress,
     upcomingBills,
+    monthlyFlow,
   ] = await Promise.all([
     getAccountsWithBalances(),
     getCategories(),
@@ -95,6 +98,7 @@ export default async function DashboardPage({
     currentPeriod ? getSafeToSpend(currentPeriod.id) : Promise.resolve(0),
     currentPeriod ? getCategoryProgress(currentPeriod.id) : Promise.resolve([]),
     currentPeriod ? getUpcomingBills(currentPeriod.id) : Promise.resolve([]),
+    getMonthlyFlow(12),
   ]);
 
   const topSnapshotCategory = snapshotCategoryProgress
@@ -171,7 +175,6 @@ export default async function DashboardPage({
   const balanceTrend = trend(balance, previousBalance);
   const incomeTrend = trend(summary.income, previousSummary.income);
   const expenseTrend = trend(summary.expense, previousSummary.expense, { invert: true });
-  const plannedTrend = trend(totalPlanned, previousTotalPlanned);
 
   // Per-account net change within the selected range, so the sidebar can show
   // trajectory ("+$240 this period") instead of just a static balance.
@@ -268,146 +271,134 @@ export default async function DashboardPage({
 
         {attentionItems.length > 0 && <NeedsAttention items={attentionItems} />}
 
-        {currentPeriod && (
-          <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-accent-border bg-accent-soft p-5">
-            <div>
-              <p className="text-sm font-medium text-accent">Safe to spend this month</p>
-              <p className="tabular text-3xl font-semibold text-accent">{formatMoney(safeToSpend)}</p>
-              <p className="mt-1 text-xs text-accent/80">
-                Unspent budget left, minus bills still coming this month.
-              </p>
+        {/* Top row — My Balance / My Income / Total expense, the three
+            headline cards a Fundcy-style dashboard leads with. */}
+        <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-3">
+          <div className="card-hover flex flex-col justify-between rounded-xl border border-border bg-surface p-5 sm:p-6 shadow-card">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-text-muted">My Balance</p>
+              <span className="tabular rounded-full border border-border px-2.5 py-1 text-xs font-medium text-text-muted">
+                {range.label}
+              </span>
             </div>
-            {pace && (
-              <div className="min-w-[220px]">
-                <div className="tabular flex justify-between text-xs text-accent/80">
-                  <span>{Math.round(pace.daysElapsedPct)}% of month elapsed</span>
-                  <span>{Math.round(pace.spentPct)}% of budget spent</span>
+            <div className="mt-6">
+              <p className="text-xs text-text-faint">Total balance</p>
+              <AnimatedMoney
+                value={balance}
+                className={`tabular text-[32px] leading-[40px] font-bold tracking-[-0.02em] ${
+                  balance >= 0 ? "text-text" : "text-[#f04438]"
+                }`}
+              />
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Chip label="Planned" value={formatMoney(totalPlanned)} />
+              {balanceTrend && (
+                <Chip
+                  label={balanceTrend.pct >= 0 ? "Up" : "Down"}
+                  value={`${Math.abs(balanceTrend.pct).toFixed(1)}%`}
+                  tone={balanceTrend.good ? "success" : "danger"}
+                />
+              )}
+            </div>
+          </div>
+
+          <div className="card-hover flex flex-col justify-between rounded-xl border border-border bg-surface p-5 sm:p-6 shadow-card">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-text-muted">My Income</p>
+              <span className="text-xs text-text-faint">{range.label}</span>
+            </div>
+            <div className="mt-6">
+              <p className="text-xs text-text-faint">Total income</p>
+              <AnimatedMoney
+                value={summary.income}
+                className="tabular text-[32px] leading-[40px] font-bold tracking-[-0.02em] text-text"
+              />
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {incomeTrend && (
+                <Chip
+                  label={incomeTrend.pct >= 0 ? "Up" : "Down"}
+                  value={`${Math.abs(incomeTrend.pct).toFixed(1)}%`}
+                  tone={incomeTrend.good ? "success" : "danger"}
+                />
+              )}
+              <Chip label="Safe to spend" value={formatMoney(safeToSpend)} />
+            </div>
+          </div>
+
+          <div className="card-hover flex flex-col justify-between rounded-xl border border-border bg-surface p-5 sm:p-6 shadow-card">
+            <div>
+              <AnimatedMoney
+                value={summary.expense}
+                className="tabular text-[28px] leading-[36px] font-bold tracking-[-0.02em] text-text"
+              />
+              <p className="mt-1 text-xs text-text-faint">Total expense</p>
+            </div>
+            {pace ? (
+              <div className="mt-5">
+                <div className="flex justify-between text-[11px] text-text-faint">
+                  <span>0</span>
+                  <span>50</span>
+                  <span>100</span>
                 </div>
-                <div className="relative mt-1 h-2 w-full rounded-full bg-white/50">
-                  <div
-                    className="absolute h-2 rounded-full bg-accent"
-                    style={{ width: `${Math.min(100, pace.spentPct)}%` }}
-                  />
-                  <div
-                    className="absolute top-0 h-2 w-0.5 bg-text"
-                    style={{ left: `${pace.daysElapsedPct}%` }}
-                    title="Today"
-                  />
+                <div className="mt-1 flex h-14 items-end gap-[3px]">
+                  {Array.from({ length: 24 }, (_, i) => {
+                    const barPct = ((i + 1) / 24) * 100;
+                    const filled = barPct <= pace.spentPct;
+                    return (
+                      <div
+                        key={i}
+                        className="animate-bar-grow flex-1 rounded-sm"
+                        style={{
+                          height: `${20 + (i % 6) * 12}%`,
+                          backgroundColor: filled ? "var(--accent-bright)" : "var(--border)",
+                          animationDelay: `${i * 15}ms`,
+                        }}
+                      />
+                    );
+                  })}
                 </div>
-                <p className="mt-1 text-xs font-medium text-accent">
-                  {pace.spentPct > pace.daysElapsedPct + 10
-                    ? "Spending ahead of pace"
-                    : pace.spentPct < pace.daysElapsedPct - 10
-                      ? "Spending under pace"
-                      : "On pace"}
+                <p className="mt-2 text-xs text-text-faint">
+                  {range.label} · with a pace of {Math.round(pace.spentPct)}%
                 </p>
               </div>
+            ) : (
+              <p className="mt-5 text-xs text-text-faint">Set planned amounts to track pace.</p>
             )}
           </div>
-        )}
+        </div>
 
-        {/* Stat cards */}
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard
-            label="Income"
-            value={summary.income}
-            trend={incomeTrend}
-            iconBg="var(--accent-soft)"
-            icon={
-              <path
-                d="M12 19V5m0 0-6 6m6-6 6 6"
-                stroke="var(--accent)"
-                strokeWidth={1.8}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            }
-          />
-          <StatCard
-            label="Expenses"
-            value={summary.expense}
-            trend={expenseTrend}
-            iconBg="#fee4e2"
-            icon={
-              <path
-                d="M12 5v14m0 0 6-6m-6 6-6-6"
-                stroke="#f04438"
-                strokeWidth={1.8}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            }
-          />
-          <StatCard
-            label="Planned"
-            value={totalPlanned}
-            trend={plannedTrend}
-            iconBg="var(--accent-soft)"
-            icon={
-              <path
-                d="M12 3a9 9 0 1 0 9 9M12 3v9l6.36-6.36A9 9 0 0 0 12 3Z"
-                stroke="var(--accent)"
-                strokeWidth={1.8}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            }
-          />
-          <StatCard
-            label="Balance"
-            value={balance}
-            trend={balanceTrend}
-            colorBySign
-            iconBg="var(--accent-soft)"
-            icon={
-              <path
-                d="M4 7h16M6 7v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7M9 11v4m6-4v4"
-                stroke="var(--accent)"
-                strokeWidth={1.8}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            }
+        {/* Money Flow + Remaining Monthly — the two-column row a Fundcy-style
+            dashboard leads with below its headline cards. Hidden only on
+            true-mobile widths where the bars/tiles would be too cramped. */}
+        <div className="hidden grid-cols-1 gap-6 sm:grid lg:grid-cols-[1fr_360px]">
+          <div className="rounded-xl border border-border bg-surface p-5 shadow-card">
+            <div className="mb-4 flex items-center justify-between">
+              <p className="text-heading text-text-2">Money Flow</p>
+              <div className="flex items-center gap-4 text-xs text-text-muted">
+                <span className="flex items-center gap-1.5">
+                  <span className="size-2.5 rounded-full bg-[color:var(--tile-1-bg)]" /> Income
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="size-2.5 rounded-full bg-[color:var(--accent-bright)]" /> Expense
+                </span>
+              </div>
+            </div>
+            <MoneyFlowChart points={monthlyFlow} />
+          </div>
+
+          <RemainingMonthlyCard
+            spentPct={pace ? pace.spentPct : null}
+            categoryProgress={currentPeriodProgress}
           />
         </div>
 
-        {/* Quick actions */}
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          <QuickAddButton
-            kind="income"
-            periodId={currentPeriod!.id}
-            accounts={activeAccounts}
-            categories={categories}
-          />
-          <QuickAddButton
-            kind="expense"
-            periodId={currentPeriod!.id}
-            accounts={activeAccounts}
-            categories={categories}
-          />
-          <QuickAddTransferButton
-            periodId={currentPeriod!.id}
-            accounts={activeAccounts}
-          />
-          <QuickAction
-            href="/accounts"
-            bg="#f9fafb"
-            title="Manage accounts"
-            subtitle="Balances, banks, and goals"
-            icon={
-              <path
-                d="M3 10h18M6 6h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z"
-                stroke="#516778"
-                strokeWidth={1.6}
-                strokeLinejoin="round"
-              />
-            }
-          />
-        </div>
-
-        {/* Category breakdown + budget categories */}
+        {/* Category breakdown + full budget list — demoted below the summary
+            row above, since it's detail you drill into rather than glance
+            at. The donut is dropped on mobile to keep the budget list front
+            and center there. */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[384px_1fr]">
-          <div className="flex flex-col items-center gap-6 rounded-xl border border-border bg-surface p-5 shadow-card">
+          <div className="hidden flex-col items-center gap-6 rounded-xl border border-border bg-surface p-5 shadow-card lg:flex">
             <div className="flex w-full items-center">
               <p className="text-heading text-text-2">Expenses by category</p>
             </div>
@@ -428,11 +419,11 @@ export default async function DashboardPage({
         </div>
 
         {/* Recent transactions */}
-        <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-surface shadow-card">
-          <div className="flex items-center justify-between p-6">
+        <div className="min-w-0">
+          <div className="mb-3 flex items-center justify-between sm:mb-0 sm:overflow-hidden sm:rounded-xl sm:border sm:border-border sm:bg-surface sm:p-6 sm:shadow-card">
             <div>
               <p className="text-heading text-text">Recent transactions</p>
-              <p className="text-sm text-text-muted">
+              <p className="hidden text-sm text-text-muted sm:block">
                 {range.label}, {transactions.length} logged
               </p>
             </div>
@@ -443,7 +434,59 @@ export default async function DashboardPage({
               View all
             </Link>
           </div>
-          <div className="overflow-x-auto">
+
+          {/* Mobile: compact list, no horizontal scroll. Desktop: full table. */}
+          <div className="space-y-2 sm:hidden">
+            {recentTransactions.map((t) => {
+              const avatar = getAvatarColors(t.id);
+              return (
+                <div
+                  key={t.id}
+                  className="flex items-center gap-3 rounded-xl border border-border bg-surface p-3 shadow-card"
+                >
+                  <span
+                    className="relative flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
+                    style={{ backgroundColor: avatar.bg, color: avatar.text }}
+                  >
+                    {initials(t.description)}
+                    {t.category_id && categoryColorById.has(t.category_id) && (
+                      <span
+                        className="absolute -bottom-0.5 -right-0.5 size-2 rounded-full border border-surface"
+                        style={{ backgroundColor: categoryColorById.get(t.category_id) }}
+                      />
+                    )}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-text">{t.description}</p>
+                    <p className="truncate text-xs text-text-faint">
+                      {t.kind === "transfer"
+                        ? `${t.account_id ? (accountById.get(t.account_id) ?? "—") : "—"} → ${t.to_account_id ? (accountById.get(t.to_account_id) ?? "—") : "—"}`
+                        : t.account_id
+                          ? (accountById.get(t.account_id) ?? "—")
+                          : "—"}
+                      {" · "}
+                      {formatDate(t.txn_date)}
+                    </p>
+                  </div>
+                  <span
+                    className={`tabular shrink-0 text-sm font-medium ${
+                      t.kind === "income" ? "text-success" : "text-text"
+                    }`}
+                  >
+                    {t.kind === "income" ? "+" : t.kind === "expense" ? "-" : ""}
+                    {formatMoney(t.amount)}
+                  </span>
+                </div>
+              );
+            })}
+            {recentTransactions.length === 0 && (
+              <p className="rounded-xl border border-dashed border-border py-10 text-center text-sm text-text-muted">
+                No transactions logged for this range yet.
+              </p>
+            )}
+          </div>
+
+          <div className="hidden overflow-x-auto sm:block">
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-border bg-bg">
@@ -452,6 +495,7 @@ export default async function DashboardPage({
                   </th>
                   <th className="px-6 py-2 text-xs font-medium text-text-muted">Account</th>
                   <th className="px-6 py-2 text-xs font-medium text-text-muted">Date</th>
+                  <th className="px-6 py-2 text-xs font-medium text-text-muted">Status</th>
                   <th className="px-6 py-2 text-right text-xs font-medium text-text-muted">
                     Amount
                   </th>
@@ -513,6 +557,15 @@ export default async function DashboardPage({
                       )}
                     </td>
                     <td className="px-6 py-3 text-sm text-text-muted">{formatDate(t.txn_date)}</td>
+                    <td className="px-6 py-3">
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                          t.cleared ? "bg-[#dcfae6] text-[#0b9055]" : "bg-[#fef0c7] text-[#93370d]"
+                        }`}
+                      >
+                        {t.cleared ? "Completed" : "Pending"}
+                      </span>
+                    </td>
                     <td
                       className={`tabular px-6 py-3 text-right text-sm font-medium ${
                         t.kind === "income" ? "text-success" : "text-text"
@@ -526,7 +579,7 @@ export default async function DashboardPage({
                 })}
                 {recentTransactions.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-6 py-10 text-center text-sm text-text-muted">
+                    <td colSpan={5} className="px-6 py-10 text-center text-sm text-text-muted">
                       No transactions logged for this range yet.
                     </td>
                   </tr>
@@ -537,18 +590,24 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      {/* Right sidebar: financial objectives above accounts */}
+      {/* Right sidebar: financial objectives above accounts. The 90-day
+          snapshot and upcoming-bills preview duplicate dedicated pages
+          (Recurring, Calendar), so they're dropped on mobile to stay light. */}
       <div className="space-y-10">
-        <FinancialSnapshot
-          summary={snapshotSummary}
-          topCategory={
-            topSnapshotCategory
-              ? { name: topSnapshotCategory.name, actual: topSnapshotCategory.actual }
-              : null
-          }
-        />
+        <div className="hidden lg:block">
+          <FinancialSnapshot
+            summary={snapshotSummary}
+            topCategory={
+              topSnapshotCategory
+                ? { name: topSnapshotCategory.name, actual: topSnapshotCategory.actual }
+                : null
+            }
+          />
+        </div>
 
-        <UpcomingBillsCard bills={upcomingBills} categories={categories} />
+        <div className="hidden lg:block">
+          <UpcomingBillsCard bills={upcomingBills} categories={categories} />
+        </div>
 
         <ObjectivesSection objectives={objectives} accounts={accounts} />
 
@@ -578,95 +637,25 @@ export default async function DashboardPage({
   );
 }
 
-function StatCard({
+function Chip({
   label,
   value,
-  trend,
-  emphasize,
-  colorBySign,
-  icon,
-  iconBg,
+  tone,
 }: {
   label: string;
-  value: number;
-  trend?: Trend;
-  emphasize?: boolean;
-  colorBySign?: boolean;
-  icon?: React.ReactNode;
-  iconBg?: string;
+  value: string;
+  tone?: "success" | "danger";
 }) {
-  const valueColor = colorBySign
-    ? value > 0
-      ? "text-success"
-      : value < 0
-        ? "text-[#f04438]"
-        : "text-text"
-    : emphasize
-      ? "text-accent"
-      : "text-text";
+  const toneClass =
+    tone === "success"
+      ? "bg-[#dcfae6] text-[#0b9055]"
+      : tone === "danger"
+        ? "bg-[#fee4e2] text-[#b42318]"
+        : "bg-bg text-text-muted";
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-6 shadow-card">
-      <div className="flex items-center gap-2.5">
-        {icon && (
-          <span
-            className="flex size-9 shrink-0 items-center justify-center rounded-lg"
-            style={{ backgroundColor: iconBg ?? "var(--accent-soft)" }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              {icon}
-            </svg>
-          </span>
-        )}
-        <p className="text-sm font-medium text-text-muted">{label}</p>
-      </div>
-      <p className={`tabular text-[32px] leading-[40px] font-semibold tracking-[-0.64px] ${valueColor}`}>
-        {formatMoney(value)}
-      </p>
-      {trend && (
-        <p
-          className={`tabular flex items-center gap-1 text-xs font-medium ${
-            trend.good ? "text-success" : "text-[#f04438]"
-          }`}
-        >
-          <span>{trend.pct >= 0 ? "▲" : "▼"}</span>
-          {Math.abs(trend.pct).toFixed(1)}%
-          <span className="font-normal text-text-faint">vs last period</span>
-        </p>
-      )}
-    </div>
-  );
-}
-
-function QuickAction({
-  href,
-  bg,
-  title,
-  subtitle,
-  icon,
-}: {
-  href: string;
-  bg: string;
-  title: string;
-  subtitle: string;
-  icon: React.ReactNode;
-}) {
-  return (
-    <Link
-      href={href}
-      className="flex items-start gap-3 rounded-xl border border-border bg-surface p-5 shadow-card transition-shadow hover:shadow-md"
-    >
-      <span
-        className="flex size-12 shrink-0 items-center justify-center rounded-lg"
-        style={{ backgroundColor: bg }}
-      >
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-          {icon}
-        </svg>
-      </span>
-      <div>
-        <p className="text-base font-semibold text-text-2">{title}</p>
-        <p className="text-sm text-text-muted">{subtitle}</p>
-      </div>
-    </Link>
+    <span className={`tabular flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${toneClass}`}>
+      <span className="opacity-70">{label}</span>
+      {value}
+    </span>
   );
 }

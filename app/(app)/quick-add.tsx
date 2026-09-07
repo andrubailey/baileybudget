@@ -231,7 +231,7 @@ export function QuickAddButton({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="flex items-start gap-3 rounded-xl border border-border bg-surface p-5 text-left shadow-card transition-shadow hover:shadow-md"
+          className="card-hover flex items-start gap-3 rounded-xl border border-border bg-surface p-5 text-left shadow-card"
         >
           <span
             className="flex size-12 shrink-0 items-center justify-center rounded-lg"
@@ -267,7 +267,7 @@ export function QuickAddButton({
               <button
                 type="button"
                 onClick={resetForm}
-                className="text-text-faint hover:text-text"
+                className="-mr-1.5 flex size-9 shrink-0 items-center justify-center rounded-lg text-text-faint hover:bg-bg hover:text-text"
                 aria-label="Close"
               >
                 ✕
@@ -432,7 +432,12 @@ export function QuickAddButton({
 
               <div className="space-y-1.5 sm:col-span-2">
                 <label className="text-sm font-medium text-text">Notes (optional)</label>
-                <input name="notes" placeholder="Split with Mike, reimbursed by work…" className={fieldClass} />
+                <input
+                  name="notes"
+                  placeholder="Split with Mike, reimbursed by work…"
+                  maxLength={140}
+                  className={fieldClass}
+                />
               </div>
 
               {kind === "expense" && (
