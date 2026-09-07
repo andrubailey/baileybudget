@@ -217,10 +217,6 @@ export function Sidebar() {
         )}
       </div>
 
-      <div className="px-4 pb-2">
-        <NewTransactionButton collapsed={collapsed} />
-      </div>
-
       {!collapsed && (
         <div className="px-5 pb-2">
           <PresenceIndicator />
@@ -270,6 +266,10 @@ export function Sidebar() {
       </nav>
 
       <div className="shrink-0 px-4 py-4">
+        <div className="mb-2">
+          <NewTransactionButton collapsed={collapsed} menuPosition="above" />
+        </div>
+
         <button
           type="button"
           onClick={toggle}

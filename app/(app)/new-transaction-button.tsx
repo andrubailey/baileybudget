@@ -45,12 +45,16 @@ export function NewTransactionButton({
   collapsed,
   variant = "full",
   menuAlign = "left",
+  menuPosition = "below",
 }: {
   collapsed?: boolean;
   // "icon" is a compact circular trigger for tight spaces (the mobile top
   // bar) instead of the full-width labeled button used in the sidebar.
   variant?: "full" | "icon";
   menuAlign?: "left" | "right";
+  // "above" for triggers anchored to the bottom of the screen, so the
+  // picker doesn't try to open off the bottom edge of the viewport.
+  menuPosition?: "above" | "below";
 }) {
   const [context, setContext] = useState<Context | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -105,9 +109,9 @@ export function NewTransactionButton({
         <>
           <div className="fixed inset-0 z-40" onClick={() => setPickerOpen(false)} />
           <div
-            className={`absolute top-full z-50 mt-2 w-48 overflow-hidden rounded-lg border border-border bg-surface py-1 shadow-modal ${
+            className={`absolute z-50 w-48 overflow-hidden rounded-lg border border-border bg-surface py-1 shadow-modal ${
               menuAlign === "right" ? "right-0" : "left-0"
-            }`}
+            } ${menuPosition === "above" ? "bottom-full mb-2" : "top-full mt-2"}`}
           >
             {OPTIONS.map((o) => (
               <button
