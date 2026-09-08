@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Fragment, useState, useTransition } from "react";
 import { upsertBudgetLine } from "@/app/actions";
 import { getCategoryIcon } from "@/lib/category-icons";
@@ -20,18 +21,18 @@ export function BudgetGrid({
       <table className="w-full text-left">
         <thead>
           <tr className="border-b border-border bg-bg">
-            <th className="sticky left-0 z-10 bg-bg px-6 py-2 text-xs font-medium text-text-muted">
+            <th className="sticky top-0 left-0 z-20 bg-bg px-6 py-2 text-xs font-medium text-text-muted">
               Category
             </th>
             {periods.map((p) => (
               <th
                 key={p.id}
-                className="px-4 py-2 text-xs font-medium whitespace-nowrap text-text-muted"
+                className="sticky top-0 z-10 bg-bg px-4 py-2 text-xs font-medium whitespace-nowrap text-text-muted"
               >
                 {p.name}
               </th>
             ))}
-            <th className="px-4 py-2 text-xs font-medium whitespace-nowrap text-text-muted">
+            <th className="sticky top-0 z-10 bg-bg px-4 py-2 text-xs font-medium whitespace-nowrap text-text-muted">
               Total
             </th>
           </tr>
@@ -89,7 +90,17 @@ export function BudgetGrid({
           {rows.length === 0 && (
             <tr>
               <td colSpan={periods.length + 2} className="px-6 py-4">
-                <EmptyState message="No expense categories yet." />
+                <EmptyState
+                  message="No expense categories yet."
+                  action={
+                    <Link
+                      href="/transactions?view=categories"
+                      className="text-xs text-accent underline underline-offset-2"
+                    >
+                      Add one
+                    </Link>
+                  }
+                />
               </td>
             </tr>
           )}
@@ -110,11 +121,16 @@ function GridCell({
 }) {
   const [value, setValue] = useState(initialValue ? String(initialValue) : "");
   const [, startTransition] = useTransition();
+  // Brief highlight after a blur-triggered save resolves — these cells save
+  // silently otherwise, with nothing to tell you the edit actually landed.
+  const [justSaved, setJustSaved] = useState(false);
 
   function save() {
     const amount = Number(value || 0);
-    startTransition(() => {
-      upsertBudgetLine(categoryId, periodId, amount);
+    startTransition(async () => {
+      await upsertBudgetLine(categoryId, periodId, amount);
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 1200);
     });
   }
 
@@ -126,7 +142,9 @@ function GridCell({
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onBlur={save}
-        className="tabular w-24 rounded-md border border-border bg-bg px-2 py-1 text-sm text-text outline-none focus:border-accent"
+        className={`tabular w-24 rounded-md border bg-bg px-2 py-1 text-sm text-text outline-none transition-colors focus:border-accent ${
+          justSaved ? "border-success" : "border-border"
+        }`}
       />
     </td>
   );

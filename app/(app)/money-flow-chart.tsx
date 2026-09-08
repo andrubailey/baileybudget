@@ -14,7 +14,7 @@ export function MoneyFlowChart({ points }: { points: MonthlyFlowPoint[] }) {
   if (points.length === 0) {
     return (
       <div className="flex h-64 items-center justify-center">
-        <EmptyState message="No history yet." />
+        <EmptyState message="Add a transaction to start building this chart." />
       </div>
     );
   }
@@ -25,6 +25,10 @@ export function MoneyFlowChart({ points }: { points: MonthlyFlowPoint[] }) {
     <div>
       <div className="relative flex h-64 items-end gap-3">
         {hover && (
+          // bg-[#101828] is deliberately literal, not var(--text) — it only
+          // equals --text's light-mode value by coincidence. This tooltip
+          // stays dark-on-white in both themes, so it can't reference a
+          // token that flips to a light color in dark mode.
           <div className="animate-fade-in-up pointer-events-none absolute -top-2 left-1/2 z-10 -translate-x-1/2 -translate-y-full rounded-lg bg-[#101828] px-3 py-2 text-white shadow-modal">
             <p className="text-xs text-white/70">
               {hover.kind === "income" ? "Income" : "Expense"}

@@ -4,13 +4,15 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "@/app/actions";
-import { NAV_GROUPS } from "./sidebar";
+import { MOBILE_MORE_LINKS } from "./sidebar";
 import { LogoMark } from "@/app/(app)/logo-mark";
 import { PresenceIndicator } from "@/app/(app)/presence-indicator";
+import { NewTransactionButton } from "@/app/(app)/new-transaction-button";
 
-// Small-screen counterpart to the desktop Sidebar: a sticky top bar with a
-// hamburger button that opens a full-height slide-in drawer, since a
-// permanent 256px-wide sidebar has no room to exist on a phone.
+// Small-screen counterpart to the desktop Sidebar. The 5 most-used pages
+// live in the bottom tab bar (MobileTabBar) now, so this top bar's "More"
+// button only needs to surface the long tail — the remaining pages, New
+// transaction, and sign out — in a slide-in drawer.
 export function MobileNav({ counts }: { counts?: Record<string, number> }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -48,16 +50,13 @@ export function MobileNav({ counts }: { counts?: Record<string, number> }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label="Open menu"
+        aria-label="More"
         className="flex size-11 shrink-0 items-center justify-center rounded-lg text-hero-text-muted hover:bg-hero-bg-2/60 hover:text-hero-text"
       >
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-          <path
-            d="M4 6h16M4 12h16M4 18h16"
-            stroke="currentColor"
-            strokeWidth={1.8}
-            strokeLinecap="round"
-          />
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+          <circle cx="5" cy="12" r="1.8" />
+          <circle cx="12" cy="12" r="1.8" />
+          <circle cx="19" cy="12" r="1.8" />
         </svg>
       </button>
 
@@ -69,9 +68,7 @@ export function MobileNav({ counts }: { counts?: Record<string, number> }) {
           />
           <div className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col bg-hero-bg shadow-modal">
             <div className="flex h-14 shrink-0 items-center justify-between px-4">
-              <span className="truncate text-base font-bold tracking-tight text-hero-text">
-                Bailey<span className="text-accent">Budget</span>
-              </span>
+              <span className="truncate text-base font-bold tracking-tight text-hero-text">More</span>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
@@ -90,41 +87,36 @@ export function MobileNav({ counts }: { counts?: Record<string, number> }) {
             </div>
 
             <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-4 py-2">
-              {NAV_GROUPS.map((group, groupIndex) => (
-                <div key={group.label ?? groupIndex} className={groupIndex > 0 ? "mt-4" : undefined}>
-                  {group.label && (
-                    <p className="px-3 pb-1 text-[11px] font-semibold tracking-wide text-hero-text-muted uppercase">
-                      {group.label}
-                    </p>
-                  )}
-                  {group.links.map((link) => {
-                    const active =
-                      link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
-                    const count = counts?.[link.href] ?? 0;
-                    return (
-                      <Link
-                        key={link.href}
-                        href={link.href}
-                        className={`flex items-center gap-3 rounded-lg px-3 py-3 text-[15px] font-medium transition-colors ${
-                          active
-                            ? "bg-hero-bg-2 text-hero-text"
-                            : "text-hero-text-muted hover:bg-hero-bg-2/60 hover:text-hero-text"
-                        }`}
-                      >
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="shrink-0">
-                          {link.icon}
-                        </svg>
-                        <span className="truncate">{link.label}</span>
-                        {count > 0 && (
-                          <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-accent-bright px-1.5 text-xs font-semibold text-hero-bg">
-                            {count}
-                          </span>
-                        )}
-                      </Link>
-                    );
-                  })}
-                </div>
-              ))}
+              <div className="mb-2">
+                <NewTransactionButton menuPosition="below" />
+              </div>
+
+              {MOBILE_MORE_LINKS.map((link) => {
+                const active =
+                  link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
+                const count = counts?.[link.href] ?? 0;
+                return (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className={`flex items-center gap-3 rounded-lg px-3 py-3 text-[15px] font-medium transition-colors ${
+                      active
+                        ? "bg-hero-bg-2 text-hero-text"
+                        : "text-hero-text-muted hover:bg-hero-bg-2/60 hover:text-hero-text"
+                    }`}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="shrink-0">
+                      {link.icon}
+                    </svg>
+                    <span className="truncate">{link.label}</span>
+                    {count > 0 && (
+                      <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-accent-bright px-1.5 text-xs font-semibold text-hero-bg">
+                        {count}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
             </nav>
 
             <div className="shrink-0 px-4 py-4">

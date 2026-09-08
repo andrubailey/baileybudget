@@ -5,10 +5,7 @@ import { createTransfer } from "@/app/actions";
 import type { Account } from "@/lib/types";
 import { SubmitButton } from "@/app/(app)/submit-button";
 import { useToast } from "@/app/(app)/toast";
-
-// text-base (16px) on mobile prevents iOS Safari's auto-zoom-on-focus.
-const fieldClass =
-  "w-full rounded-lg border border-border bg-bg px-3 py-2.5 text-base sm:text-sm sm:py-2 text-text outline-none transition-colors focus:border-accent";
+import { FIELD_CLASS as fieldClass } from "@/lib/ui";
 
 export function QuickAddTransferButton({
   periodId,
@@ -44,12 +41,12 @@ export function QuickAddTransferButton({
         >
           <span
             className="flex size-12 shrink-0 items-center justify-center rounded-lg"
-            style={{ backgroundColor: "#e0f2fe" }}
+            style={{ backgroundColor: "var(--transfer-bg)" }}
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
               <path
                 d="M7 7h11l-3-3M17 17H6l3 3"
-                stroke="#0ba5ec"
+                stroke="var(--transfer)"
                 strokeWidth={2}
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -77,7 +74,7 @@ export function QuickAddTransferButton({
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="-mr-1.5 flex size-9 shrink-0 items-center justify-center rounded-lg text-text-faint hover:bg-bg hover:text-text"
+                className="-mr-2.5 flex size-11 shrink-0 items-center justify-center rounded-lg text-text-faint hover:bg-bg hover:text-text"
                 aria-label="Close"
               >
                 ✕

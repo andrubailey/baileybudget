@@ -24,7 +24,7 @@ export function PeriodSwitcher({
     <select
       value={selectedId}
       onChange={(e) => handleChange(e.target.value)}
-      className="rounded-lg border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-text-muted outline-none transition-colors focus:border-accent"
+      className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-text-muted outline-none transition-colors focus:border-accent sm:w-auto"
     >
       {periods.map((p) => (
         <option key={p.id} value={p.id}>

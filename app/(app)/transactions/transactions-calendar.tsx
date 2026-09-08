@@ -46,7 +46,7 @@ export function TransactionsCalendar({
         Every transaction logged in {periodName}, plotted on the day it happened.
       </p>
 
-      <div className="rounded-xl border border-border bg-surface p-4 shadow-card">
+      <div className="rounded-xl border border-border bg-surface p-5 shadow-card">
         <div className="grid grid-cols-7 gap-1 text-center text-xs font-medium text-text-faint">
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
             <div key={d} className="py-1">
@@ -81,8 +81,8 @@ export function TransactionsCalendar({
                         t.kind === "income"
                           ? "bg-success/15 text-success"
                           : t.kind === "transfer"
-                            ? "bg-[#0ba5ec]/10 text-[#0ba5ec]"
-                            : "bg-[#f04438]/10 text-[#b42318]"
+                            ? "bg-transfer/10 text-transfer"
+                            : "bg-negative/10 text-negative-strong"
                       }`}
                     >
                       {t.description}

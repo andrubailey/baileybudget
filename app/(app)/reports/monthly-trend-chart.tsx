@@ -134,7 +134,7 @@ export function MonthlyTrendChart({
                     height={Math.abs(baselineY - yFor(prev.expense))}
                     rx={3}
                     fill="none"
-                    stroke="#f04438"
+                    stroke="var(--negative)"
                     strokeOpacity={0.4}
                     strokeDasharray="2 2"
                   >
@@ -151,6 +151,8 @@ export function MonthlyTrendChart({
                 rx={3}
                 fill="var(--accent)"
                 fillOpacity={d.isCurrent ? 0.5 : 1}
+                className="animate-bar-grow"
+                style={{ animationDelay: `${i * 30}ms` }}
               >
                 <title>{`${d.label}: ${formatMoney(d.income)} income${d.isCurrent ? " (in progress)" : ""}`}</title>
               </rect>
@@ -163,8 +165,10 @@ export function MonthlyTrendChart({
                     width={barWidth}
                     height={Math.abs(baselineY - recurringY)}
                     rx={3}
-                    fill="#f04438"
+                    fill="var(--negative)"
                     fillOpacity={d.isCurrent ? 0.35 : 0.75}
+                    className="animate-bar-grow-top"
+                    style={{ animationDelay: `${i * 30}ms` }}
                   >
                     <title>{`${d.label}: ${formatMoney(split.recurring)} recurring bills`}</title>
                   </rect>
@@ -173,8 +177,10 @@ export function MonthlyTrendChart({
                     y={Math.min(expenseY, recurringY)}
                     width={barWidth}
                     height={Math.abs(recurringY - expenseY)}
-                    fill="#f04438"
+                    fill="var(--negative)"
                     fillOpacity={d.isCurrent ? 0.2 : 0.4}
+                    className="animate-bar-grow-top"
+                    style={{ animationDelay: `${i * 30}ms` }}
                   >
                     <title>{`${d.label}: ${formatMoney(split.other)} other spending`}</title>
                   </rect>
@@ -186,8 +192,10 @@ export function MonthlyTrendChart({
                   width={barWidth}
                   height={Math.abs(baselineY - expenseY)}
                   rx={3}
-                  fill="#f04438"
+                  fill="var(--negative)"
                   fillOpacity={d.isCurrent ? 0.4 : 0.75}
+                  className="animate-bar-grow-top"
+                  style={{ animationDelay: `${i * 30}ms` }}
                 >
                   <title>{`${d.label}: ${formatMoney(d.expense)} expenses${d.isCurrent ? " (in progress)" : ""}`}</title>
                 </rect>
@@ -238,9 +246,17 @@ export function MonthlyTrendChart({
           );
         })}
 
-        <path d={linePath} fill="none" stroke="#7c3aed" strokeWidth={2} strokeLinejoin="round" />
+        <path
+          d={linePath}
+          pathLength={1}
+          className="animate-draw-line"
+          fill="none"
+          stroke="var(--projected)"
+          strokeWidth={2}
+          strokeLinejoin="round"
+        />
         {netPoints.map((p, i) => (
-          <circle key={i} cx={p.x} cy={p.y} r={3} fill="#7c3aed">
+          <circle key={i} cx={p.x} cy={p.y} r={3} fill="var(--projected)">
             <title>{`${data[i].label}: ${formatMoney(nets[i])} net`}</title>
           </circle>
         ))}
@@ -264,10 +280,10 @@ export function MonthlyTrendChart({
             <span className="size-2.5 rounded-full bg-accent" /> Income
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="size-2.5 rounded-full bg-[#f04438] opacity-75" /> Expenses
+            <span className="size-2.5 rounded-full bg-negative opacity-75" /> Expenses
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="size-2.5 rounded-full bg-[#7c3aed]" /> Net trend
+            <span className="size-2.5 rounded-full bg-projected" /> Net trend
           </span>
           {showRollingAvg && (
             <span className="flex items-center gap-1.5">

@@ -5,11 +5,9 @@ import { checkDuplicateTransaction, createTransaction, suggestCategory } from "@
 import type { Account, Category } from "@/lib/types";
 import { SubmitButton } from "@/app/(app)/submit-button";
 import { useToast } from "@/app/(app)/toast";
+import { CurrencyInput } from "@/app/(app)/currency-input";
 import { formatMoney, formatDate } from "@/lib/format";
-
-// text-base (16px) on mobile prevents iOS Safari's auto-zoom-on-focus.
-const fieldClass =
-  "w-full rounded-lg border border-border bg-bg px-3 py-2.5 text-base sm:py-2 sm:text-sm text-text outline-none transition-colors focus:border-accent";
+import { FIELD_CLASS as fieldClass } from "@/lib/ui";
 
 type DuplicateMatch = { id: string; description: string; amount: number; txn_date: string };
 
@@ -103,7 +101,7 @@ export function TransactionForm({
   return (
     <form
       action={handleSubmit}
-      className="grid max-w-3xl grid-cols-1 gap-4 rounded-xl border border-border bg-surface p-6 shadow-card sm:grid-cols-3"
+      className="grid max-w-3xl grid-cols-1 gap-4 rounded-xl border border-border bg-surface p-5 shadow-card sm:grid-cols-3 sm:p-6"
     >
       <input type="hidden" name="period_id" value={periodId} />
       <input type="hidden" name="kind" value={effectiveKind} />
@@ -134,7 +132,7 @@ export function TransactionForm({
 
       <div className="space-y-1.5">
         <label className="text-sm font-medium text-text">Amount</label>
-        <input type="number" step="0.01" name="amount" required className={fieldClass} />
+        <CurrencyInput name="amount" required className={`${fieldClass} pr-3 pl-6 text-right`} />
       </div>
 
       <div className="space-y-1.5">
@@ -201,11 +199,11 @@ export function TransactionForm({
       </div>
 
       {duplicates && duplicates.length > 0 && (
-        <div className="space-y-2 rounded-lg border border-[#f79009] bg-[#fffaeb] p-3 sm:col-span-3">
-          <p className="text-sm font-medium text-[#b54708]">
+        <div className="space-y-2 rounded-lg border border-caution bg-caution-bg p-3 sm:col-span-3">
+          <p className="text-sm font-medium text-caution-strong">
             This looks like it might already be logged:
           </p>
-          <ul className="space-y-1 text-sm text-[#b54708]">
+          <ul className="space-y-1 text-sm text-caution-strong">
             {duplicates.map((d) => (
               <li key={d.id}>
                 {d.description} — {formatMoney(d.amount)} on {formatDate(d.txn_date)}
@@ -216,7 +214,7 @@ export function TransactionForm({
             <button
               type="button"
               onClick={confirmAnyway}
-              className="rounded-md border border-[#f79009] px-3 py-1.5 text-xs font-semibold text-[#b54708] hover:bg-[#fef0c7]"
+              className="rounded-md border border-caution px-3 py-1.5 text-xs font-semibold text-caution-strong hover:bg-caution-bg"
             >
               Add anyway
             </button>
@@ -226,7 +224,7 @@ export function TransactionForm({
                 setDuplicates(null);
                 setPendingFormData(null);
               }}
-              className="rounded-md px-3 py-1.5 text-xs font-medium text-[#b54708] hover:bg-[#fef0c7]"
+              className="rounded-md px-3 py-1.5 text-xs font-medium text-caution-strong hover:bg-caution-bg"
             >
               Cancel
             </button>

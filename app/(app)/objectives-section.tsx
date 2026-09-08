@@ -13,43 +13,21 @@ import type { AccountWithBalance } from "@/lib/queries";
 import { SubmitButton } from "@/app/(app)/submit-button";
 import { useToast } from "@/app/(app)/toast";
 import { EmptyState } from "@/app/(app)/empty-state";
+import { Celebration, useCelebration } from "@/app/(app)/celebration";
+import { FIELD_CLASS as fieldClass } from "@/lib/ui";
+import { timeElapsedPct } from "@/lib/objective-progress";
 
 const STATUS_STYLES: Record<string, string> = {
   "Not Started": "bg-bg text-text-faint",
   "In Progress": "bg-accent-soft text-accent",
-  "On Hold": "bg-[#fef0c7] text-[#93370d]",
-  Achieved: "bg-[#dcfae6] text-[#0b9055]",
+  "On Hold": "bg-caution-bg text-caution-strong",
+  Achieved: "bg-positive-bg text-positive-strong",
 };
-
-// text-base (16px) on mobile prevents iOS Safari's auto-zoom-on-focus.
-const fieldClass =
-  "w-full rounded-lg border border-border bg-bg px-3 py-2.5 text-base sm:py-2 sm:text-sm text-text outline-none transition-colors focus:border-accent";
 
 function formatRange(start: string | null, end: string | null) {
   if (!start && !end) return null;
   if (start && end) return `${formatDate(start)} – ${formatDate(end)}`;
   return formatDate((start ?? end)!);
-}
-
-// % of the way from start_date to end_date, based on today's date — a proxy
-// for progress when an objective has no numeric target to track against.
-function timeElapsedPct(
-  start: string | null,
-  end: string | null,
-): number | null {
-  if (!start || !end) return null;
-  const startMs = new Date(`${start}T00:00:00Z`).getTime();
-  const endMs = new Date(`${end}T00:00:00Z`).getTime();
-  if (endMs <= startMs) return null;
-  // Truncate "now" to the day — using the exact millisecond would make the
-  // server-render and client-hydration values differ and trigger a
-  // hydration mismatch on this client component.
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const nowMs = new Date(`${todayIso}T00:00:00Z`).getTime();
-  return Math.min(
-    100,
-    Math.max(0, ((nowMs - startMs) / (endMs - startMs)) * 100),
-  );
 }
 
 function AddObjectiveForm({
@@ -136,6 +114,20 @@ function AddObjectiveForm({
         <p className="text-xs text-text-faint">
           When set, progress tracks that account&apos;s real balance against its
           goal instead of time elapsed.
+        </p>
+      </div>
+      <div className="space-y-1.5 sm:col-span-2">
+        <label className="text-sm font-medium text-text">
+          Image URL (optional)
+        </label>
+        <input
+          type="url"
+          name="image_url"
+          placeholder="https://…"
+          className={fieldClass}
+        />
+        <p className="text-xs text-text-faint">
+          Used as the background when this goal is featured on the dashboard.
         </p>
       </div>
       <div className="flex gap-2 sm:col-span-2">
@@ -240,6 +232,21 @@ function EditObjectiveForm({
           ))}
         </select>
       </div>
+      <div className="space-y-1.5 sm:col-span-2">
+        <label className="text-sm font-medium text-text">
+          Image URL (optional)
+        </label>
+        <input
+          type="url"
+          name="image_url"
+          defaultValue={objective.image_url ?? ""}
+          placeholder="https://…"
+          className={fieldClass}
+        />
+        <p className="text-xs text-text-faint">
+          Used as the background when this goal is featured on the dashboard.
+        </p>
+      </div>
       <div className="flex gap-2 sm:col-span-2">
         <SubmitButton pendingText="Saving…">Save changes</SubmitButton>
         <button
@@ -264,6 +271,7 @@ export function ObjectivesSection({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const showToast = useToast();
+  const { celebrationKey, fire } = useCelebration();
 
   async function handleDelete(o: Objective) {
     if (!window.confirm(`Delete "${o.name}"? This can't be undone.`)) return;
@@ -275,6 +283,7 @@ export function ObjectivesSection({
 
   return (
     <div>
+      <Celebration celebrationKey={celebrationKey} />
       <button
         type="button"
         onClick={() => setCollapsed((c) => !c)}
@@ -351,6 +360,14 @@ export function ObjectivesSection({
                     key={o.id}
                     className="flex items-start justify-between gap-4 px-5 py-4"
                   >
+                    {o.image_url && (
+                      // eslint-disable-next-line @next/next/no-img-element -- arbitrary user-supplied URL, not a local/known-domain asset
+                      <img
+                        src={o.image_url}
+                        alt=""
+                        className="size-12 shrink-0 rounded-lg object-cover"
+                      />
+                    )}
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-medium text-text">{o.name}</span>
@@ -361,10 +378,12 @@ export function ObjectivesSection({
                         )}
                         <select
                           defaultValue={o.status}
-                          onChange={(e) =>
-                            updateObjectiveStatus(o.id, e.target.value)
-                          }
-                          className={`rounded-full border-0 px-2 py-0.5 text-[11px] font-medium outline-none ${STATUS_STYLES[o.status] ?? "bg-bg text-text-faint"}`}
+                          onChange={(e) => {
+                            const next = e.target.value;
+                            if (next === "Achieved" && o.status !== "Achieved") fire();
+                            updateObjectiveStatus(o.id, next);
+                          }}
+                          className={`rounded-full border-0 px-2 py-0.5 text-[11px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-accent-bright focus-visible:ring-offset-1 ${STATUS_STYLES[o.status] ?? "bg-bg text-text-faint"}`}
                         >
                           {OBJECTIVE_STATUSES.map((s) => (
                             <option key={s} value={s}>
@@ -380,12 +399,12 @@ export function ObjectivesSection({
                         <div className="mt-2 flex items-center gap-2">
                           <div className="h-1.5 min-w-0 flex-1 rounded-full bg-bg">
                             <div
-                              className="h-1.5 rounded-full"
+                              className={`animate-bar-grow-x h-1.5 rounded-full ${pct >= 100 ? "animate-pulse-glow" : ""}`}
                               style={{
                                 width: `${pct}%`,
                                 backgroundColor:
                                   o.status === "Achieved"
-                                    ? "#17b26a"
+                                    ? "var(--positive)"
                                     : "var(--accent)",
                               }}
                             />
@@ -414,7 +433,7 @@ export function ObjectivesSection({
                       <button
                         type="button"
                         onClick={() => handleDelete(o)}
-                        className="text-xs text-text-faint hover:text-[#f04438]"
+                        className="text-xs text-text-faint hover:text-negative"
                       >
                         Delete
                       </button>

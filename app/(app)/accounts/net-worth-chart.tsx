@@ -40,9 +40,13 @@ export function NetWorthChart({ points }: { points: NetWorthPoint[] }) {
 
   return (
     <div>
-      <div className="mb-2 flex items-baseline justify-between">
-        <p className="tabular text-2xl font-semibold text-text">{formatMoney(latest.netWorth)}</p>
-        <p className={`tabular text-sm font-medium ${change >= 0 ? "text-success" : "text-[#f04438]"}`}>
+      <div className="mb-2 flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-2">
+        <p className="tabular text-2xl font-semibold text-text">
+          {formatMoney(latest.netWorth)}
+        </p>
+        <p
+          className={`tabular text-sm font-medium ${change >= 0 ? "text-success" : "text-negative"}`}
+        >
           {change >= 0 ? "+" : ""}
           {formatMoney(change)} since {first.periodName}
         </p>
@@ -53,7 +57,14 @@ export function NetWorthChart({ points }: { points: NetWorthPoint[] }) {
         onMouseLeave={() => setHovered(null)}
       >
         <path d={areaPath} fill="var(--accent-soft)" opacity={0.5} />
-        <path d={linePath} fill="none" stroke="var(--accent)" strokeWidth={2} />
+        <path
+          d={linePath}
+          pathLength={1}
+          className="animate-draw-line"
+          fill="none"
+          stroke="var(--accent)"
+          strokeWidth={2}
+        />
         {points.map((p, i) => (
           <g key={p.periodId}>
             <circle
@@ -64,7 +75,7 @@ export function NetWorthChart({ points }: { points: NetWorthPoint[] }) {
               onMouseEnter={() => setHovered(i)}
             />
             <rect
-              x={xFor(i) - (WIDTH / points.length) / 2}
+              x={xFor(i) - WIDTH / points.length / 2}
               y={0}
               width={WIDTH / points.length}
               height={HEIGHT}

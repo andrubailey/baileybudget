@@ -7,14 +7,15 @@ const MODEL = "claude-opus-5";
 const LOG_TRANSACTION_TOOL: Anthropic.Tool = {
   name: "log_transaction",
   description:
-    "Log an income or expense transaction into the household budget. Call this once you know the kind, description, amount, and date. If the amount or whether it's income vs. expense is genuinely ambiguous, ask a clarifying question in plain text instead of guessing.",
+    "Log one income, expense, or transfer into the household budget. Call this once per transaction — if the user describes several in one message, call it multiple times in the same turn, once for each. If the amount or whether it's income vs. expense vs. transfer is genuinely ambiguous, ask a clarifying question in plain text instead of guessing.",
   input_schema: {
     type: "object",
     properties: {
-      kind: { type: "string", enum: ["income", "expense"] },
+      kind: { type: "string", enum: ["income", "expense", "transfer"] },
       description: {
         type: "string",
-        description: "Short description, e.g. the merchant or income source",
+        description:
+          "Short description, e.g. the merchant, income source, or reason for a transfer",
       },
       amount: { type: "number", description: "Positive dollar amount" },
       txn_date: {
@@ -24,11 +25,18 @@ const LOG_TRANSACTION_TOOL: Anthropic.Tool = {
       },
       account_name: {
         type: "string",
-        description: "Name of the account this affects, if mentioned or obvious from context",
+        description:
+          "Name of the account this affects, if mentioned or obvious from context. For a transfer, this is the source account money leaves.",
+      },
+      to_account_name: {
+        type: "string",
+        description:
+          "Only for kind='transfer': name of the destination account money moves into.",
       },
       category_name: {
         type: "string",
-        description: "Category name, if mentioned or obvious from context",
+        description:
+          "Category name, if mentioned or obvious from context. Never set for kind='transfer' — transfers aren't categorized.",
       },
     },
     required: ["kind", "description", "amount", "txn_date"],
@@ -49,6 +57,21 @@ function findByName<T extends { name: string }>(
 }
 
 export async function POST(request: Request) {
+  try {
+    return await handlePost(request);
+  } catch (err) {
+    console.error("assistant route error:", err);
+    const message =
+      err instanceof Anthropic.APIError && err.status === 401
+        ? "The server's Anthropic API key is invalid or expired — ask whoever set up this app to update ANTHROPIC_API_KEY."
+        : err instanceof Error
+          ? err.message
+          : "Unexpected server error.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+async function handlePost(request: Request) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -92,7 +115,7 @@ export async function POST(request: Request) {
 
   const today = new Date().toISOString().slice(0, 10);
 
-  const system = `You are a budgeting assistant embedded in a household budget app. Your only job is logging income/expense transactions via the log_transaction tool — you cannot do anything else (no editing accounts, categories, or past transactions).
+  const system = `You are a budgeting assistant embedded in a household budget app. Your only job is logging income, expense, and transfer transactions via the log_transaction tool — you cannot do anything else (no editing accounts, categories, or past transactions).
 
 Today's date is ${today}.
 
@@ -100,21 +123,27 @@ Known accounts: ${accountList.map((a) => a.name).join(", ") || "(none yet)"}
 Known expense categories: ${categoryList.filter((c) => c.kind === "expense").map((c) => c.name).join(", ") || "(none yet)"}
 Known income categories: ${categoryList.filter((c) => c.kind === "income").map((c) => c.name).join(", ") || "(none yet)"}
 
-When the user describes a transaction, call log_transaction with your best interpretation. Match account_name/category_name to the known lists above when possible — small wording differences are fine, they'll be matched loosely. If a field is truly unclear (e.g. no amount given), ask instead of guessing. After logging, confirm briefly in plain language (one short sentence).`;
+The user often pastes or dictates a whole batch at once — several expenses, a paycheck, and a transfer all in one message, sometimes as a list. Parse the *entire* message and call log_transaction once per transaction it describes, all in the same turn, in the order mentioned. Don't stop after the first one. For a transfer, set account_name to where the money leaves and to_account_name to where it lands, and never set category_name. Match account_name/to_account_name/category_name to the known lists above when possible — small wording differences are fine, they'll be matched loosely. If a field is truly unclear for one item (e.g. no amount given), ask about just that one instead of guessing, but still log everything else that was clear. After logging, confirm briefly in plain language — if you logged more than one, summarize as a short list, not a paragraph.`;
 
   const messages: Anthropic.MessageParam[] = [
     ...state,
     { role: "user", content: userMessage },
   ];
 
-  const client = new Anthropic({ apiKey });
+  // Org-wide (not workspace-scoped) API keys require this header on every
+  // request. Harmless to omit for a workspace-scoped key.
+  const workspaceId = process.env.ANTHROPIC_WORKSPACE_ID;
+  const client = new Anthropic({
+    apiKey,
+    defaultHeaders: workspaceId ? { "anthropic-workspace-id": workspaceId } : undefined,
+  });
   let loggedCount = 0;
 
   for (let i = 0; i < 4; i++) {
     const response = await client.messages.create({
       model: MODEL,
-      max_tokens: 1024,
-      output_config: { effort: "low" },
+      max_tokens: 4096,
+      output_config: { effort: "medium" },
       system,
       tools: [LOG_TRANSACTION_TOOL],
       messages,
@@ -152,11 +181,12 @@ When the user describes a transaction, call log_transaction with your best inter
       }
 
       const input = block.input as {
-        kind: "income" | "expense";
+        kind: "income" | "expense" | "transfer";
         description: string;
         amount: number;
         txn_date: string;
         account_name?: string;
+        to_account_name?: string;
         category_name?: string;
       };
 
@@ -175,10 +205,26 @@ When the user describes a transaction, call log_transaction with your best inter
       }
 
       const account = findByName(accountList, input.account_name);
-      const category = findByName(
-        categoryList.filter((c) => c.kind === input.kind),
-        input.category_name,
-      );
+      const isTransfer = input.kind === "transfer";
+      const toAccount = isTransfer
+        ? findByName(accountList, input.to_account_name)
+        : null;
+      const category = isTransfer
+        ? null
+        : findByName(
+            categoryList.filter((c) => c.kind === input.kind),
+            input.category_name,
+          );
+
+      if (isTransfer && (!account || !toAccount)) {
+        toolResults.push({
+          type: "tool_result",
+          tool_use_id: block.id,
+          content: `Couldn't match both accounts for this transfer (from "${input.account_name ?? ""}" to "${input.to_account_name ?? ""}"). Ask the user which accounts they mean.`,
+          is_error: true,
+        });
+        continue;
+      }
 
       const { error } = await supabase.from("transactions").insert({
         kind: input.kind,
@@ -186,6 +232,7 @@ When the user describes a transaction, call log_transaction with your best inter
         amount: input.amount,
         txn_date: input.txn_date,
         account_id: account?.id ?? null,
+        to_account_id: toAccount?.id ?? null,
         category_id: category?.id ?? null,
         period_id: period.id,
         created_by: user.id,
@@ -205,7 +252,9 @@ When the user describes a transaction, call log_transaction with your best inter
       toolResults.push({
         type: "tool_result",
         tool_use_id: block.id,
-        content: `Logged. Account matched: ${account?.name ?? "none"}. Category matched: ${category?.name ?? "none"}. Period: ${period.name}.`,
+        content: isTransfer
+          ? `Logged transfer. From: ${account?.name}. To: ${toAccount?.name}. Period: ${period.name}.`
+          : `Logged. Account matched: ${account?.name ?? "none"}. Category matched: ${category?.name ?? "none"}. Period: ${period.name}.`,
       });
     }
 

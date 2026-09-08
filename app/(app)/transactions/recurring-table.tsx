@@ -70,13 +70,13 @@ export function RecurringTable({
     className: string;
   } {
     if (postedIds.has(r.id)) {
-      return { label: "Posted", className: "bg-[#dcfae6] text-[#0b9055]" };
+      return { label: "Posted", className: "bg-positive-bg text-positive-strong" };
     }
     if (!r.is_active) {
       return { label: "Paused", className: "bg-bg text-text-faint" };
     }
     if (r.day_of_month <= todayOfMonth) {
-      return { label: "Due", className: "bg-[#fef0c7] text-[#93370d]" };
+      return { label: "Due", className: "bg-caution-bg text-caution-strong" };
     }
     return { label: "Upcoming", className: "bg-bg text-text-faint" };
   }
@@ -150,10 +150,10 @@ export function RecurringTable({
                       toggleRecurringActive(r.id, !r.is_active),
                     )
                   }
-                  className={`rounded-md px-2 py-1 text-xs font-medium disabled:opacity-50 ${
+                  className={`rounded-md px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
                     r.is_active
-                      ? "bg-accent-soft text-accent"
-                      : "bg-bg text-text-faint"
+                      ? "bg-accent-soft text-accent hover:bg-accent-border"
+                      : "bg-bg text-text-faint hover:bg-border"
                   }`}
                 >
                   {r.is_active ? "Active" : "Paused"}
@@ -164,7 +164,7 @@ export function RecurringTable({
                   onClick={() =>
                     withRowPending(r.id, () => deleteRecurringTransaction(r.id))
                   }
-                  className="text-xs font-medium text-text-faint hover:text-[#f04438] disabled:opacity-50"
+                  className="text-xs font-medium text-text-faint hover:text-negative disabled:opacity-50"
                 >
                   {rowPending ? "Deleting…" : "Delete"}
                 </button>
@@ -256,10 +256,10 @@ export function RecurringTable({
                             toggleRecurringActive(r.id, !r.is_active),
                           )
                         }
-                        className={`rounded-md px-2 py-1 text-xs font-medium disabled:opacity-50 ${
+                        className={`rounded-md px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
                           r.is_active
-                            ? "bg-accent-soft text-accent"
-                            : "bg-bg text-text-faint"
+                            ? "bg-accent-soft text-accent hover:bg-accent-border"
+                            : "bg-bg text-text-faint hover:bg-border"
                         }`}
                       >
                         {r.is_active ? "Active" : "Paused"}
@@ -281,7 +281,7 @@ export function RecurringTable({
                             deleteRecurringTransaction(r.id),
                           )
                         }
-                        className="text-xs font-medium text-text-faint hover:text-[#f04438] disabled:opacity-50"
+                        className="text-xs font-medium text-text-faint hover:text-negative disabled:opacity-50"
                       >
                         {rowPending ? "Deleting…" : "Delete"}
                       </button>
@@ -304,7 +304,7 @@ export function RecurringTable({
                                   key={p.txn_date}
                                   className={`rounded-md px-2 py-1 text-xs font-medium ${
                                     changed
-                                      ? "bg-[#fef0c7] text-[#93370d]"
+                                      ? "bg-caution-bg text-caution-strong"
                                       : "bg-bg text-text-muted"
                                   }`}
                                   title={formatDate(p.txn_date)}

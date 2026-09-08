@@ -77,6 +77,44 @@ async function fetchAllTransactionDeltas(
   return rows;
 }
 
+// Same 1000-row PostgREST cap as fetchAllTransactionDeltas above, for the
+// other two spots that used to do an unpaginated `.select()` over the whole
+// transactions table (getBalanceHistory, getSavingsTransferTotal) — with
+// 1057 transactions already in this household's data, both were silently
+// dropping the oldest ~57 rows.
+async function fetchAllTransactionRows(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+): Promise<
+  {
+    account_id: string | null;
+    to_account_id: string | null;
+    kind: string;
+    amount: number;
+    txn_date: string;
+  }[]
+> {
+  const rows: {
+    account_id: string | null;
+    to_account_id: string | null;
+    kind: string;
+    amount: number;
+    txn_date: string;
+  }[] = [];
+  let from = 0;
+  for (;;) {
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("account_id, to_account_id, kind, amount, txn_date")
+      .is("deleted_at", null)
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    rows.push(...(data ?? []));
+    if (!data || data.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  return rows;
+}
+
 export async function getAccountsWithBalances(): Promise<AccountWithBalance[]> {
   const supabase = await createClient();
 
@@ -313,6 +351,43 @@ async function getRolloverAmounts(
   return result;
 }
 
+// Money actively moved into a savings-type account during the range, minus
+// any moved back out — a transfer to savings never shows up in income or
+// expense (correctly — moving your own money around isn't earning or
+// spending it), so income-minus-expense alone makes "how much did I save"
+// look like zero even in a month where the household diligently transferred
+// money into a savings account. Nets transfers between two savings accounts
+// to zero, and skips deposits from unsurfaced starting balances.
+export async function getSavingsTransferTotal(
+  start: string,
+  end: string,
+): Promise<number> {
+  const supabase = await createClient();
+  const [{ data: accounts }, { data: transactions }] = await Promise.all([
+    supabase.from("accounts").select("id, account_type"),
+    supabase
+      .from("transactions")
+      .select("amount, account_id, to_account_id")
+      .eq("kind", "transfer")
+      .gte("txn_date", start)
+      .lte("txn_date", end)
+      .is("deleted_at", null),
+  ]);
+
+  const savingsIds = new Set(
+    (accounts ?? [])
+      .filter((a) => a.account_type === "savings")
+      .map((a) => a.id),
+  );
+
+  let net = 0;
+  for (const t of transactions ?? []) {
+    if (t.to_account_id && savingsIds.has(t.to_account_id)) net += t.amount;
+    if (t.account_id && savingsIds.has(t.account_id)) net -= t.amount;
+  }
+  return net;
+}
+
 export async function getPeriodSummaryForRange(
   start: string,
   end: string,
@@ -432,15 +507,28 @@ export async function getTransactionsForRange(
   end: string,
 ): Promise<Transaction[]> {
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("transactions")
-    .select("*")
-    .gte("txn_date", start)
-    .lte("txn_date", end)
-    .is("deleted_at", null)
-    .order("txn_date", { ascending: false })
-    .order("created_at", { ascending: false });
-  return data ?? [];
+  // Paginated — callers can pass a wide range (a full year via the reports
+  // "custom" picker, say), and this household's transaction count is
+  // already past PostgREST's 1000-row default cap, which would otherwise
+  // silently drop the oldest matching rows with no error.
+  const rows: Transaction[] = [];
+  let from = 0;
+  for (;;) {
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("*")
+      .gte("txn_date", start)
+      .lte("txn_date", end)
+      .is("deleted_at", null)
+      .order("txn_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .range(from, from + 999);
+    if (error) throw error;
+    rows.push(...(data ?? []));
+    if (!data || data.length < 1000) break;
+    from += 1000;
+  }
+  return rows;
 }
 
 export type MonthlyTotal = { month: string; income: number; expense: number };
@@ -550,18 +638,14 @@ export async function getPlannedTotalsByPeriod(
 // doesn't move total household net worth.
 export async function getDebtBalanceHistory(): Promise<NetWorthPoint[]> {
   const supabase = await createClient();
-  const [{ data: accounts }, { data: periods }, { data: transactions }] =
+  const [{ data: accounts }, { data: periods }, transactions] =
     await Promise.all([
       supabase.from("accounts").select("id, starting_balance, is_debt"),
       supabase
         .from("periods")
         .select("*")
         .order("start_date", { ascending: true }),
-      supabase
-        .from("transactions")
-        .select("account_id, to_account_id, kind, amount, txn_date")
-        .is("deleted_at", null)
-        .order("txn_date", { ascending: true }),
+      fetchAllTransactionRows(supabase),
     ]);
 
   const debtAccountIds = new Set(
@@ -573,7 +657,7 @@ export async function getDebtBalanceHistory(): Promise<NetWorthPoint[]> {
       balanceByAccount.set(a.id, a.starting_balance);
   }
 
-  const sorted = (transactions ?? [])
+  const sorted = transactions
     .slice()
     .sort((a, b) => a.txn_date.localeCompare(b.txn_date));
   let txnIndex = 0;
@@ -780,6 +864,124 @@ export async function findPossibleDuplicateTransactions(
   return data ?? [];
 }
 
+export type TransactionSearchResult = {
+  id: string;
+  kind: Transaction["kind"];
+  description: string;
+  notes: string | null;
+  amount: number;
+  txn_date: string;
+  period_id: string;
+  category_name: string | null;
+  account_name: string | null;
+  to_account_name: string | null;
+};
+
+// Backs the ⌘K command palette's transaction search — matches description,
+// notes, category name, account name, or an exact dollar amount, across
+// every non-deleted transaction ever logged (not scoped to one period),
+// since "find the specific transaction" only works if it can find it
+// anywhere.
+export async function searchTransactions(
+  rawQuery: string,
+): Promise<TransactionSearchResult[]> {
+  const q = rawQuery.trim();
+  if (q.length < 2) return [];
+  const supabase = await createClient();
+
+  // Commas/parens are syntactically significant in PostgREST's `.or()`
+  // mini-language — strip them out of the user-typed query so they can't be
+  // (mis)interpreted as extra filter clauses instead of literal text.
+  const safe = q.replace(/[,()]/g, " ").trim();
+  if (!safe) return [];
+
+  const [{ data: matchingCategories }, { data: matchingAccounts }] =
+    await Promise.all([
+      supabase.from("categories").select("id, name").ilike("name", `%${safe}%`),
+      supabase.from("accounts").select("id, name").ilike("name", `%${safe}%`),
+    ]);
+  const categoryIds = (matchingCategories ?? []).map((c) => c.id);
+  const accountIds = (matchingAccounts ?? []).map((a) => a.id);
+
+  // A query that's purely a number (e.g. "64.20" or "$64.20") also matches
+  // on exact amount — the single most common way to remember a transaction.
+  const numeric = Number(safe.replace(/[^0-9.]/g, ""));
+  const hasAmount = /\d/.test(safe) && Number.isFinite(numeric) && numeric > 0;
+
+  const orParts = [`description.ilike.%${safe}%`, `notes.ilike.%${safe}%`];
+  if (categoryIds.length > 0) {
+    orParts.push(`category_id.in.(${categoryIds.join(",")})`);
+  }
+  if (accountIds.length > 0) {
+    orParts.push(`account_id.in.(${accountIds.join(",")})`);
+    orParts.push(`to_account_id.in.(${accountIds.join(",")})`);
+  }
+  if (hasAmount) {
+    orParts.push(`amount.eq.${numeric}`);
+  }
+
+  const { data, error } = await supabase
+    .from("transactions")
+    .select(
+      "id, kind, description, notes, amount, txn_date, period_id, account_id, to_account_id, category_id",
+    )
+    .is("deleted_at", null)
+    .or(orParts.join(","))
+    .order("txn_date", { ascending: false })
+    .limit(20);
+
+  if (error) {
+    console.error("searchTransactions failed:", error);
+    return [];
+  }
+
+  // Enrich with names for display — reuse whichever category/account rows
+  // we already fetched above for the id-matching, and only fetch the
+  // (usually few) additional ones referenced by results but not matched by
+  // name themselves (e.g. searching "Whole Foods" matches by description,
+  // but the result still needs its category's name to display).
+  const categoryById = new Map((matchingCategories ?? []).map((c) => [c.id, c.name]));
+  const accountById = new Map((matchingAccounts ?? []).map((a) => [a.id, a.name]));
+  const rows = data ?? [];
+  const missingCategoryIds = [
+    ...new Set(
+      rows
+        .map((t) => t.category_id)
+        .filter((id): id is string => !!id && !categoryById.has(id)),
+    ),
+  ];
+  const missingAccountIds = [
+    ...new Set(
+      rows
+        .flatMap((t) => [t.account_id, t.to_account_id])
+        .filter((id): id is string => !!id && !accountById.has(id)),
+    ),
+  ];
+  const [{ data: extraCategories }, { data: extraAccounts }] = await Promise.all([
+    missingCategoryIds.length > 0
+      ? supabase.from("categories").select("id, name").in("id", missingCategoryIds)
+      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    missingAccountIds.length > 0
+      ? supabase.from("accounts").select("id, name").in("id", missingAccountIds)
+      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+  ]);
+  for (const c of extraCategories ?? []) categoryById.set(c.id, c.name);
+  for (const a of extraAccounts ?? []) accountById.set(a.id, a.name);
+
+  return rows.map((t) => ({
+    id: t.id,
+    kind: t.kind,
+    description: t.description,
+    notes: t.notes,
+    amount: t.amount,
+    txn_date: t.txn_date,
+    period_id: t.period_id,
+    category_name: t.category_id ? (categoryById.get(t.category_id) ?? null) : null,
+    account_name: t.account_id ? (accountById.get(t.account_id) ?? null) : null,
+    to_account_name: t.to_account_id ? (accountById.get(t.to_account_id) ?? null) : null,
+  }));
+}
+
 export async function getRecurringTransactions(): Promise<
   RecurringTransaction[]
 > {
@@ -820,25 +1022,29 @@ export type NetWorthPoint = {
 // oldest first, for a balance-over-time chart.
 export async function getNetWorthHistory(): Promise<NetWorthPoint[]> {
   const supabase = await createClient();
-  const [{ data: accounts }, { data: periods }, { data: transactions }] =
+  const [{ data: accounts }, { data: periods }, transactions] =
     await Promise.all([
-      supabase.from("accounts").select("id, starting_balance"),
+      supabase.from("accounts").select("id, starting_balance, is_active"),
       supabase
         .from("periods")
         .select("*")
         .order("start_date", { ascending: true }),
-      supabase
-        .from("transactions")
-        .select("account_id, to_account_id, kind, amount, txn_date")
-        .is("deleted_at", null)
-        .order("txn_date", { ascending: true }),
+      fetchAllTransactionRows(supabase),
     ]);
 
-  const startingTotal = (accounts ?? []).reduce(
-    (sum, a) => sum + a.starting_balance,
-    0,
+  // Active-only, matching how the dashboard's "Total Balance" figure this
+  // feeds a trend comparison for is computed — otherwise a deactivated
+  // account's starting balance and history keep permanently inflating (or
+  // deflating) every past period's net worth even though that account no
+  // longer counts toward the current total, corrupting the up/down trend.
+  const activeAccountIds = new Set(
+    (accounts ?? []).filter((a) => a.is_active).map((a) => a.id),
   );
-  const sorted = (transactions ?? [])
+  const startingTotal = (accounts ?? [])
+    .filter((a) => a.is_active)
+    .reduce((sum, a) => sum + a.starting_balance, 0);
+  const sorted = transactions
+    .filter((t) => t.account_id !== null && activeAccountIds.has(t.account_id))
     .slice()
     .sort((a, b) => a.txn_date.localeCompare(b.txn_date));
 
@@ -879,20 +1085,22 @@ export type BalancePoint = { date: string; balance: number };
 // (today inclusive), for a small balance-over-time sparkline.
 export async function getBalanceHistory(days: number): Promise<BalancePoint[]> {
   const supabase = await createClient();
-  const [{ data: accounts }, { data: transactions }] = await Promise.all([
-    supabase.from("accounts").select("id, starting_balance"),
-    supabase
-      .from("transactions")
-      .select("kind, amount, txn_date")
-      .is("deleted_at", null)
-      .order("txn_date", { ascending: true }),
+  const [{ data: accounts }, transactions] = await Promise.all([
+    supabase.from("accounts").select("id, starting_balance, is_active"),
+    fetchAllTransactionRows(supabase),
   ]);
 
-  const startingTotal = (accounts ?? []).reduce(
-    (sum, a) => sum + a.starting_balance,
-    0,
+  // Match the "Total Balance" figure this graphs — activeAccounts only, so
+  // a deactivated/closed account (and its transaction history) doesn't keep
+  // dragging the line even though it's excluded from the headline number.
+  const activeAccountIds = new Set(
+    (accounts ?? []).filter((a) => a.is_active).map((a) => a.id),
   );
-  const sorted = (transactions ?? [])
+  const startingTotal = (accounts ?? [])
+    .filter((a) => a.is_active)
+    .reduce((sum, a) => sum + a.starting_balance, 0);
+  const sorted = transactions
+    .filter((t) => t.account_id !== null && activeAccountIds.has(t.account_id))
     .slice()
     .sort((a, b) => a.txn_date.localeCompare(b.txn_date));
 

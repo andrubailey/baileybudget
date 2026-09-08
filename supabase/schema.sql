@@ -148,6 +148,8 @@ create table if not exists objectives (
   -- When set, progress tracks this account's real balance against its goal
   -- instead of being tracked manually.
   linked_account_id uuid references accounts(id) on delete set null,
+  -- Background image for the featured-goal banner on the dashboard.
+  image_url text,
   created_at timestamptz not null default now()
 );
 
@@ -163,9 +165,19 @@ create table if not exists api_tokens (
   revoked_at timestamptz
 );
 
+-- Per-person display name + avatar, edited from the sidebar profile chip.
+create table if not exists profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  display_name text,
+  avatar_url text,
+  updated_at timestamptz not null default now()
+);
+
 -- Row Level Security: this is a 2-person shared household budget.
 -- Any authenticated user (you + your wife) can read/write everything —
--- no per-user partitioning, since the whole point is shared data.
+-- no per-user partitioning, since the whole point is shared data. profiles
+-- is the one exception: both can read either profile, but each person can
+-- only write their own row.
 
 alter table accounts enable row level security;
 alter table periods enable row level security;
@@ -177,6 +189,7 @@ alter table transaction_splits enable row level security;
 alter table transaction_history enable row level security;
 alter table objectives enable row level security;
 alter table api_tokens enable row level security;
+alter table profiles enable row level security;
 
 drop policy if exists "authenticated read accounts" on accounts;
 drop policy if exists "authenticated write accounts" on accounts;
@@ -227,3 +240,9 @@ drop policy if exists "authenticated read api_tokens" on api_tokens;
 drop policy if exists "authenticated write api_tokens" on api_tokens;
 create policy "authenticated read api_tokens" on api_tokens for select to authenticated using (true);
 create policy "authenticated write api_tokens" on api_tokens for all to authenticated using (true) with check (true);
+
+drop policy if exists "authenticated read profiles" on profiles;
+drop policy if exists "individual write own profile" on profiles;
+create policy "authenticated read profiles" on profiles for select to authenticated using (true);
+create policy "individual write own profile" on profiles for all to authenticated
+  using (auth.uid() = id) with check (auth.uid() = id);

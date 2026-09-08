@@ -15,6 +15,10 @@ import { getCategoryIcon } from "@/lib/category-icons";
 import { getCategoryColor } from "@/lib/category-colors";
 import { StatusPill } from "@/app/(app)/status-pill";
 import { EmptyState } from "@/app/(app)/empty-state";
+import {
+  COMPACT_FIELD_CLASS as fieldClass,
+  COMPACT_NUMERIC_CELL_CLASS as numericCellClass,
+} from "@/lib/ui";
 import type { Period } from "@/lib/types";
 
 export async function CategoriesPanel({
@@ -35,7 +39,7 @@ export async function CategoriesPanel({
     : undefined;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <p className="text-sm text-text-muted">
         Planned amounts are set per period for expense categories.
       </p>
@@ -86,7 +90,7 @@ export async function CategoriesPanel({
                         c.remaining > 0
                           ? "text-success"
                           : c.remaining < 0
-                            ? "text-[#f04438]"
+                            ? "text-negative"
                             : "text-text"
                       }`}
                     >
@@ -108,7 +112,7 @@ export async function CategoriesPanel({
                       step="0.01"
                       name="planned_amount"
                       defaultValue={c.planned}
-                      className="tabular w-full rounded-md border border-border bg-bg px-2 py-1.5 text-base text-text outline-none focus:border-accent"
+                      className={`tabular ${fieldClass}`}
                       placeholder="Planned"
                     />
                     <button
@@ -121,7 +125,7 @@ export async function CategoriesPanel({
                 </div>
               ))}
             {expenseProgress.length === 0 && (
-              <EmptyState message="No expense categories yet." />
+              <EmptyState message="No expense categories yet — add one above." />
             )}
           </div>
 
@@ -155,7 +159,7 @@ export async function CategoriesPanel({
                       c.remaining > 0
                         ? "text-success"
                         : c.remaining < 0
-                          ? "text-[#f04438]"
+                          ? "text-negative"
                           : "text-text";
                     const shownTxns = c.transactions.slice(0, 4);
                     const extraCount = c.transactions.length - shownTxns.length;
@@ -219,9 +223,9 @@ export async function CategoriesPanel({
                                     ? "Marked a need — click to mark a want"
                                     : "Marked a want — click to mark a need"
                                 }
-                                className={`rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
+                                className={`rounded-md px-1.5 py-0.5 text-[11px] font-medium transition-colors ${
                                   c.is_need
-                                    ? "bg-accent-soft text-accent"
+                                    ? "bg-accent-soft text-accent hover:bg-accent-border"
                                     : "text-text-faint hover:bg-bg"
                                 }`}
                               >
@@ -241,9 +245,9 @@ export async function CategoriesPanel({
                                     ? "Rollover on — click to disable"
                                     : "Rollover off — click to enable"
                                 }
-                                className={`rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
+                                className={`rounded-md px-1.5 py-0.5 text-[11px] font-medium transition-colors ${
                                   c.rollover
-                                    ? "bg-accent-soft text-accent"
+                                    ? "bg-accent-soft text-accent hover:bg-accent-border"
                                     : "text-text-faint hover:bg-bg"
                                 }`}
                               >
@@ -268,7 +272,7 @@ export async function CategoriesPanel({
                               step="0.01"
                               name="planned_amount"
                               defaultValue={c.planned}
-                              className="w-24 rounded-md border border-border bg-bg px-2 py-1 text-sm tabular text-text outline-none focus:border-accent"
+                              className={numericCellClass}
                             />
                             <button
                               type="submit"
@@ -321,7 +325,7 @@ export async function CategoriesPanel({
                 {expenseProgress.length === 0 && (
                   <tr>
                     <td colSpan={6} className="px-6 py-4">
-                      <EmptyState message="No expense categories yet." />
+                      <EmptyState message="No expense categories yet — add one above." />
                     </td>
                   </tr>
                 )}

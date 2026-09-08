@@ -11,7 +11,7 @@ export function DeleteCategoryButton({ id, name }: { id: string; name: string })
           deleteCategory(id);
         }
       }}
-      className="text-xs text-text-faint hover:text-[#f04438]"
+      className="text-xs text-text-faint hover:text-negative"
     >
       Delete
     </button>

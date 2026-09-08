@@ -121,13 +121,13 @@ export function TrendExplorer({
         <div>
           <h2 className="text-heading text-text">Income vs. expenses</h2>
           {anomalyMonths.length > 0 && (
-            <p className="mt-1 text-xs font-medium text-[#f04438]">
+            <p className="mt-1 text-xs font-medium text-caution">
               ⚠ Unusually high spending: {anomalyMonths.join(", ")}
             </p>
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2 print:hidden">
-          <div className="flex rounded-lg border border-border bg-bg p-0.5">
+          <div className="flex gap-0.5 rounded-lg border border-border bg-bg p-0.5">
             {(["month", "quarter"] as const).map((mode) => (
               <button
                 key={mode}
@@ -218,22 +218,22 @@ export function TrendExplorer({
       <div className="mt-6 grid grid-cols-1 gap-6 border-t border-border pt-6 lg:grid-cols-3">
         <div>
           <h3 className="mb-3 text-sm font-semibold text-text">Savings rate</h3>
-          <SimpleLineChart points={savingsRatePoints} color="#0d9488" formatValue={(v) => `${v.toFixed(0)}%`} />
+          <SimpleLineChart points={savingsRatePoints} color="var(--positive)" formatValue={(v) => `${v.toFixed(0)}%`} />
         </div>
         <div>
           <h3 className="mb-3 text-sm font-semibold text-text">Net worth</h3>
           {netWorthPoints.length >= 2 ? (
-            <SimpleLineChart points={netWorthPoints} color="#7c3aed" formatValue={formatMoney} />
+            <SimpleLineChart points={netWorthPoints} color="var(--projected)" formatValue={formatMoney} />
           ) : (
-            <p className="text-sm text-text-muted">Not enough history yet.</p>
+            <p className="text-sm text-text-muted">Needs at least two months of data.</p>
           )}
         </div>
         <div>
           <h3 className="mb-3 text-sm font-semibold text-text">Debt balance</h3>
           {debtPoints.length >= 2 ? (
-            <SimpleLineChart points={debtPoints} color="#f79009" formatValue={formatMoney} />
+            <SimpleLineChart points={debtPoints} color="var(--caution)" formatValue={formatMoney} />
           ) : (
-            <p className="text-sm text-text-muted">No debt accounts tracked.</p>
+            <p className="text-sm text-text-muted">Needs at least two months of data.</p>
           )}
         </div>
       </div>

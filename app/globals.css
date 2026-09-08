@@ -7,15 +7,107 @@
   --text: #101828;
   --text-2: #333e47;
   --text-muted: #516778;
-  --text-faint: #668091;
+  /* Darkened from the original #668091 — that shade only cleared ~4.15:1
+     against white, short of WCAG AA's 4.5:1 for the normal-size text most
+     text-faint usage actually is (footnotes, table meta). This clears ~5.2:1. */
+  --text-faint: #56707e;
   /* Lime-green fintech accent. */
   --accent: #5b8a00;
   --accent-bright: #9ae600;
   --accent-soft: #ecfccb;
   --accent-border: #d9f99d;
-  --success: #17b26a;
-  --danger: #f04438;
-  --warning: #f79009;
+
+  /* ============================================================
+     SEMANTIC COLOR SYSTEM — financial state, not decoration.
+     ------------------------------------------------------------
+     Every token below is chosen for what it MEANS in a household
+     budget, never for how it looks next to something else. Pick a
+     role by asking "what is true about this number?", not "what
+     color goes here?":
+
+       neutral    — informational, no judgment attached (transfers
+                    between the household's own accounts; a status
+                    that hasn't happened yet; default/unset state).
+       positive   — money kept or gained: income landed, cleared,
+                    under budget, a goal on or ahead of pace.
+       caution    — needs attention but isn't a loss yet: pending
+                    approval, uncleared, a low-balance warning,
+                    approaching (not over) a limit.
+       negative   — money leaving in a way that's a problem, or
+                    already a loss: over budget, a debt balance, a
+                    destructive action (delete).
+       projected  — not real yet: a forecasted balance, a recurring
+                    bill that hasn't posted, anything derived rather
+                    than actually posted to an account.
+
+     Each role has up to 4 tiers — use the narrowest one that fits:
+       *          the vivid tone — small icons, dots, chart lines,
+                  progress-bar fills, anywhere color alone carries
+                  the meaning at a glance.
+       *-strong   a darker tone of the same hue — text sitting on
+                  that role's own -bg tint (needs the extra contrast
+                  a small pill's font size doesn't get from *).
+       *-bg       the pale tint behind a pill/badge/row highlight.
+       *-border   an outline a shade darker than -bg, for outlined
+                  (not filled) badges.
+
+     `--success` / `--danger` / `--warning` (below) are kept as
+     aliases onto this system for existing generic UI chrome (focus
+     rings, form validation) that isn't describing a financial fact
+     — new financial UI should reach for the roles above instead.
+     ============================================================ */
+  --neutral: var(--text-muted);
+  --neutral-strong: var(--text-2);
+  --neutral-bg: var(--border);
+  --neutral-border: var(--border);
+  /* A shade darker than --border specifically for progress-bar tracks —
+     the fill needs to read against it at a glance, which --border (meant
+     for hairline card edges) is too pale to do. */
+  --neutral-track: #dde1d8;
+
+  /* These five hues intentionally share the accent's muted, low-chroma
+     character (the accent itself is a desaturated olive, not a bright
+     saturated green) instead of the high-chroma, high-value hues a generic
+     status-color kit reaches for — that mismatched brightness against one
+     lonely bolted-on brand color was the whole tell. Positive in particular
+     shares a hue family with --accent on purpose: a designed product
+     shouldn't carry two unrelated greens (a brand green and a separate
+     "success" green) that just happen to both be present. Every -bg tint
+     below is that hue blended toward --bg (not an unrelated pastel picked
+     on its own), so each role reads as one coherent color at every tier. */
+  --positive: #4a7a3e;
+  --positive-strong: #33582b;
+  --positive-bg: #e6ebe0;
+  --positive-border: #c6d4bb;
+
+  --caution: #9c6b1f;
+  --caution-strong: #6e4c15;
+  --caution-bg: #ede4d3;
+  --caution-border: #d7c29b;
+
+  --negative: #a3492f;
+  --negative-strong: #7a3520;
+  --negative-bg: #efe0da;
+  --negative-border: #d9b7a8;
+
+  --projected: #6b5490;
+  --projected-strong: #4c3c68;
+  --projected-bg: #e6e1ec;
+  --projected-border: #c9bcd6;
+
+  /* Not one of the 5 states above, but a real recurring financial
+     fact this app renders constantly: money moving between the
+     household's own accounts. Neither a gain nor a loss, so it gets
+     its own hue rather than being forced into neutral gray or green. */
+  --transfer: #3f6e7d;
+  --transfer-bg: #dee6e5;
+
+  /* Generic UI aliases — form validation, focus rings, anything that
+     isn't stating a fact about money. Prefer the roles above for
+     anything that is. */
+  --success: var(--positive);
+  --danger: var(--negative);
+  --warning: var(--caution);
 
   /* Dark teal "hero" surface — the sidebar and any dashboard header card
      styled after the reference design's dark panels. */
@@ -70,6 +162,31 @@
   --color-success: var(--success);
   --color-danger: var(--danger);
   --color-warning: var(--warning);
+
+  --color-neutral: var(--neutral);
+  --color-neutral-strong: var(--neutral-strong);
+  --color-neutral-bg: var(--neutral-bg);
+  --color-neutral-border: var(--neutral-border);
+  --color-neutral-track: var(--neutral-track);
+  --color-positive: var(--positive);
+  --color-positive-strong: var(--positive-strong);
+  --color-positive-bg: var(--positive-bg);
+  --color-positive-border: var(--positive-border);
+  --color-caution: var(--caution);
+  --color-caution-strong: var(--caution-strong);
+  --color-caution-bg: var(--caution-bg);
+  --color-caution-border: var(--caution-border);
+  --color-negative: var(--negative);
+  --color-negative-strong: var(--negative-strong);
+  --color-negative-bg: var(--negative-bg);
+  --color-negative-border: var(--negative-border);
+  --color-projected: var(--projected);
+  --color-projected-strong: var(--projected-strong);
+  --color-projected-bg: var(--projected-bg);
+  --color-projected-border: var(--projected-border);
+  --color-transfer: var(--transfer);
+  --color-transfer-bg: var(--transfer-bg);
+
   --color-hero-bg: var(--hero-bg);
   --color-hero-bg-2: var(--hero-bg-2);
   --color-hero-text: var(--hero-text);
@@ -114,8 +231,84 @@ body {
   line-height: 16px;
 }
 
+/* ============================================================
+   TYPE SCALE — explicit financial-content roles.
+   ------------------------------------------------------------
+   `.text-display` / `.text-heading` / `.text-caption` above are
+   layout roles (page titles, card headers, footnotes) — generic
+   copy reaches for those. The four below are content roles: pick
+   one because of WHAT the text is, not where it sits on the page,
+   so a balance always looks like a balance whether it's on the
+   dashboard, an account card, or a report table.
+
+     .text-balance-display  a headline monetary figure — Total
+                             Balance, an account's balance, a
+                             report total. The single largest,
+                             most confident number on any screen.
+     .text-amount           a transaction's dollar amount in a
+                             list/table row — smaller than a
+                             balance (it's one line among many,
+                             not the headline) but still tabular
+                             and weighted so it's scannable.
+     .text-category-label   a category/account/tag name attached
+                             to a transaction — medium weight,
+                             identifies *what kind* without
+                             competing with the amount for
+                             attention.
+     .text-metadata          everything else attached to a
+                             transaction or card that isn't the
+                             amount or the category: dates, "by
+                             so-and-so", counts, secondary notes.
+
+   All monetary roles get `font-variant-numeric: tabular-nums` —
+   digits should never shift width as they change on a refresh.
+   ============================================================ */
+.text-balance-display {
+  font-size: 34px;
+  line-height: 40px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.text-amount {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.text-category-label {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+}
+
+.text-metadata {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--text-faint);
+}
+
+/* ============================================================
+   SPACING & RADIUS — Tailwind's default scales, used as-is.
+   ------------------------------------------------------------
+   An audit of every component found zero arbitrary spacing
+   (`p-[Npx]`, `gap-[Npx]`, …) or radius (`rounded-[Npx]`) values —
+   the app already spaces and rounds everything on Tailwind's
+   built-in 4px-base scale (`gap-1`…`gap-8`, `p-1`…`p-10`, etc.) and
+   radius scale (`rounded-md`/`lg`/`xl`/`2xl`/`full`). That scale
+   *is* the token layer for spacing/radius here; no override or
+   redefinition needed, and no arbitrary value should be introduced
+   without a specific reason documented next to it.
+   ============================================================ */
+
+/* Bright lime rather than the dark-green --accent — --accent reads fine as
+   an outline on white surfaces but is nearly invisible against the dark
+   teal sidebar/hero surfaces, so keyboard focus vanished there entirely. */
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-bright);
   outline-offset: 2px;
 }
 
@@ -183,6 +376,38 @@ body {
 .animate-modal-panel {
   animation: modal-panel-in 150ms ease-out;
 }
+
+/* Chat popup — grows in from the bubble that opened it (bottom-right
+   anchored) instead of the generic center-modal fade, so it reads as "this
+   panel came from that button" rather than appearing out of nowhere. */
+@keyframes chat-popup-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.animate-chat-popup {
+  transform-origin: bottom right;
+  animation: chat-popup-in 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes chat-popup-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(12px) scale(0.92);
+  }
+}
+.animate-chat-popup-out {
+  transform-origin: bottom right;
+  animation: chat-popup-out 150ms cubic-bezier(0.4, 0, 1, 1) forwards;
+}
 .animate-toast-in {
   animation: toast-in 150ms ease-out;
 }
@@ -211,8 +436,35 @@ body {
   }
 }
 .animate-bar-grow {
+  transform-box: fill-box;
   transform-origin: bottom;
   animation: bar-grow-in 500ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+/* Same grow-from-zero, anchored at the top instead — for SVG bars that
+   extend downward from a baseline (expense bars in the trend chart) rather
+   than upward from the bottom of their own box. */
+.animate-bar-grow-top {
+  transform-box: fill-box;
+  transform-origin: top;
+  animation: bar-grow-in 500ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+/* Donut/wedge entrance — each slice pops in from center instead of the
+   whole chart appearing fully drawn at once. */
+@keyframes donut-slice-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.animate-donut-slice {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: donut-slice-in 450ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 @keyframes fade-in-up {
   from {
@@ -228,17 +480,123 @@ body {
   animation: fade-in-up 400ms ease-out backwards;
 }
 
+/* Confetti burst — see Celebration component. Each piece drifts/rotates by
+   its own randomized CSS custom properties set inline per-piece. */
+@keyframes confetti-piece {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--confetti-drift), 60vh) rotate(var(--confetti-rotate));
+    opacity: 0;
+  }
+}
+.animate-confetti-piece {
+  animation-name: confetti-piece;
+  animation-timing-function: ease-out;
+  animation-fill-mode: forwards;
+}
+
+/* Horizontal counterpart to animate-bar-grow, for progress-bar fills
+   (budget categories, goals, account goal/payoff progress) — scaleX instead
+   of a dynamic width keyframe so it works regardless of the bar's actual
+   pixel width. */
+@keyframes bar-grow-in-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.animate-bar-grow-x {
+  transform-origin: left;
+  animation: bar-grow-in-x 700ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+/* Draws an SVG line/area path in instead of it appearing fully rendered —
+   pair with `pathLength={1}` on the target <path>/<polyline> so the dash
+   math works the same regardless of the path's actual geometry. */
+@keyframes draw-line-in {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.animate-draw-line {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: draw-line-in 900ms ease-out forwards;
+}
+
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+.animate-toast-out {
+  animation: toast-out 150ms ease-in forwards;
+}
+
+/* One-shot glow when a goal/progress bar first reaches 100%. */
+@keyframes pulse-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(154, 230, 0, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(154, 230, 0, 0.35);
+  }
+}
+.animate-pulse-glow {
+  animation: pulse-glow 900ms ease-out 1;
+}
+
+/* Flags a just-added row (new transaction, import, undo) with a brief
+   background flash instead of it just appearing with no acknowledgment. */
+@keyframes row-highlight {
+  from {
+    background-color: var(--accent-soft);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+.animate-row-highlight {
+  animation: row-highlight 1500ms ease-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-modal-backdrop,
   .animate-modal-panel,
+  .animate-chat-popup,
+  .animate-chat-popup-out,
   .animate-toast-in,
+  .animate-toast-out,
   .animate-bar-grow,
+  .animate-bar-grow-top,
+  .animate-bar-grow-x,
+  .animate-draw-line,
+  .animate-donut-slice,
   .animate-fade-in-up,
+  .animate-pulse-glow,
+  .animate-row-highlight,
   .card-hover {
     animation: none;
     transition: none;
   }
   .card-hover:hover {
     transform: none;
+  }
+  .animate-draw-line {
+    stroke-dashoffset: 0;
   }
 }

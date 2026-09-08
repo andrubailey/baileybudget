@@ -47,9 +47,9 @@ export default async function ReportsPage({
   const activeView = view ?? "trends";
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-text">Reports</h1>
+        <h1 className="text-2xl leading-tight font-semibold tracking-tight text-text sm:text-display">Reports</h1>
         <p className="mt-1 text-sm text-text-muted">
           Yearly trends, a weekly recap, and bulk CSV import.
         </p>
@@ -190,7 +190,7 @@ async function TrendsPanel({ requestedYear }: { requestedYear?: string }) {
   const hasActivity = !monthly.every((m) => m.income === 0 && m.expense === 0);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-heading text-text">
@@ -218,7 +218,7 @@ async function TrendsPanel({ requestedYear }: { requestedYear?: string }) {
           year={year}
         />
       ) : (
-        <div className="rounded-xl border border-border bg-surface p-6 shadow-card">
+        <div className="rounded-xl border border-border bg-surface p-5 shadow-card sm:p-6">
           <EmptyState message={`No transactions logged in ${year}.`} />
         </div>
       )}
@@ -242,7 +242,7 @@ async function TrendsPanel({ requestedYear }: { requestedYear?: string }) {
             {monthLabel(bestMonth.month)} ({formatMoney(bestMonth.net)})
           </span>
           {" · "}Toughest month:{" "}
-          <span className="font-medium text-[#f04438]">
+          <span className="font-medium text-negative">
             {monthLabel(worstMonth.month)} ({formatMoney(worstMonth.net)})
           </span>
         </p>
@@ -280,7 +280,7 @@ async function TrendsPanel({ requestedYear }: { requestedYear?: string }) {
                   </td>
                   <td
                     className={`tabular px-6 py-2.5 text-right text-sm font-medium ${
-                      net > 0 ? "text-success" : net < 0 ? "text-[#f04438]" : "text-text-muted"
+                      net > 0 ? "text-success" : net < 0 ? "text-negative" : "text-text-muted"
                     }`}
                   >
                     {formatMoney(net)}
@@ -333,11 +333,11 @@ function StatCard({
     ? value > 0
       ? "text-success"
       : value < 0
-        ? "text-[#f04438]"
+        ? "text-negative"
         : "text-text"
     : "text-text";
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-6 shadow-card">
+    <div className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-5 shadow-card sm:p-6">
       <p className="text-sm font-medium text-text-muted">{label}</p>
       <p className={`tabular text-[28px] leading-9 font-semibold tracking-[-0.56px] ${valueColor}`}>
         {formatMoney(value)}

@@ -33,8 +33,7 @@ export async function WeeklyRecapPanel() {
           {formatDate(iso(start))} – {formatDate(iso(end))}
         </p>
         <p className="mt-1 text-xs text-text-faint">
-          This is an in-app view only — there&apos;s no email or text delivery set up yet. That would need an email
-          provider (e.g. Resend) with an API key configured, plus a scheduled job to send it automatically.
+          This recap is in-app only for now — it isn&apos;t sent by email or text.
         </p>
       </div>
 
@@ -44,17 +43,17 @@ export async function WeeklyRecapPanel() {
         <StatCard label="Net" value={summary.net} emphasize />
       </div>
 
-      <div className="rounded-xl border border-border bg-surface p-5 shadow-card">
+      <div className="rounded-xl border border-border bg-surface p-5 shadow-card sm:p-6">
         <p className="text-sm text-text-muted">
           You spent{" "}
-          <span className={`tabular font-medium ${expenseChange > 0 ? "text-[#f04438]" : "text-success"}`}>
+          <span className={`tabular font-medium ${expenseChange > 0 ? "text-negative" : "text-success"}`}>
             {formatMoney(Math.abs(expenseChange))} {expenseChange > 0 ? "more" : "less"}
           </span>{" "}
           than the week before ({formatMoney(previousSummary.expense)}).
         </p>
       </div>
 
-      <div className="rounded-xl border border-border bg-surface p-5 shadow-card">
+      <div className="rounded-xl border border-border bg-surface p-5 shadow-card sm:p-6">
         <p className="mb-3 text-sm font-medium text-text-muted">Top categories this week</p>
         <ul className="space-y-2">
           {topCategories.map((c) => (
@@ -67,7 +66,7 @@ export async function WeeklyRecapPanel() {
         </ul>
       </div>
 
-      <div className="rounded-xl border border-border bg-surface p-5 shadow-card">
+      <div className="rounded-xl border border-border bg-surface p-5 shadow-card sm:p-6">
         <p className="mb-3 text-sm font-medium text-text-muted">{transactions.length} transactions logged this week</p>
         <ul className="divide-y divide-border">
           {transactions.slice(0, 10).map((t) => (
@@ -87,7 +86,7 @@ export async function WeeklyRecapPanel() {
 
 function StatCard({ label, value, emphasize }: { label: string; value: number; emphasize?: boolean }) {
   return (
-    <div className="flex flex-col gap-1.5 rounded-xl border border-border bg-surface p-5 shadow-card">
+    <div className="flex flex-col gap-1.5 rounded-xl border border-border bg-surface p-5 shadow-card sm:p-6">
       <p className="text-sm font-medium text-text-muted">{label}</p>
       <p className={`tabular text-2xl font-semibold ${emphasize ? "text-accent" : "text-text"}`}>
         {formatMoney(value)}

@@ -7,7 +7,7 @@ export default async function GoalsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-text">Goals</h1>
+        <h1 className="text-2xl leading-tight font-semibold tracking-tight text-text sm:text-display">Goals</h1>
         <p className="mt-1 text-sm text-text-muted">
           Savings targets, payoff milestones, and other financial objectives.
         </p>

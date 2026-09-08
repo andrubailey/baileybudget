@@ -1,16 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "@/app/actions";
 import { LogoMark } from "@/app/(app)/logo-mark";
 import { PresenceIndicator } from "@/app/(app)/presence-indicator";
-import { NewTransactionButton } from "@/app/(app)/new-transaction-button";
+import { ProfileModal } from "@/app/(app)/profile-modal";
 import { getAvatarColors } from "@/lib/avatar-colors";
 
-function initialsFor(email: string) {
-  return email.trim()[0]?.toUpperCase() ?? "?";
+function initialsFor(name: string) {
+  return name.trim()[0]?.toUpperCase() ?? "?";
 }
 
 const PRIMARY_LINKS = [
@@ -76,19 +76,6 @@ const PRIMARY_LINKS = [
     ),
   },
   {
-    href: "/investments",
-    label: "Investments",
-    icon: (
-      <path
-        d="M3 17 9 11l4 4 8-8M21 7h-6m6 0v6"
-        stroke="currentColor"
-        strokeWidth={1.6}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    ),
-  },
-  {
     href: "/reports",
     label: "Reports",
     icon: (
@@ -120,14 +107,24 @@ export const NAV_GROUPS: {
   links: typeof PRIMARY_LINKS;
 }[] = [{ label: null, links: PRIMARY_LINKS }];
 
+// The mobile bottom tab bar only has room for 5 icons — the pages used
+// often enough to deserve a permanent, always-visible slot. Everything
+// else (Reports, Settings) moves into the mobile "More" menu.
+export const MOBILE_TAB_LINKS = PRIMARY_LINKS.slice(0, 5);
+export const MOBILE_MORE_LINKS = PRIMARY_LINKS.slice(5);
+
 const COLLAPSE_KEY = "sidebar-collapsed";
 
 export function Sidebar({
   counts,
   userEmail,
+  displayName,
+  avatarUrl,
 }: {
   counts?: Record<string, number>;
   userEmail?: string | null;
+  displayName?: string | null;
+  avatarUrl?: string | null;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -135,6 +132,22 @@ export function Sidebar({
   // preference after mount, to avoid a hydration mismatch.
   const [collapsed, setCollapsed] = useState(false);
   const [search, setSearch] = useState("");
+  const [profileOpen, setProfileOpen] = useState(false);
+  // Defaults to the ⌘ glyph (matches the server-rendered HTML) and switches
+  // to "Ctrl K" after mount on non-Mac platforms, to avoid a hydration
+  // mismatch — `navigator` isn't available during the server render.
+  const [isMac, setIsMac] = useState(true);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing with navigator, an external system, after mount
+    setIsMac(/mac/i.test(navigator.platform || navigator.userAgent));
+  }, []);
+
+  // Active-link highlight slides between items instead of just swapping
+  // background instantly — measured off the actual rendered link elements
+  // so it stays correct regardless of icon/label sizing.
+  const linkRefs = useRef(new Map<string, HTMLAnchorElement>());
+  const [pill, setPill] = useState<{ top: number; height: number } | null>(null);
 
   useEffect(() => {
     try {
@@ -145,6 +158,14 @@ export function Sidebar({
       // ignore — localStorage unavailable
     }
   }, []);
+
+  useEffect(() => {
+    const activeLink = PRIMARY_LINKS.find((link) =>
+      link.href === "/" ? pathname === "/" : pathname.startsWith(link.href),
+    );
+    const el = activeLink ? linkRefs.current.get(activeLink.href) : undefined;
+    setPill(el ? { top: el.offsetTop, height: el.offsetHeight } : null);
+  }, [pathname, collapsed]);
 
   function toggle() {
     setCollapsed((prev) => {
@@ -160,7 +181,7 @@ export function Sidebar({
 
   const avatar = userEmail
     ? getAvatarColors(userEmail)
-    : { bg: "#ecfccb", text: "#5b8a00" };
+    : { bg: "var(--accent-soft)", text: "var(--accent)" };
 
   return (
     <aside
@@ -243,18 +264,40 @@ export function Sidebar({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search..."
-                className="w-full rounded-lg bg-hero-bg-2 py-2 pr-3 pl-9 text-sm text-hero-text placeholder:text-hero-text-muted outline-none focus:ring-2 focus:ring-accent-bright/60"
+                className="w-full rounded-lg bg-hero-bg-2 py-2 pr-12 pl-9 text-sm text-hero-text placeholder:text-hero-text-muted outline-none focus:ring-2 focus:ring-accent-bright/60"
               />
+              {/* Ghost hint pointing at the real, comprehensive search — this
+                  box is just a quick "jump to filtered list" shortcut, the
+                  ⌘K palette is what actually searches every transaction. */}
+              <button
+                type="button"
+                tabIndex={-1}
+                onClick={() =>
+                  window.dispatchEvent(
+                    new KeyboardEvent("keydown", { key: "k", metaKey: isMac, ctrlKey: !isMac }),
+                  )
+                }
+                className="pointer-events-auto absolute top-1/2 right-2 -translate-y-1/2 rounded border border-hero-border px-1.5 py-0.5 text-[10px] font-medium text-hero-text-muted"
+              >
+                {isMac ? "⌘K" : "Ctrl K"}
+              </button>
             </label>
           </form>
         </div>
       )}
 
-      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-4 py-2">
+      <nav className="relative flex flex-1 flex-col gap-1 overflow-y-auto px-4 py-2">
+        {pill && (
+          <div
+            aria-hidden="true"
+            className="absolute inset-x-4 rounded-lg bg-hero-bg-2 transition-[top,height] duration-200 ease-out"
+            style={{ top: pill.top, height: pill.height }}
+          />
+        )}
         {NAV_GROUPS.map((group, groupIndex) => (
           <div
             key={group.label ?? groupIndex}
-            className={groupIndex > 0 ? "mt-4" : undefined}
+            className={`flex flex-col gap-1.5 ${groupIndex > 0 ? "mt-4" : ""}`}
           >
             {group.label && !collapsed && (
               <p className="px-3 pb-1 text-[11px] font-semibold tracking-wide text-hero-text-muted uppercase">
@@ -273,11 +316,15 @@ export function Sidebar({
               return (
                 <Link
                   key={link.href}
+                  ref={(el) => {
+                    if (el) linkRefs.current.set(link.href, el);
+                    else linkRefs.current.delete(link.href);
+                  }}
                   href={link.href}
                   title={collapsed ? link.label : undefined}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] font-medium transition-colors ${
+                  className={`relative z-10 flex items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] font-medium transition-colors ${
                     active
-                      ? "bg-hero-bg-2 text-hero-text"
+                      ? "text-hero-text"
                       : "text-hero-text-muted hover:bg-hero-bg-2/60 hover:text-hero-text"
                   } ${collapsed ? "justify-center" : ""}`}
                 >
@@ -312,40 +359,60 @@ export function Sidebar({
       </nav>
 
       <div className="shrink-0 px-4 py-4">
-        <div className="mb-2">
-          <NewTransactionButton collapsed={collapsed} menuPosition="above" />
-        </div>
-
         {userEmail && (
-          <div
-            title={collapsed ? userEmail : undefined}
-            className={`mb-1 flex items-center gap-3 rounded-lg px-3 py-2.5 ${
-              collapsed ? "justify-center" : ""
-            }`}
-          >
-            <span
-              className="flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
-              style={{ backgroundColor: avatar.bg, color: avatar.text }}
+          <>
+            <button
+              type="button"
+              onClick={() => setProfileOpen(true)}
+              title={collapsed ? "Profile settings" : undefined}
+              aria-label={collapsed ? "Profile settings" : undefined}
+              className={`mb-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-hero-bg-2/60 ${
+                collapsed ? "justify-center" : ""
+              }`}
             >
-              {initialsFor(userEmail)}
-            </span>
-            {!collapsed && (
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-hero-text">
-                  {userEmail.split("@")[0]}
-                </p>
-                <p className="truncate text-xs text-hero-text-muted">
-                  {userEmail}
-                </p>
-              </div>
+              {avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element -- arbitrary user-supplied URL, not a local/known-domain asset
+                <img
+                  src={avatarUrl}
+                  alt=""
+                  className="size-8 shrink-0 rounded-full object-cover"
+                />
+              ) : (
+                <span
+                  className="flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
+                  style={{ backgroundColor: avatar.bg, color: avatar.text }}
+                >
+                  {initialsFor(displayName || userEmail)}
+                </span>
+              )}
+              {!collapsed && (
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-hero-text">
+                    {displayName || userEmail.split("@")[0]}
+                  </p>
+                  <p className="truncate text-xs text-hero-text-muted">
+                    {userEmail}
+                  </p>
+                </div>
+              )}
+            </button>
+
+            {profileOpen && (
+              <ProfileModal
+                userEmail={userEmail}
+                displayName={displayName ?? null}
+                avatarUrl={avatarUrl ?? null}
+                onClose={() => setProfileOpen(false)}
+              />
             )}
-          </div>
+          </>
         )}
 
         <form action={signOut}>
           <button
             type="submit"
             title={collapsed ? "Sign out" : undefined}
+            aria-label={collapsed ? "Sign out" : undefined}
             className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-hero-text-muted transition-colors hover:bg-hero-bg-2/60 hover:text-hero-text ${
               collapsed ? "justify-center" : ""
             }`}

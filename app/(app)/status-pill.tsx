@@ -2,9 +2,9 @@
 // all read the same way instead of each component rolling its own
 // red/amber/green styling inline.
 const VARIANT_STYLES = {
-  good: "bg-[#dcfae6] text-[#0b9055]",
-  warning: "bg-[#fef0c7] text-[#93370d]",
-  danger: "bg-[#fee4e2] text-[#f04438]",
+  good: "bg-positive-bg text-positive-strong",
+  warning: "bg-caution-bg text-caution-strong",
+  danger: "bg-negative-bg text-negative-strong",
   neutral: "bg-bg text-text-faint",
   accent: "bg-accent-soft text-accent",
 } as const;
@@ -22,7 +22,7 @@ export function StatusPill({
 }) {
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${VARIANT_STYLES[variant]} ${className}`}
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors duration-300 ${VARIANT_STYLES[variant]} ${className}`}
     >
       {children}
     </span>

@@ -34,6 +34,7 @@ export default async function TransactionsPage({
     category?: string;
     account?: string;
     q?: string;
+    highlight?: string;
   }>;
 }) {
   const {
@@ -42,23 +43,26 @@ export default async function TransactionsPage({
     category: initialCategoryFilter,
     account: initialAccountFilter,
     q: initialSearch,
+    highlight: highlightId,
   } = await searchParams;
   const activeView = view ?? "all";
-  const periods = await getPeriods();
-  const period = pickPeriod(periods, requestedPeriod);
-
-  const [accounts, categories] = await Promise.all([
+  // periods and accounts/categories are independent — fetch together
+  // instead of waiting on periods first.
+  const [periods, accounts, categories] = await Promise.all([
+    getPeriods(),
     getAccountsWithBalances(),
     getCategories(),
   ]);
+  const period = pickPeriod(periods, requestedPeriod);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-text">Transactions</h1>
+          <h1 className="text-2xl leading-tight font-semibold tracking-tight text-text sm:text-display">Transactions</h1>
           <p className="mt-1 text-sm text-text-muted">
-            Log income and expenses, manage recurring bills, and set category budgets.
+            Log income and expenses, manage recurring bills, and set category
+            budgets.
           </p>
         </div>
         {activeView === "all" && <ReassignToMeButton />}
@@ -72,7 +76,11 @@ export default async function TransactionsPage({
           reloading the page.
         </p>
       ) : activeView === "recurring" ? (
-        <RecurringView period={period} accounts={accounts} categories={categories} />
+        <RecurringView
+          period={period}
+          accounts={accounts}
+          categories={categories}
+        />
       ) : activeView === "calendar" ? (
         <CalendarView period={period} accounts={accounts} />
       ) : activeView === "categories" ? (
@@ -86,6 +94,7 @@ export default async function TransactionsPage({
           initialCategoryFilter={initialCategoryFilter}
           initialAccountFilter={initialAccountFilter}
           initialSearch={initialSearch}
+          highlightId={highlightId}
         />
       )}
     </div>
@@ -100,6 +109,7 @@ async function AllTransactionsView({
   initialCategoryFilter,
   initialAccountFilter,
   initialSearch,
+  highlightId,
 }: {
   period: Period;
   periods: Period[];
@@ -108,6 +118,7 @@ async function AllTransactionsView({
   initialCategoryFilter?: string;
   initialAccountFilter?: string;
   initialSearch?: string;
+  highlightId?: string;
 }) {
   const transactions = await getTransactions(period.id);
   const splitsByTransaction = await getSplitsByTransaction(
@@ -115,8 +126,8 @@ async function AllTransactionsView({
   );
 
   return (
-    <div className="space-y-8">
-      <div className="flex justify-end">
+    <div className="space-y-6">
+      <div className="flex sm:justify-end">
         <PeriodSwitcher periods={periods} selectedId={period.id} />
       </div>
 
@@ -134,6 +145,7 @@ async function AllTransactionsView({
         initialCategoryFilter={initialCategoryFilter}
         initialAccountFilter={initialAccountFilter}
         initialSearch={initialSearch}
+        highlightId={highlightId}
       />
     </div>
   );
@@ -171,7 +183,13 @@ async function RecurringView({
   );
 }
 
-async function CalendarView({ period, accounts }: { period: Period; accounts: Account[] }) {
+async function CalendarView({
+  period,
+  accounts,
+}: {
+  period: Period;
+  accounts: Account[];
+}) {
   const transactions = await getTransactions(period.id);
   return (
     <TransactionsCalendar

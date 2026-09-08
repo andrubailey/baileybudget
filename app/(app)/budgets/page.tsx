@@ -12,7 +12,7 @@ export default async function BudgetsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-text">Budgets</h1>
+        <h1 className="text-2xl leading-tight font-semibold tracking-tight text-text sm:text-display">Budgets</h1>
         <p className="mt-1 text-sm text-text-muted">
           Set planned amounts across multiple months at once. Click a cell, type an amount, then click away to save.
         </p>

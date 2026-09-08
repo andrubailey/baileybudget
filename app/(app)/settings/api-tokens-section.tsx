@@ -54,7 +54,7 @@ export function ApiTokensSection({ tokens }: { tokens: ApiTokenSummary[] }) {
               onClick={copyToken}
               className="shrink-0 rounded-md border border-accent-border bg-surface px-3 py-2 text-xs font-semibold text-accent hover:bg-bg"
             >
-              {copied ? "Copied!" : "Copy"}
+              {copied ? "Copied" : "Copy"}
             </button>
           </div>
           <button
@@ -100,7 +100,7 @@ export function ApiTokensSection({ tokens }: { tokens: ApiTokenSummary[] }) {
                 <button
                   type="button"
                   onClick={() => revokeApiToken(t.id)}
-                  className="shrink-0 text-xs font-medium text-text-faint hover:text-[#f04438]"
+                  className="shrink-0 text-xs font-medium text-text-faint hover:text-negative"
                 >
                   Revoke
                 </button>

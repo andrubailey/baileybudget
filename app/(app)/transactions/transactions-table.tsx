@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   deleteTransaction,
   getHistoryForTransaction,
@@ -21,11 +21,51 @@ import { SubmitButton } from "@/app/(app)/submit-button";
 import { BankLogo } from "@/app/(app)/accounts/bank-logo";
 import { getAvatarColors } from "@/lib/avatar-colors";
 import { getAccountColor } from "@/lib/account-colors";
+import { getCategoryColor } from "@/lib/category-colors";
+import { getCategoryIcon } from "@/lib/category-icons";
 import { EmptyState } from "@/app/(app)/empty-state";
+import { COMPACT_FIELD_CLASS as fieldClass } from "@/lib/ui";
 
-// text-base (16px) on mobile prevents iOS Safari's auto-zoom-on-focus.
-const fieldClass =
-  "w-full rounded-md border border-border bg-bg px-2 py-1.5 text-base sm:py-1 sm:text-sm text-text outline-none focus:border-accent";
+// The ✓ and action columns stay pinned first/last — reordering a checkbox
+// away from the row's edge, or the row's action buttons into the middle,
+// isn't a layout anyone actually wants. Everything between is drag-to-reorder
+// and drag-to-resize.
+const REORDERABLE_COLUMNS = [
+  "description",
+  "category",
+  "account",
+  "date",
+  "by",
+  "amount",
+] as const;
+type ColumnKey = (typeof REORDERABLE_COLUMNS)[number];
+const COLUMN_LABELS: Record<ColumnKey, string> = {
+  description: "Description",
+  category: "Category",
+  account: "Account",
+  date: "Date",
+  by: "By",
+  amount: "Amount",
+};
+const DEFAULT_WIDTHS: Record<ColumnKey, number> = {
+  description: 260,
+  category: 160,
+  account: 220,
+  date: 110,
+  by: 56,
+  amount: 120,
+};
+const MIN_COLUMN_WIDTH = 48;
+const COLUMN_ORDER_KEY = "transactions-table-column-order";
+const COLUMN_WIDTHS_KEY = "transactions-table-column-widths";
+
+function isColumnOrder(value: unknown): value is ColumnKey[] {
+  return (
+    Array.isArray(value) &&
+    value.length === REORDERABLE_COLUMNS.length &&
+    REORDERABLE_COLUMNS.every((c) => value.includes(c))
+  );
+}
 
 function initials(name: string) {
   const parts = name.trim().split(/\s+/);
@@ -63,6 +103,7 @@ export function TransactionsTable({
   initialCategoryFilter,
   initialAccountFilter,
   initialSearch,
+  highlightId,
 }: {
   transactions: Transaction[];
   accounts: Account[];
@@ -71,6 +112,10 @@ export function TransactionsTable({
   initialCategoryFilter?: string;
   initialAccountFilter?: string;
   initialSearch?: string;
+  // Set when arriving from a ⌘K search result — scrolls that specific
+  // transaction into view and briefly flashes it, so "click a search result"
+  // actually lands you ON the transaction instead of just the right period.
+  highlightId?: string;
 }) {
   const [search, setSearch] = useState(initialSearch ?? "");
   const [accountFilter, setAccountFilter] = useState(
@@ -106,6 +151,28 @@ export function TransactionsTable({
   const [kindFilter, setKindFilter] = useState<
     "" | "income" | "expense" | "transfer"
   >("");
+  // Briefly highlights a row when it first shows up in `transactions` (a new
+  // transaction logged, an import, an undo) — otherwise it just appears
+  // between renders with no visual acknowledgment that something landed.
+  const [lastTransactions, setLastTransactions] = useState(transactions);
+  // Seeded with highlightId so a ⌘K search result flashes on first render
+  // too, not just on subsequent prop changes.
+  const [newIds, setNewIds] = useState<Set<string>>(() =>
+    highlightId ? new Set([highlightId]) : new Set(),
+  );
+  const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
+  useEffect(() => {
+    if (!highlightId) return;
+    rowRefs.current.get(highlightId)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlightId]);
+  if (transactions !== lastTransactions) {
+    const prevIds = new Set(lastTransactions.map((t) => t.id));
+    const freshIds = new Set(
+      transactions.filter((t) => !prevIds.has(t.id)).map((t) => t.id),
+    );
+    setLastTransactions(transactions);
+    if (freshIds.size > 0) setNewIds(freshIds);
+  }
   const [editingId, setEditingId] = useState<string | null>(null);
   const [historyId, setHistoryId] = useState<string | null>(null);
   const [historyEntries, setHistoryEntries] = useState<
@@ -128,6 +195,105 @@ export function TransactionsTable({
   const [clearedOverrides, setClearedOverrides] = useState<
     Record<string, boolean>
   >({});
+  // Marks a row as fading out the instant delete is clicked — the row's
+  // actual removal from `transactions` only lands once the server action's
+  // revalidation round-trips back, which would otherwise mean the row just
+  // sits there unchanged (no visual acknowledgment) until it abruptly
+  // vanishes on the next render.
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+
+  // Column order/widths persist per-browser (localStorage), same pattern as
+  // the sidebar's collapsed state and the finances chat's width.
+  const [columnOrder, setColumnOrder] = useState<ColumnKey[]>([
+    ...REORDERABLE_COLUMNS,
+  ]);
+  const [columnWidths, setColumnWidths] =
+    useState<Record<ColumnKey, number>>(DEFAULT_WIDTHS);
+  const [draggedColumn, setDraggedColumn] = useState<ColumnKey | null>(null);
+  const [resizingColumn, setResizingColumn] = useState<ColumnKey | null>(null);
+  const resizeStart = useRef<{ x: number; width: number } | null>(null);
+
+  useEffect(() => {
+    try {
+      const savedOrder = JSON.parse(
+        localStorage.getItem(COLUMN_ORDER_KEY) ?? "null",
+      );
+      if (isColumnOrder(savedOrder)) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing with localStorage, an external system, after mount
+        setColumnOrder(savedOrder);
+      }
+    } catch {
+      // ignore — localStorage unavailable or value corrupted
+    }
+    try {
+      const savedWidths = JSON.parse(
+        localStorage.getItem(COLUMN_WIDTHS_KEY) ?? "null",
+      );
+      if (savedWidths && typeof savedWidths === "object") {
+        setColumnWidths((prev) => ({ ...prev, ...savedWidths }));
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!resizingColumn) return;
+
+    function handleMove(e: MouseEvent) {
+      if (!resizeStart.current || !resizingColumn) return;
+      const delta = e.clientX - resizeStart.current.x;
+      const next = Math.max(MIN_COLUMN_WIDTH, resizeStart.current.width + delta);
+      setColumnWidths((prev) => ({ ...prev, [resizingColumn]: next }));
+    }
+    function handleUp() {
+      setResizingColumn(null);
+      resizeStart.current = null;
+      setColumnWidths((current) => {
+        try {
+          localStorage.setItem(COLUMN_WIDTHS_KEY, JSON.stringify(current));
+        } catch {
+          // ignore
+        }
+        return current;
+      });
+    }
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+    return () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+    };
+  }, [resizingColumn]);
+
+  function startResize(column: ColumnKey, startX: number) {
+    resizeStart.current = { x: startX, width: columnWidths[column] };
+    setResizingColumn(column);
+  }
+
+  function handleColumnDrop(target: ColumnKey) {
+    if (!draggedColumn || draggedColumn === target) {
+      setDraggedColumn(null);
+      return;
+    }
+    setColumnOrder((current) => {
+      const next = current.filter((c) => c !== draggedColumn);
+      const targetIndex = next.indexOf(target);
+      next.splice(targetIndex, 0, draggedColumn);
+      try {
+        localStorage.setItem(COLUMN_ORDER_KEY, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+    setDraggedColumn(null);
+  }
 
   const accountById = useMemo(
     () => new Map(accounts.map((a) => [a.id, a.name])),
@@ -193,6 +359,7 @@ export function TransactionsTable({
   const uncleared = filtered.filter((t) => !t.cleared);
 
   async function handleDelete(t: Transaction) {
+    setDeletingIds((current) => new Set(current).add(t.id));
     await deleteTransaction(t.id);
     setUndoRow({ id: t.id, description: t.description });
     setTimeout(() => {
@@ -203,6 +370,11 @@ export function TransactionsTable({
   async function handleUndo() {
     if (!undoRow) return;
     await restoreTransaction(undoRow.id);
+    setDeletingIds((current) => {
+      const next = new Set(current);
+      next.delete(undoRow.id);
+      return next;
+    });
     setUndoRow(null);
   }
 
@@ -279,7 +451,7 @@ export function TransactionsTable({
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center gap-3">
-        <div className="flex rounded-lg border border-border bg-surface p-1">
+        <div className="flex gap-1 rounded-lg border border-border bg-surface p-1">
           {KIND_TABS.map((tab) => (
             <button
               key={tab.label}
@@ -379,7 +551,7 @@ export function TransactionsTable({
           <button
             type="button"
             onClick={handleUndo}
-            className="font-semibold text-accent underline underline-offset-2"
+            className="font-semibold text-accent underline underline-offset-2 hover:text-accent-bright"
           >
             Undo
           </button>
@@ -392,7 +564,7 @@ export function TransactionsTable({
           <button
             type="button"
             onClick={handleUndoEdit}
-            className="font-semibold text-accent underline underline-offset-2"
+            className="font-semibold text-accent underline underline-offset-2 hover:text-accent-bright"
           >
             Undo
           </button>
@@ -432,31 +604,42 @@ export function TransactionsTable({
       </div>
 
       <div className="hidden overflow-x-auto rounded-xl border border-border bg-surface shadow-card sm:block">
-        <table className="w-full text-left">
+        <table className="w-full text-left [table-layout:fixed]">
           <thead>
             <tr className="border-b border-border bg-bg">
-              <th className="px-4 py-2 text-xs font-medium text-text-muted">
+              <th
+                style={{ width: 40 }}
+                className="sticky top-0 z-10 bg-bg px-4 py-2 text-xs font-medium text-text-muted"
+              >
                 ✓
               </th>
-              <th className="px-4 py-2 text-xs font-medium text-text-muted">
-                Description
-              </th>
-              <th className="px-4 py-2 text-xs font-medium text-text-muted">
-                Category
-              </th>
-              <th className="px-4 py-2 text-xs font-medium text-text-muted">
-                Account
-              </th>
-              <th className="px-4 py-2 text-xs font-medium text-text-muted">
-                Date
-              </th>
-              <th className="px-4 py-2 text-xs font-medium text-text-muted">
-                By
-              </th>
-              <th className="px-4 py-2 text-right text-xs font-medium text-text-muted">
-                Amount
-              </th>
-              <th className="px-4 py-2" />
+              {columnOrder.map((col) => (
+                <th
+                  key={col}
+                  draggable
+                  onDragStart={() => setDraggedColumn(col)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => handleColumnDrop(col)}
+                  style={{ width: columnWidths[col] }}
+                  className={`sticky top-0 z-10 cursor-grab bg-bg px-4 py-2 text-xs font-medium text-text-muted select-none active:cursor-grabbing ${
+                    col === "amount" ? "text-right" : ""
+                  } ${draggedColumn === col ? "opacity-40" : ""}`}
+                  title="Drag to reorder"
+                >
+                  <span className="relative block">
+                    {COLUMN_LABELS[col]}
+                    <span
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        startResize(col, e.clientX);
+                      }}
+                      className="absolute inset-y-0 -right-4 z-20 w-2 cursor-col-resize touch-none hover:bg-accent-border active:bg-accent"
+                    />
+                  </span>
+                </th>
+              ))}
+              <th style={{ width: 150 }} className="sticky top-0 z-10 bg-bg px-4 py-2" />
             </tr>
           </thead>
           <tbody>
@@ -472,183 +655,210 @@ export function TransactionsTable({
                 />
               ) : (
                 <Fragment key={t.id}>
-                  <tr className="border-b border-border last:border-b-0 hover:bg-bg even:bg-bg/40">
+                  <tr
+                    ref={(el) => {
+                      if (el) rowRefs.current.set(t.id, el);
+                      else rowRefs.current.delete(t.id);
+                    }}
+                    className={`border-b border-border transition-opacity duration-300 last:border-b-0 hover:bg-bg even:bg-bg/40 ${
+                      deletingIds.has(t.id) ? "opacity-0" : "opacity-100"
+                    } ${newIds.has(t.id) ? "animate-row-highlight" : ""}`}
+                  >
                     <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        checked={t.cleared}
-                        onChange={(e) =>
-                          handleToggleCleared(t.id, e.target.checked)
-                        }
+                      <label
+                        className="flex cursor-pointer items-center justify-center py-1.5"
                         title={t.cleared ? "Cleared" : "Pending — mark cleared"}
-                        className="h-4 w-4 accent-[var(--accent)]"
-                      />
+                      >
+                        <input
+                          type="checkbox"
+                          checked={t.cleared}
+                          onChange={(e) =>
+                            handleToggleCleared(t.id, e.target.checked)
+                          }
+                          aria-label={t.cleared ? "Cleared" : "Pending — mark cleared"}
+                          className="h-4 w-4 accent-[var(--accent)]"
+                        />
+                      </label>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <span
-                          className="flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
-                          style={{
-                            backgroundColor: getAvatarColors(t.id).bg,
-                            color: getAvatarColors(t.id).text,
-                          }}
-                        >
-                          {initials(t.description)}
-                        </span>
-                        <div className="min-w-0">
-                          <span className="flex items-center gap-1.5 truncate text-sm font-medium text-text">
-                            <span className="truncate">{t.description}</span>
-                            {t.recurring_transaction_id && (
-                              <span
-                                className="shrink-0 text-xs"
-                                title="Recurring"
-                              >
-                                🔁
+                    {columnOrder.map((col) => (
+                      <td
+                        key={col}
+                        style={{ width: columnWidths[col] }}
+                        className={
+                          col === "amount"
+                            ? `tabular px-4 py-3 text-right text-sm font-medium ${
+                                t.kind === "income" ? "text-success" : "text-text"
+                              }`
+                            : "px-4 py-3 text-sm text-text-muted"
+                        }
+                      >
+                        {col === "description" && (
+                          <div className="flex items-center gap-3">
+                            <span
+                              className="flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
+                              style={{
+                                backgroundColor: getAvatarColors(t.id).bg,
+                                color: getAvatarColors(t.id).text,
+                              }}
+                            >
+                              {initials(t.description)}
+                            </span>
+                            <div className="min-w-0">
+                              <span className="flex items-center gap-1.5 truncate text-sm font-medium text-text">
+                                <span className="truncate">{t.description}</span>
+                                {t.recurring_transaction_id && (
+                                  <span
+                                    className="shrink-0 text-xs"
+                                    title="Recurring"
+                                  >
+                                    🔁
+                                  </span>
+                                )}
+                                {t.pending_approval && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      toggleTransactionPendingApproval(t.id, false)
+                                    }
+                                    title="Needs approval — click to approve"
+                                    className="shrink-0 rounded-full bg-caution-bg px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap text-caution-strong hover:bg-caution-border"
+                                  >
+                                    Needs approval
+                                  </button>
+                                )}
                               </span>
-                            )}
-                            {t.pending_approval && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  toggleTransactionPendingApproval(t.id, false)
-                                }
-                                title="Needs approval — click to approve"
-                                className="shrink-0 rounded-full bg-[#fef0c7] px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap text-[#93370d] hover:bg-[#fde3a7]"
-                              >
-                                Needs approval
-                              </button>
-                            )}
-                          </span>
-                          {t.notes && (
-                            <span className="block truncate text-xs text-text-faint">
-                              {t.notes}
+                              {t.notes && (
+                                <span className="block truncate text-xs text-text-faint">
+                                  {t.notes}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        {col === "category" &&
+                          (t.category_id && categoryById.get(t.category_id) ? (
+                            <span className="flex items-center gap-1.5">
+                              <span
+                                className="size-1.5 shrink-0 rounded-full"
+                                style={{ backgroundColor: getCategoryColor(t.category_id) }}
+                              />
+                              <span>{getCategoryIcon(categoryById.get(t.category_id)!)}</span>
+                              <span>{categoryById.get(t.category_id)}</span>
+                            </span>
+                          ) : splitsByTransaction?.has(t.id) ? (
+                            <span
+                              className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent"
+                              title={splitsByTransaction
+                                .get(t.id)!
+                                .map(
+                                  (s) =>
+                                    `${s.category_id ? (categoryById.get(s.category_id) ?? "—") : "—"}: ${formatMoney(s.amount)}`,
+                                )
+                                .join(", ")}
+                            >
+                              Split ({splitsByTransaction.get(t.id)!.length})
+                            </span>
+                          ) : (
+                            "—"
+                          ))}
+                        {col === "account" &&
+                          (t.kind === "transfer" ? (
+                            <div className="flex items-center gap-1.5">
+                              {t.account_id && (
+                                <span
+                                  className="size-1.5 shrink-0 rounded-full"
+                                  style={{
+                                    backgroundColor: accountColorById.get(
+                                      t.account_id,
+                                    ),
+                                  }}
+                                />
+                              )}
+                              {t.account_id &&
+                                accountBankById.get(t.account_id) && (
+                                  <BankLogo
+                                    bank={accountBankById.get(t.account_id)!}
+                                    size="sm"
+                                  />
+                                )}
+                              <span>
+                                {t.account_id
+                                  ? (accountById.get(t.account_id) ?? "—")
+                                  : "—"}
+                              </span>
+                              <span>→</span>
+                              {t.to_account_id && (
+                                <span
+                                  className="size-1.5 shrink-0 rounded-full"
+                                  style={{
+                                    backgroundColor: accountColorById.get(
+                                      t.to_account_id,
+                                    ),
+                                  }}
+                                />
+                              )}
+                              {t.to_account_id &&
+                                accountBankById.get(t.to_account_id) && (
+                                  <BankLogo
+                                    bank={accountBankById.get(t.to_account_id)!}
+                                    size="sm"
+                                  />
+                                )}
+                              <span>
+                                {t.to_account_id
+                                  ? (accountById.get(t.to_account_id) ?? "—")
+                                  : "—"}
+                              </span>
+                            </div>
+                          ) : t.account_id ? (
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className="size-1.5 shrink-0 rounded-full"
+                                style={{
+                                  backgroundColor: accountColorById.get(
+                                    t.account_id,
+                                  ),
+                                }}
+                              />
+                              {accountBankById.get(t.account_id) && (
+                                <BankLogo
+                                  bank={accountBankById.get(t.account_id)!}
+                                  size="sm"
+                                />
+                              )}
+                              <span>{accountById.get(t.account_id)}</span>
+                            </div>
+                          ) : (
+                            "—"
+                          ))}
+                        {col === "date" && formatDate(t.txn_date)}
+                        {col === "by" &&
+                          creatorInitial(t.created_by_email) && (
+                            <span
+                              title={t.created_by_email ?? undefined}
+                              className="flex size-6 items-center justify-center rounded-full bg-accent-soft text-[11px] font-semibold text-accent"
+                            >
+                              {creatorInitial(t.created_by_email)}
                             </span>
                           )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-text-muted">
-                      {t.category_id ? (
-                        categoryById.get(t.category_id)
-                      ) : splitsByTransaction?.has(t.id) ? (
-                        <span
-                          className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent"
-                          title={splitsByTransaction
-                            .get(t.id)!
-                            .map(
-                              (s) =>
-                                `${s.category_id ? (categoryById.get(s.category_id) ?? "—") : "—"}: ${formatMoney(s.amount)}`,
-                            )
-                            .join(", ")}
-                        >
-                          Split ({splitsByTransaction.get(t.id)!.length})
-                        </span>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-text-muted">
-                      {t.kind === "transfer" ? (
-                        <div className="flex items-center gap-1.5">
-                          {t.account_id && (
-                            <span
-                              className="size-1.5 shrink-0 rounded-full"
-                              style={{
-                                backgroundColor: accountColorById.get(
-                                  t.account_id,
-                                ),
-                              }}
-                            />
-                          )}
-                          {t.account_id &&
-                            accountBankById.get(t.account_id) && (
-                              <BankLogo
-                                bank={accountBankById.get(t.account_id)!}
-                                size="sm"
-                              />
-                            )}
-                          <span>
-                            {t.account_id
-                              ? (accountById.get(t.account_id) ?? "—")
-                              : "—"}
-                          </span>
-                          <span>→</span>
-                          {t.to_account_id && (
-                            <span
-                              className="size-1.5 shrink-0 rounded-full"
-                              style={{
-                                backgroundColor: accountColorById.get(
-                                  t.to_account_id,
-                                ),
-                              }}
-                            />
-                          )}
-                          {t.to_account_id &&
-                            accountBankById.get(t.to_account_id) && (
-                              <BankLogo
-                                bank={accountBankById.get(t.to_account_id)!}
-                                size="sm"
-                              />
-                            )}
-                          <span>
-                            {t.to_account_id
-                              ? (accountById.get(t.to_account_id) ?? "—")
-                              : "—"}
-                          </span>
-                        </div>
-                      ) : t.account_id ? (
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className="size-1.5 shrink-0 rounded-full"
-                            style={{
-                              backgroundColor: accountColorById.get(
-                                t.account_id,
-                              ),
-                            }}
-                          />
-                          {accountBankById.get(t.account_id) && (
-                            <BankLogo
-                              bank={accountBankById.get(t.account_id)!}
-                              size="sm"
-                            />
-                          )}
-                          <span>{accountById.get(t.account_id)}</span>
-                        </div>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-text-muted">
-                      {formatDate(t.txn_date)}
-                    </td>
-                    <td className="px-4 py-3">
-                      {creatorInitial(t.created_by_email) && (
-                        <span
-                          title={t.created_by_email ?? undefined}
-                          className="flex size-6 items-center justify-center rounded-full bg-accent-soft text-[11px] font-semibold text-accent"
-                        >
-                          {creatorInitial(t.created_by_email)}
-                        </span>
-                      )}
-                    </td>
-                    <td
-                      className={`tabular px-4 py-3 text-right text-sm font-medium ${
-                        t.kind === "income" ? "text-success" : "text-text"
-                      }`}
-                    >
-                      {t.kind === "income"
-                        ? "+"
-                        : t.kind === "expense"
-                          ? "-"
-                          : ""}
-                      {formatMoney(t.amount)}
-                    </td>
+                        {col === "amount" && (
+                          <>
+                            {t.kind === "income"
+                              ? "+"
+                              : t.kind === "expense"
+                                ? "-"
+                                : ""}
+                            {formatMoney(t.amount)}
+                          </>
+                        )}
+                      </td>
+                    ))}
                     <td className="px-4 py-3 text-right whitespace-nowrap">
                       {t.kind !== "transfer" && (
                         <button
                           type="button"
                           onClick={() => setEditingId(t.id)}
-                          className="mr-3 text-xs text-text-faint hover:text-accent"
+                          className="mr-3 inline-block py-2 text-xs text-text-faint hover:text-accent"
                         >
                           Edit
                         </button>
@@ -656,14 +866,14 @@ export function TransactionsTable({
                       <button
                         type="button"
                         onClick={() => toggleHistory(t.id)}
-                        className="mr-3 text-xs text-text-faint hover:text-accent"
+                        className="mr-3 inline-block py-2 text-xs text-text-faint hover:text-accent"
                       >
                         History
                       </button>
                       <button
                         type="button"
                         onClick={() => handleDelete(t)}
-                        className="text-xs text-text-faint hover:text-[#f04438]"
+                        className="inline-block py-2 text-xs text-text-faint hover:text-negative"
                       >
                         Delete
                       </button>
@@ -748,23 +958,46 @@ function MobileTransactionCard({
   const [isDragging, setIsDragging] = useState(false);
   const startX = useRef<number | null>(null);
   const SWIPE_THRESHOLD = 72;
+  // Whether this drag has already buzzed for crossing the threshold — reset
+  // per-gesture so it fires once as the swipe arms, not on every pixel past
+  // it. Ref rather than state since it's read/written inside the same
+  // touchmove handler and never needs to trigger a render.
+  const armedBuzzed = useRef(false);
+
+  // No-op where the Vibration API doesn't exist — notably iOS Safari, which
+  // has never implemented it. Still worth calling on Android/Chrome.
+  function buzz(pattern: number | number[]) {
+    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+      navigator.vibrate(pattern);
+    }
+  }
 
   function handleTouchStart(e: React.TouchEvent) {
     startX.current = e.touches[0].clientX;
+    armedBuzzed.current = false;
     setIsDragging(true);
   }
 
   function handleTouchMove(e: React.TouchEvent) {
     if (startX.current === null) return;
     const delta = e.touches[0].clientX - startX.current;
-    setDragX(Math.max(-120, Math.min(120, delta)));
+    const next = Math.max(-120, Math.min(120, delta));
+    if (!armedBuzzed.current && Math.abs(next) >= SWIPE_THRESHOLD) {
+      armedBuzzed.current = true;
+      buzz(10);
+    } else if (armedBuzzed.current && Math.abs(next) < SWIPE_THRESHOLD) {
+      armedBuzzed.current = false;
+    }
+    setDragX(next);
   }
 
   function handleTouchEnd() {
     setIsDragging(false);
     if (dragX <= -SWIPE_THRESHOLD) {
+      buzz([10, 30, 10]);
       onDelete();
     } else if (dragX >= SWIPE_THRESHOLD) {
+      buzz([10, 30, 10]);
       onToggleCleared(!t.cleared);
     }
     setDragX(0);
@@ -776,7 +1009,7 @@ function MobileTransactionCard({
         <span className="text-xs font-semibold text-success">
           {t.cleared ? "Mark pending" : "Mark cleared"}
         </span>
-        <span className="text-xs font-semibold text-[#f04438]">Delete</span>
+        <span className="text-xs font-semibold text-negative">Delete</span>
       </div>
       <div
         onTouchStart={handleTouchStart}
@@ -801,21 +1034,27 @@ function MobileTransactionCard({
           <p className="flex items-center gap-1.5 truncate text-sm font-medium text-text">
             <span className="truncate">{t.description}</span>
             {t.pending_approval && (
-              <span className="shrink-0 rounded-full bg-[#fef0c7] px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap text-[#93370d]">
+              <span className="shrink-0 rounded-full bg-caution-bg px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap text-caution-strong">
                 Needs approval
               </span>
             )}
           </p>
-          <p className="flex items-center gap-1.5 truncate text-xs text-text-faint">
+          <p className="flex items-center gap-1.5 text-xs text-text-faint">
             {accountColor && (
               <span
                 className="size-1.5 shrink-0 rounded-full"
                 style={{ backgroundColor: accountColor }}
               />
             )}
-            <span className="truncate">{accountName}</span>
-            {categoryName && <span>· {categoryName}</span>}
-            <span>· {formatDate(t.txn_date)}</span>
+            <span className="min-w-0 truncate">{accountName}</span>
+            {categoryName && (
+              <span className="shrink-0 whitespace-nowrap">
+                · {getCategoryIcon(categoryName)} {categoryName}
+              </span>
+            )}
+            <span className="shrink-0 whitespace-nowrap">
+              · {formatDate(t.txn_date)}
+            </span>
           </p>
         </div>
         <span
@@ -828,7 +1067,7 @@ function MobileTransactionCard({
         </span>
         {!t.cleared && (
           <span
-            className="size-1.5 shrink-0 rounded-full bg-[#f79009]"
+            className="size-1.5 shrink-0 rounded-full bg-caution"
             title="Pending"
           />
         )}

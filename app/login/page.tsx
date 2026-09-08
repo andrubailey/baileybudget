@@ -37,7 +37,7 @@ export default function LoginPage() {
     <main className="flex flex-1 items-center justify-center px-4">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm space-y-5 rounded-xl border border-border bg-surface p-8 shadow-card"
+        className="animate-fade-in-up w-full max-w-sm space-y-5 rounded-xl border border-border bg-surface p-8 shadow-card"
       >
         <div>
           <LogoMark size={40} />
@@ -75,7 +75,7 @@ export default function LoginPage() {
           />
         </div>
 
-        {error && <p className="text-sm text-[#f04438]">{error}</p>}
+        {error && <p className="text-sm text-[#a3492f]">{error}</p>}
 
         <button
           type="submit"

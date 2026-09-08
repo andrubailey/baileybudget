@@ -10,30 +10,27 @@ import {
 import type { Account, Category } from "@/lib/types";
 import { SubmitButton } from "@/app/(app)/submit-button";
 import { useToast } from "@/app/(app)/toast";
+import { CurrencyInput } from "@/app/(app)/currency-input";
 import { formatMoney, formatDate } from "@/lib/format";
+import { FIELD_CLASS as fieldClass } from "@/lib/ui";
 
 type DuplicateMatch = { id: string; description: string; amount: number; txn_date: string };
 
-// text-base (16px) on mobile prevents iOS Safari's auto-zoom-on-focus; drops
-// back to text-sm at sm: since desktop doesn't have that problem.
-const fieldClass =
-  "w-full rounded-lg border border-border bg-bg px-3 py-2.5 text-base sm:text-sm sm:py-2 text-text outline-none transition-colors focus:border-accent";
-
 const ICONS = {
   income: (
-    <path d="M12 5v14M5 12h14" stroke="#17b26a" strokeWidth={2} strokeLinecap="round" />
+    <path d="M12 5v14M5 12h14" stroke="var(--positive)" strokeWidth={2} strokeLinecap="round" />
   ),
-  expense: <path d="M5 12h14" stroke="#f04438" strokeWidth={2} strokeLinecap="round" />,
+  expense: <path d="M5 12h14" stroke="var(--negative)" strokeWidth={2} strokeLinecap="round" />,
 };
 
 const CONFIG = {
   income: {
-    bg: "#dcfae6",
+    bg: "var(--positive-bg)",
     title: "Add income",
     subtitle: "Log an income transaction",
   },
   expense: {
-    bg: "#fee4e2",
+    bg: "var(--negative-bg)",
     title: "Add expense",
     subtitle: "Log an expense transaction",
   },
@@ -275,7 +272,7 @@ export function QuickAddButton({
               <button
                 type="button"
                 onClick={resetForm}
-                className="-mr-1.5 flex size-9 shrink-0 items-center justify-center rounded-lg text-text-faint hover:bg-bg hover:text-text"
+                className="-mr-2.5 flex size-11 shrink-0 items-center justify-center rounded-lg text-text-faint hover:bg-bg hover:text-text"
                 aria-label="Close"
               >
                 ✕
@@ -302,13 +299,10 @@ export function QuickAddButton({
               {!split && (
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium text-text">Amount</label>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    step="0.01"
+                  <CurrencyInput
                     name="amount"
                     required
-                    className={fieldClass}
+                    className={`${fieldClass} pr-3 pl-6 text-right`}
                   />
                 </div>
               )}
@@ -417,7 +411,7 @@ export function QuickAddButton({
                         <button
                           type="button"
                           onClick={() => removeSplitRow(i)}
-                          className="shrink-0 text-text-faint hover:text-[#f04438]"
+                          className="flex size-9 shrink-0 items-center justify-center rounded-lg text-text-faint hover:bg-bg hover:text-negative"
                           aria-label="Remove split"
                         >
                           ✕
@@ -463,11 +457,11 @@ export function QuickAddButton({
               )}
 
               {duplicates && duplicates.length > 0 && (
-                <div className="space-y-2 rounded-lg border border-[#f79009] bg-[#fffaeb] p-3 sm:col-span-2">
-                  <p className="text-sm font-medium text-[#b54708]">
+                <div className="space-y-2 rounded-lg border border-caution bg-caution-bg p-3 sm:col-span-2">
+                  <p className="text-sm font-medium text-caution-strong">
                     This looks like it might already be logged:
                   </p>
-                  <ul className="space-y-1 text-sm text-[#b54708]">
+                  <ul className="space-y-1 text-sm text-caution-strong">
                     {duplicates.map((d) => (
                       <li key={d.id}>
                         {d.description} — {formatMoney(d.amount)} on {formatDate(d.txn_date)}
@@ -478,7 +472,7 @@ export function QuickAddButton({
                     <button
                       type="button"
                       onClick={confirmAnyway}
-                      className="rounded-md border border-[#f79009] px-3 py-1.5 text-xs font-semibold text-[#b54708] hover:bg-[#fef0c7]"
+                      className="rounded-md border border-caution px-3 py-1.5 text-xs font-semibold text-caution-strong hover:bg-caution-bg"
                     >
                       Add anyway
                     </button>
@@ -488,7 +482,7 @@ export function QuickAddButton({
                         setDuplicates(null);
                         setPendingFormData(null);
                       }}
-                      className="rounded-md px-3 py-1.5 text-xs font-medium text-[#b54708] hover:bg-[#fef0c7]"
+                      className="rounded-md px-3 py-1.5 text-xs font-medium text-caution-strong hover:bg-caution-bg"
                     >
                       Cancel
                     </button>

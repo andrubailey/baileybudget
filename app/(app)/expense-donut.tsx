@@ -52,7 +52,7 @@ export function ExpenseDonutChart({ segments }: { segments: DonutSegment[] }) {
           viewBox={`0 0 ${SIZE} ${SIZE}`}
           className="-rotate-90"
         >
-          {arcs.map((a) => (
+          {arcs.map((a, i) => (
             <circle
               key={a.name}
               cx={CENTER}
@@ -63,9 +63,10 @@ export function ExpenseDonutChart({ segments }: { segments: DonutSegment[] }) {
               strokeWidth={STROKE}
               strokeDasharray={`${a.segLen} ${CIRCUMFERENCE - a.segLen}`}
               strokeDashoffset={-a.offset}
-              className="cursor-pointer transition-opacity"
+              className="animate-donut-slice cursor-pointer transition-opacity"
               style={{
                 opacity: hovered && hovered !== a.name ? 0.35 : 1,
+                animationDelay: `${i * 60}ms`,
               }}
               onMouseEnter={() => setHovered(a.name)}
               onMouseLeave={() => setHovered(null)}
@@ -143,7 +144,7 @@ export function ExpenseDonutChart({ segments }: { segments: DonutSegment[] }) {
               <button
                 type="button"
                 onClick={() => setSelected(null)}
-                className="-mr-1.5 flex size-9 shrink-0 items-center justify-center rounded-lg text-text-faint hover:bg-bg hover:text-text"
+                className="-mr-2.5 flex size-11 shrink-0 items-center justify-center rounded-lg text-text-faint hover:bg-bg hover:text-text"
                 aria-label="Close"
               >
                 ✕
@@ -153,7 +154,7 @@ export function ExpenseDonutChart({ segments }: { segments: DonutSegment[] }) {
             <div className="max-h-[360px] overflow-y-auto">
               {selected.transactions.length === 0 ? (
                 <p className="py-6 text-center text-sm text-text-muted">
-                  No transactions found.
+                  No transactions logged in this category.
                 </p>
               ) : (
                 <div className="divide-y divide-border">

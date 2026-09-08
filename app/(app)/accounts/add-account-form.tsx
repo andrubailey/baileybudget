@@ -3,10 +3,7 @@
 import { useState } from "react";
 import { createAccount } from "@/app/actions";
 import { ACCOUNT_TYPE_LABELS, ACCOUNT_TYPES, BANK_OPTIONS } from "@/lib/types";
-
-// text-base (16px) on mobile prevents iOS Safari's auto-zoom-on-focus.
-const fieldClass =
-  "w-full rounded-lg border border-border bg-bg px-3 py-2.5 text-base sm:py-2 sm:text-sm text-text outline-none transition-colors focus:border-accent";
+import { FIELD_CLASS as fieldClass } from "@/lib/ui";
 
 export function AddAccountForm() {
   const [open, setOpen] = useState(false);
@@ -29,7 +26,7 @@ export function AddAccountForm() {
         createAccount(formData);
         setOpen(false);
       }}
-      className="grid max-w-2xl grid-cols-1 gap-4 rounded-xl border border-border bg-surface p-6 shadow-card sm:grid-cols-4"
+      className="grid max-w-2xl grid-cols-1 gap-4 rounded-xl border border-border bg-surface p-5 shadow-card sm:grid-cols-4 sm:p-6"
     >
       <div className="space-y-1.5 sm:col-span-1">
         <label className="text-sm font-medium text-text">Name</label>

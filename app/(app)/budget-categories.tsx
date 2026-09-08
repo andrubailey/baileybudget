@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { upsertBudgetLine } from "@/app/actions";
 import { formatMoney } from "@/lib/format";
 import { getCategoryIcon } from "@/lib/category-icons";
 import { getCategoryColor } from "@/lib/category-colors";
-import { StatusPill } from "@/app/(app)/status-pill";
 import { EmptyState } from "@/app/(app)/empty-state";
 import type { CategoryProgress } from "@/lib/queries";
 
@@ -19,23 +19,24 @@ export function BudgetCategoriesCard({
   categoryProgress: CategoryProgress[];
   editablePeriodId: string | null;
   rangeIsSinglePeriod: boolean;
-  // Caps how many rows render (over-budget first, then most active, then
-  // alphabetical) so this card can match a sibling panel's height instead of
-  // growing to list every category the household has ever created.
+  // Optionally caps how many rows render, for a context that wants this
+  // card to match a sibling panel's height instead of listing every
+  // budgeted category.
   limit?: number;
 }) {
-  const sorted = [...categoryProgress].sort((a, b) => {
-    if (a.overBudget !== b.overBudget) return a.overBudget ? -1 : 1;
-    const activity = b.actual + b.planned - (a.actual + a.planned);
-    if (activity !== 0) return activity;
-    return a.name.localeCompare(b.name);
-  });
+  // The full month's budget: every category that actually has money
+  // attached (planned or spent) rather than every category the household
+  // has ever created, alphabetical so it reads as a scannable list instead
+  // of reshuffling by activity every time a number changes.
+  const sorted = [...categoryProgress]
+    .filter((c) => c.planned !== 0 || c.actual !== 0)
+    .sort((a, b) => a.name.localeCompare(b.name));
   const visible = limit ? sorted.slice(0, limit) : sorted;
 
   return (
     <div className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-surface p-5 shadow-card sm:p-6">
       <div className="mb-1 flex items-center justify-between gap-3">
-        <h2 className="text-heading text-text">Budget Categories</h2>
+        <h2 className="text-heading text-text">Budget</h2>
         <Link
           href="/transactions?view=categories"
           className="text-xs font-medium text-text-faint hover:text-text"
@@ -78,19 +79,18 @@ export function BudgetCategoriesCard({
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="px-3 py-2 text-xs font-medium text-text-muted">
+                  <th className="px-4 py-2 text-xs font-medium text-text-muted">
                     Name
                   </th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-text-muted">
+                  <th className="w-28 px-4 py-2 text-right text-xs font-medium text-text-muted">
                     Planned
                   </th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-text-muted">
+                  <th className="w-28 px-4 py-2 text-right text-xs font-medium text-text-muted">
                     Actual
                   </th>
-                  <th className="px-3 py-2 text-xs font-medium text-text-muted">
+                  <th className="w-[200px] px-4 py-2 text-right text-xs font-medium text-text-muted">
                     Progress
                   </th>
-                  <th className="px-3 py-2" />
                 </tr>
               </thead>
               <tbody>
@@ -160,7 +160,7 @@ function MobileCategoryCard({
         </span>
         <span
           className={`tabular shrink-0 text-sm font-semibold ${
-            c.overBudget ? "text-[#f04438]" : "text-text"
+            c.overBudget ? "text-negative" : "text-text"
           }`}
         >
           {c.remaining >= 0
@@ -169,13 +169,13 @@ function MobileCategoryCard({
         </span>
       </div>
       <div className="mt-2 flex items-center gap-2">
-        <div className="h-1.5 min-w-0 flex-1 rounded-full bg-[#dde1d8]">
+        <div className="h-1.5 min-w-0 flex-1 rounded-full bg-neutral-track">
           {(c.planned > 0 || c.actual > 0) && (
             <div
-              className="h-1.5 rounded-full"
+              className="animate-bar-grow-x h-1.5 rounded-full transition-colors duration-300"
               style={{
                 width: `${pct}%`,
-                backgroundColor: c.overBudget ? "#f04438" : "var(--accent)",
+                backgroundColor: c.overBudget ? "var(--negative)" : "var(--accent)",
               }}
             />
           )}
@@ -217,9 +217,9 @@ function CategoryRow({
   category: CategoryProgress;
   editablePeriodId: string | null;
 }) {
+  const router = useRouter();
   const [plannedInput, setPlannedInput] = useState(String(c.planned));
   const [, startTransition] = useTransition();
-  const txnCount = c.transactions.length;
   const pct =
     c.planned > 0
       ? Math.min(100, (c.actual / c.planned) * 100)
@@ -238,14 +238,30 @@ function CategoryRow({
 
   const color = getCategoryColor(c.id);
   const isUnbudgeted = c.planned === 0 && c.actual === 0;
+  const href = editablePeriodId
+    ? `/transactions?period=${editablePeriodId}&category=${c.id}`
+    : `/transactions?category=${c.id}`;
 
   return (
     <tr
-      className={`border-b border-border last:border-b-0 hover:bg-bg even:bg-bg/40 ${
+      onClick={() => router.push(href)}
+      onKeyDown={(e) => {
+        // Only react when the row itself is focused, not a descendant
+        // (the planned-amount input already handles its own Enter key) —
+        // otherwise pressing Enter to save that input would also navigate.
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          router.push(href);
+        }
+      }}
+      role="link"
+      tabIndex={0}
+      className={`cursor-pointer border-b border-border last:border-b-0 hover:bg-bg even:bg-bg/40 ${
         isUnbudgeted ? "opacity-60" : ""
       }`}
     >
-      <td className="px-3 py-3">
+      <td className="px-4 py-3">
         <div className="flex items-center gap-2.5">
           <span
             className="flex size-7 shrink-0 items-center justify-center rounded-full text-sm"
@@ -256,9 +272,12 @@ function CategoryRow({
           <span className="text-sm font-medium text-text">{c.name}</span>
         </div>
       </td>
-      <td className="px-3 py-3 text-right">
+      <td className="px-4 py-3 text-right">
         {editablePeriodId ? (
-          <label className="relative inline-block">
+          <label
+            className="relative inline-block"
+            onClick={(e) => e.stopPropagation()}
+          >
             <span className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-sm text-text-faint">
               $
             </span>
@@ -280,49 +299,32 @@ function CategoryRow({
           </span>
         )}
       </td>
-      <td className="tabular px-3 py-3 text-right text-sm text-text">
+      <td className="tabular px-4 py-3 text-right text-sm text-text">
         {formatMoney(c.actual)}
       </td>
-      <td className="px-3 py-3">
-        <div className="flex items-center gap-2">
-          <div className="h-1.5 w-24 shrink-0 rounded-full bg-[#dde1d8]">
+      <td className="w-[200px] px-4 py-3">
+        <div className="flex items-center justify-end gap-2">
+          <div className="h-1.5 w-24 shrink-0 rounded-full bg-neutral-track">
             {(c.planned > 0 || c.actual > 0) && (
               <div
-                className="h-1.5 rounded-full"
+                className="animate-bar-grow-x h-1.5 rounded-full transition-colors duration-300"
                 style={{
                   width: `${pct}%`,
-                  backgroundColor: c.overBudget ? "#f04438" : "var(--accent)",
+                  backgroundColor: c.overBudget ? "var(--negative)" : "var(--accent)",
                 }}
               />
             )}
           </div>
           <span
-            className={`tabular whitespace-nowrap text-xs font-medium ${
-              c.overBudget ? "text-[#f04438]" : "text-text-muted"
+            className={`tabular w-20 shrink-0 text-right text-xs font-medium whitespace-nowrap ${
+              c.overBudget ? "text-negative" : "text-text-muted"
             }`}
           >
             {c.remaining >= 0
               ? `${formatMoney(c.remaining)} left`
               : `${formatMoney(Math.abs(c.remaining))} over`}
           </span>
-          {c.overBudget && <StatusPill variant="danger">Over</StatusPill>}
         </div>
-      </td>
-      <td className="px-3 py-3 text-right">
-        {txnCount > 0 ? (
-          <Link
-            href={
-              editablePeriodId
-                ? `/transactions?period=${editablePeriodId}&category=${c.id}`
-                : `/transactions?category=${c.id}`
-            }
-            className="whitespace-nowrap text-xs font-medium text-text-faint hover:text-accent"
-          >
-            {txnCount} {txnCount === 1 ? "txn" : "txns"} →
-          </Link>
-        ) : (
-          <span className="text-xs text-text-faint">—</span>
-        )}
       </td>
     </tr>
   );

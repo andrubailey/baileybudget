@@ -25,7 +25,9 @@ export function GreetingHeader({ firstName }: { firstName: string }) {
       <p className="text-sm font-medium text-text-muted">
         {greeting}, {firstName} <span aria-hidden="true">👋</span>
       </p>
-      <h1 className="mt-1 text-display text-text">Here&apos;s your financial overview</h1>
+      <h1 className="mt-1 text-2xl leading-tight font-semibold tracking-tight text-text sm:text-display">
+        Here&apos;s your financial overview
+      </h1>
     </div>
   );
 }

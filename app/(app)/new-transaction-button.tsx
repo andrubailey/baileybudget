@@ -12,18 +12,21 @@ const OPTIONS = [
   {
     key: "expense" as const,
     label: "Expense",
+    shortcut: "E",
     icon: <path d="M5 12h14" strokeWidth={2} strokeLinecap="round" />,
-    color: "#f04438",
+    color: "var(--negative)",
   },
   {
     key: "income" as const,
     label: "Income",
+    shortcut: "I",
     icon: <path d="M12 5v14M5 12h14" strokeWidth={2} strokeLinecap="round" />,
-    color: "#17b26a",
+    color: "var(--positive)",
   },
   {
     key: "transfer" as const,
     label: "Transfer",
+    shortcut: "T",
     icon: (
       <path
         d="M7 7h11l-3-3M17 17H6l3 3"
@@ -32,7 +35,7 @@ const OPTIONS = [
         strokeLinejoin="round"
       />
     ),
-    color: "#0ba5ec",
+    color: "var(--transfer)",
   },
 ];
 
@@ -49,8 +52,10 @@ export function NewTransactionButton({
 }: {
   collapsed?: boolean;
   // "icon" is a compact circular trigger for tight spaces (the mobile top
-  // bar) instead of the full-width labeled button used in the sidebar.
-  variant?: "full" | "icon";
+  // bar); "inline" is a content-width labeled button for sitting alongside
+  // other controls in a header row, instead of the "full" variant's
+  // full-width labeled button used in the sidebar.
+  variant?: "full" | "icon" | "inline";
   menuAlign?: "left" | "right";
   // "above" for triggers anchored to the bottom of the screen, so the
   // picker doesn't try to open off the bottom edge of the viewport.
@@ -68,6 +73,24 @@ export function NewTransactionButton({
     getQuickAddContext().then(setContext);
   }, []);
 
+  // Lets the global keyboard shortcuts (see CommandPalette — "n" opens the
+  // picker, ⌘E/⌘I/⌘T jump straight to a specific type) trigger this from
+  // anywhere in the app, without the two components needing a shared parent
+  // to coordinate through.
+  useEffect(() => {
+    function handleShortcut(e: Event) {
+      const kind = (e as CustomEvent<{ kind?: "expense" | "income" | "transfer" }>).detail
+        ?.kind;
+      if (kind) {
+        openers.current[kind]();
+      } else {
+        setPickerOpen(true);
+      }
+    }
+    window.addEventListener("budgetapp:new-transaction", handleShortcut);
+    return () => window.removeEventListener("budgetapp:new-transaction", handleShortcut);
+  }, []);
+
   if (!context || !context.periodId) return null;
   const { periodId, accounts, categories } = context;
 
@@ -83,6 +106,17 @@ export function NewTransactionButton({
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
             <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" />
           </svg>
+        </button>
+      ) : variant === "inline" ? (
+        <button
+          type="button"
+          onClick={() => setPickerOpen((v) => !v)}
+          className="flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent/90"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth={2} strokeLinecap="round" />
+          </svg>
+          New transaction
         </button>
       ) : (
         <button
@@ -109,7 +143,7 @@ export function NewTransactionButton({
         <>
           <div className="fixed inset-0 z-40" onClick={() => setPickerOpen(false)} />
           <div
-            className={`absolute z-50 w-48 overflow-hidden rounded-lg border border-border bg-surface py-1 shadow-modal ${
+            className={`animate-modal-panel absolute z-50 flex w-48 flex-col gap-0.5 overflow-hidden rounded-lg border border-border bg-surface py-1 shadow-modal ${
               menuAlign === "right" ? "right-0" : "left-0"
             } ${menuPosition === "above" ? "bottom-full mb-2" : "top-full mt-2"}`}
           >
@@ -126,7 +160,10 @@ export function NewTransactionButton({
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={o.color}>
                   {o.icon}
                 </svg>
-                {o.label}
+                <span className="flex-1">{o.label}</span>
+                <kbd className="rounded border border-border px-1 text-[10px] text-text-faint">
+                  ⌘{o.shortcut}
+                </kbd>
               </button>
             ))}
           </div>

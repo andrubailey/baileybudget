@@ -10,7 +10,9 @@ import {
   getCategories,
   getRecurringPriceHistory,
   getTransactionHistory,
+  searchTransactions as searchTransactionsQuery,
   suggestCategoryForDescription,
+  type TransactionSearchResult,
 } from "@/lib/queries";
 import { getPeriods, pickPeriod } from "@/lib/periods";
 import { cleanMerchantDescription } from "@/lib/merchant-name";
@@ -19,12 +21,16 @@ import { cleanMerchantDescription } from "@/lib/merchant-name";
 // mount since (unlike the dashboard) they aren't already sitting in a
 // server component's props.
 export async function getQuickAddContext() {
-  const periods = await getPeriods();
-  const period = pickPeriod(periods);
-  const [accounts, categories] = await Promise.all([
+  // periods and accounts/categories don't depend on each other — this ran
+  // sequentially before (periods, then accounts+categories), which meant
+  // every open of the New Transaction modal paid for two round-trips back
+  // to back instead of one.
+  const [periods, accounts, categories] = await Promise.all([
+    getPeriods(),
     getAccountsWithBalances(),
     getCategories(),
   ]);
+  const period = pickPeriod(periods);
   return {
     periodId: period?.id ?? null,
     accounts: accounts.filter((a) => a.is_active),
@@ -126,6 +132,39 @@ export async function updateAccountLowBalanceAlert(
   revalidatePath("/");
 }
 
+// Single combined save for the account edit modal — one round trip instead
+// of firing the 7 individual field updaters above in parallel, which would
+// mean 7 separate requests (each with its own revalidatePath) for one Save
+// click.
+export async function updateAccountDetails(
+  id: string,
+  data: {
+    goal: number | null;
+    bank: string | null;
+    account_type: string | null;
+    login_url: string | null;
+    low_balance_alert: number | null;
+    is_debt: boolean;
+    is_active: boolean;
+  },
+) {
+  const supabase = await createClient();
+  await supabase
+    .from("accounts")
+    .update({
+      goal: data.goal,
+      bank: data.bank,
+      account_type: data.account_type,
+      login_url: data.login_url,
+      low_balance_alert: data.low_balance_alert,
+      is_debt: data.is_debt,
+      is_active: data.is_active,
+    })
+    .eq("id", id);
+  revalidatePath("/accounts");
+  revalidatePath("/");
+}
+
 export async function createCategory(formData: FormData) {
   const supabase = await createClient();
   const name = String(formData.get("name") ?? "").trim();
@@ -219,6 +258,10 @@ export async function checkDuplicateTransaction(
   excludeId?: string,
 ) {
   return findPossibleDuplicateTransactions(account_id, amount, txn_date, excludeId);
+}
+
+export async function searchTransactions(query: string): Promise<TransactionSearchResult[]> {
+  return searchTransactionsQuery(query);
 }
 
 export type CsvImportRow = {
@@ -456,12 +499,13 @@ export async function createObjective(formData: FormData) {
   const end_date = String(formData.get("end_date") ?? "") || null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
   const linked_account_id = String(formData.get("linked_account_id") ?? "") || null;
+  const image_url = String(formData.get("image_url") ?? "").trim() || null;
 
   if (!name) return;
 
   await supabase
     .from("objectives")
-    .insert({ name, status, start_date, end_date, notes, linked_account_id });
+    .insert({ name, status, start_date, end_date, notes, linked_account_id, image_url });
   revalidatePath("/");
 }
 
@@ -479,12 +523,13 @@ export async function updateObjective(id: string, formData: FormData) {
   const end_date = String(formData.get("end_date") ?? "") || null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
   const linked_account_id = String(formData.get("linked_account_id") ?? "") || null;
+  const image_url = String(formData.get("image_url") ?? "").trim() || null;
 
   if (!name) return;
 
   await supabase
     .from("objectives")
-    .update({ name, status, start_date, end_date, notes, linked_account_id })
+    .update({ name, status, start_date, end_date, notes, linked_account_id, image_url })
     .eq("id", id);
   revalidatePath("/");
 }
@@ -747,7 +792,13 @@ export async function listApiTokens(): Promise<ApiTokenSummary[]> {
     .from("api_tokens")
     .select("id, label, created_at, last_used_at, revoked_at")
     .order("created_at", { ascending: false });
-  if (error) throw error;
+  // Best-effort: this table's migration is one people run manually, so a
+  // household that hasn't gotten to it yet would otherwise crash the whole
+  // Settings page with an unhandled throw instead of just showing no tokens.
+  if (error) {
+    console.error("listApiTokens failed:", error);
+    return [];
+  }
   return data ?? [];
 }
 
@@ -775,4 +826,25 @@ export async function revokeApiToken(id: string) {
   const supabase = await createClient();
   await supabase.from("api_tokens").update({ revoked_at: new Date().toISOString() }).eq("id", id);
   revalidatePath("/settings");
+}
+
+export async function updateMyProfile(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const display_name = String(formData.get("display_name") ?? "").trim() || null;
+  const avatar_url = String(formData.get("avatar_url") ?? "").trim() || null;
+
+  const { error } = await supabase
+    .from("profiles")
+    .upsert({ id: user.id, display_name, avatar_url, updated_at: new Date().toISOString() });
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/");
+  return { ok: true };
 }

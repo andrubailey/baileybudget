@@ -36,7 +36,16 @@ export function SimpleLineChart({
         {minVal < 0 && maxVal > 0 && (
           <line x1={0} y1={baselineY} x2={width} y2={baselineY} stroke="var(--border)" strokeWidth={1} />
         )}
-        <path d={linePath} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+        <path
+          d={linePath}
+          pathLength={1}
+          className="animate-draw-line"
+          fill="none"
+          stroke={color}
+          strokeWidth={2}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
         {coords.map((c, i) => (
           <circle key={i} cx={c.x} cy={c.y} r={2.5} fill={color}>
             <title>{`${points[i].label}: ${formatValue(points[i].value)}`}</title>

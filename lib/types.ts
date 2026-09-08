@@ -144,6 +144,8 @@ export type Objective = {
   // When set, progress tracks this account's real balance against its goal
   // instead of being tracked manually.
   linked_account_id: string | null;
+  // Background image for the featured-goal banner on the dashboard.
+  image_url: string | null;
   created_at: string;
 };
 
@@ -153,6 +155,13 @@ export type TransactionHistoryEntry = {
   edited_by_email: string | null;
   edited_at: string;
   snapshot: Record<string, unknown>;
+};
+
+export type Profile = {
+  id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  updated_at: string;
 };
 
 export const OBJECTIVE_STATUSES = [

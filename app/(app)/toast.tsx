@@ -12,12 +12,24 @@ let nextId = 1;
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  // A toast plays its exit animation before actually leaving the list —
+  // filtering it out immediately would just cut it, since there's nothing
+  // left in the DOM at that point for CSS to animate.
+  const [leavingIds, setLeavingIds] = useState<Set<number>>(new Set());
 
   const showToast = useCallback((message: string, tone: Toast["tone"] = "success") => {
     const id = nextId++;
     setToasts((current) => [...current, { id, message, tone }]);
     setTimeout(() => {
-      setToasts((current) => current.filter((t) => t.id !== id));
+      setLeavingIds((current) => new Set(current).add(id));
+      setTimeout(() => {
+        setToasts((current) => current.filter((t) => t.id !== id));
+        setLeavingIds((current) => {
+          const next = new Set(current);
+          next.delete(id);
+          return next;
+        });
+      }, 150);
     }, 3000);
   }, []);
 
@@ -30,9 +42,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`animate-toast-in pointer-events-auto flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium shadow-raised ${
+            className={`${leavingIds.has(t.id) ? "animate-toast-out" : "animate-toast-in"} pointer-events-auto flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium shadow-raised ${
               t.tone === "error"
-                ? "border-[#fda29b] bg-[#fef3f2] text-[#b42318]"
+                ? "border-negative-border bg-negative-bg text-negative-strong"
                 : "border-accent-border bg-accent-soft text-accent"
             }`}
           >
