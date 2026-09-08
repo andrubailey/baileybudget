@@ -34,8 +34,16 @@ export function AnimatedMoney({ value, className }: { value: number; className?:
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
-  return <span className={className}>{formatMoney(display)}</span>;
+  const formatted = formatMoney(display);
+  const dotIndex = formatted.indexOf(".");
+  if (dotIndex === -1) return <span className={className}>{formatted}</span>;
+
+  return (
+    <span className={className}>
+      {formatted.slice(0, dotIndex)}
+      <span className="text-[0.6em] opacity-60">{formatted.slice(dotIndex)}</span>
+    </span>
+  );
 }

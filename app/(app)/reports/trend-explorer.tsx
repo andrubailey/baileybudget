@@ -2,8 +2,8 @@
 
 import { useRef, useState } from "react";
 import { formatMoney } from "@/lib/format";
-import { MonthlyTrendChart, type ChartPoint } from "@/app/(app)/monthly-trend-chart";
-import { SimpleLineChart } from "@/app/(app)/simple-line-chart";
+import { MonthlyTrendChart, type ChartPoint } from "./monthly-trend-chart";
+import { SimpleLineChart } from "./simple-line-chart";
 import type { MonthlyTotal } from "@/lib/queries";
 
 type Point = { label: string; value: number };

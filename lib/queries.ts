@@ -9,7 +9,11 @@ import type {
   TransactionHistoryEntry,
 } from "@/lib/types";
 
-type SplitRow = { transaction_id: string; category_id: string | null; amount: number };
+type SplitRow = {
+  transaction_id: string;
+  category_id: string | null;
+  amount: number;
+};
 
 // Splits belong to transactions whose own category_id is null (the parent
 // just holds the total). Folds split amounts into the same category-id ->
@@ -27,7 +31,10 @@ async function applySplits(
 
   for (const s of (splits ?? []) as SplitRow[]) {
     if (!s.category_id) continue;
-    actualByCategory.set(s.category_id, (actualByCategory.get(s.category_id) ?? 0) + s.amount);
+    actualByCategory.set(
+      s.category_id,
+      (actualByCategory.get(s.category_id) ?? 0) + s.amount,
+    );
   }
 }
 
@@ -41,8 +48,20 @@ export type AccountWithBalance = Account & { balance: number };
 const PAGE_SIZE = 1000;
 async function fetchAllTransactionDeltas(
   supabase: Awaited<ReturnType<typeof createClient>>,
-): Promise<{ account_id: string | null; to_account_id: string | null; kind: string; amount: number }[]> {
-  const rows: { account_id: string | null; to_account_id: string | null; kind: string; amount: number }[] = [];
+): Promise<
+  {
+    account_id: string | null;
+    to_account_id: string | null;
+    kind: string;
+    amount: number;
+  }[]
+> {
+  const rows: {
+    account_id: string | null;
+    to_account_id: string | null;
+    kind: string;
+    amount: number;
+  }[] = [];
   let from = 0;
   for (;;) {
     const { data, error } = await supabase
@@ -58,18 +77,18 @@ async function fetchAllTransactionDeltas(
   return rows;
 }
 
-export async function getAccountsWithBalances(): Promise<
-  AccountWithBalance[]
-> {
+export async function getAccountsWithBalances(): Promise<AccountWithBalance[]> {
   const supabase = await createClient();
 
-  const [
-    { data: accounts, error: accountsError },
-    transactions,
-  ] = await Promise.all([
-    supabase.from("accounts").select("*").order("sort_order").order("created_at"),
-    fetchAllTransactionDeltas(supabase),
-  ]);
+  const [{ data: accounts, error: accountsError }, transactions] =
+    await Promise.all([
+      supabase
+        .from("accounts")
+        .select("*")
+        .order("sort_order")
+        .order("created_at"),
+      fetchAllTransactionDeltas(supabase),
+    ]);
 
   // A query error here (e.g. a pending migration) must not silently fall back
   // to starting_balance only — that looks exactly like lost account history.
@@ -157,26 +176,23 @@ export async function getCategoryProgress(
 ): Promise<CategoryProgress[]> {
   const supabase = await createClient();
 
-  const [{ data: period }, { data: categories }, { data: budgetLines }, { data: transactions }] =
-    await Promise.all([
-      supabase.from("periods").select("*").eq("id", periodId).single(),
-      supabase
-        .from("categories")
-        .select("*")
-        .eq("kind", "expense")
-        .order("name"),
-      supabase
-        .from("budget_lines")
-        .select("*")
-        .eq("period_id", periodId),
-      supabase
-        .from("transactions")
-        .select("id, category_id, amount, description, txn_date")
-        .eq("period_id", periodId)
-        .eq("kind", "expense")
-        .is("deleted_at", null)
-        .order("txn_date", { ascending: false }),
-    ]);
+  const [
+    { data: period },
+    { data: categories },
+    { data: budgetLines },
+    { data: transactions },
+  ] = await Promise.all([
+    supabase.from("periods").select("*").eq("id", periodId).single(),
+    supabase.from("categories").select("*").eq("kind", "expense").order("name"),
+    supabase.from("budget_lines").select("*").eq("period_id", periodId),
+    supabase
+      .from("transactions")
+      .select("id, category_id, amount, description, txn_date")
+      .eq("period_id", periodId)
+      .eq("kind", "expense")
+      .is("deleted_at", null)
+      .order("txn_date", { ascending: false }),
+  ]);
 
   const plannedByCategory = new Map<string, number>();
   for (const line of (budgetLines ?? []) as BudgetLine[]) {
@@ -212,11 +228,17 @@ export async function getCategoryProgress(
   }
   await applySplits(splitTransactionIds, actualByCategory);
 
-  const rolloverCategories = ((categories ?? []) as Category[]).filter((c) => c.rollover);
-  const rolloverByCategory = await getRolloverAmounts(period, rolloverCategories);
+  const rolloverCategories = ((categories ?? []) as Category[]).filter(
+    (c) => c.rollover,
+  );
+  const rolloverByCategory = await getRolloverAmounts(
+    period,
+    rolloverCategories,
+  );
 
   return ((categories ?? []) as Category[]).map((c) => {
-    const planned = (plannedByCategory.get(c.id) ?? 0) + (rolloverByCategory.get(c.id) ?? 0);
+    const planned =
+      (plannedByCategory.get(c.id) ?? 0) + (rolloverByCategory.get(c.id) ?? 0);
     const actual = actualByCategory.get(c.id) ?? 0;
     return {
       ...c,
@@ -250,19 +272,20 @@ async function getRolloverAmounts(
   if (!prevPeriod) return result;
 
   const categoryIds = rolloverCategories.map((c) => c.id);
-  const [{ data: prevBudgetLines }, { data: prevTransactions }] = await Promise.all([
-    supabase
-      .from("budget_lines")
-      .select("category_id, planned_amount")
-      .eq("period_id", prevPeriod.id)
-      .in("category_id", categoryIds),
-    supabase
-      .from("transactions")
-      .select("id, category_id, amount")
-      .eq("period_id", prevPeriod.id)
-      .eq("kind", "expense")
-      .is("deleted_at", null),
-  ]);
+  const [{ data: prevBudgetLines }, { data: prevTransactions }] =
+    await Promise.all([
+      supabase
+        .from("budget_lines")
+        .select("category_id, planned_amount")
+        .eq("period_id", prevPeriod.id)
+        .in("category_id", categoryIds),
+      supabase
+        .from("transactions")
+        .select("id, category_id, amount")
+        .eq("period_id", prevPeriod.id)
+        .eq("kind", "expense")
+        .is("deleted_at", null),
+    ]);
 
   const prevPlanned = new Map<string, number>();
   for (const line of prevBudgetLines ?? []) {
@@ -276,7 +299,10 @@ async function getRolloverAmounts(
       continue;
     }
     if (!categoryIds.includes(t.category_id)) continue;
-    prevActual.set(t.category_id, (prevActual.get(t.category_id) ?? 0) + t.amount);
+    prevActual.set(
+      t.category_id,
+      (prevActual.get(t.category_id) ?? 0) + t.amount,
+    );
   }
   await applySplits(splitIds, prevActual);
 
@@ -324,27 +350,26 @@ export async function getCategoryProgressForRange(
 ): Promise<CategoryProgress[]> {
   const supabase = await createClient();
 
-  const [{ data: categories }, { data: overlappingPeriods }, { data: transactions }] =
-    await Promise.all([
-      supabase
-        .from("categories")
-        .select("*")
-        .eq("kind", "expense")
-        .order("name"),
-      supabase
-        .from("periods")
-        .select("id")
-        .lte("start_date", end)
-        .gte("end_date", start),
-      supabase
-        .from("transactions")
-        .select("id, category_id, amount, description, txn_date")
-        .eq("kind", "expense")
-        .gte("txn_date", start)
-        .lte("txn_date", end)
-        .is("deleted_at", null)
-        .order("txn_date", { ascending: false }),
-    ]);
+  const [
+    { data: categories },
+    { data: overlappingPeriods },
+    { data: transactions },
+  ] = await Promise.all([
+    supabase.from("categories").select("*").eq("kind", "expense").order("name"),
+    supabase
+      .from("periods")
+      .select("id")
+      .lte("start_date", end)
+      .gte("end_date", start),
+    supabase
+      .from("transactions")
+      .select("id, category_id, amount, description, txn_date")
+      .eq("kind", "expense")
+      .gte("txn_date", start)
+      .lte("txn_date", end)
+      .is("deleted_at", null)
+      .order("txn_date", { ascending: false }),
+  ]);
 
   const periodIds = (overlappingPeriods ?? []).map((p) => p.id);
   const { data: budgetLines } = periodIds.length
@@ -422,7 +447,10 @@ export type MonthlyTotal = { month: string; income: number; expense: number };
 
 // One row per calendar month in [start, end], even a month with zero
 // activity, so a year-to-date chart never silently skips a quiet month.
-export async function getMonthlyTotals(start: string, end: string): Promise<MonthlyTotal[]> {
+export async function getMonthlyTotals(
+  start: string,
+  end: string,
+): Promise<MonthlyTotal[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("transactions")
@@ -447,7 +475,10 @@ export async function getMonthlyTotals(start: string, end: string): Promise<Mont
   const endCursor = new Date(`${end.slice(0, 7)}-01T00:00:00Z`);
   while (cursor <= endCursor) {
     const key = cursor.toISOString().slice(0, 7);
-    months.push({ month: key, ...(byMonth.get(key) ?? { income: 0, expense: 0 }) });
+    months.push({
+      month: key,
+      ...(byMonth.get(key) ?? { income: 0, expense: 0 }),
+    });
     cursor.setUTCMonth(cursor.getUTCMonth() + 1);
   }
   return months;
@@ -485,20 +516,30 @@ export async function getRecurringVsOtherByMonth(
 
 // Sum of planned amounts (expense categories only) for a set of periods, so
 // a chart can show "planned" alongside "actual" per month.
-export async function getPlannedTotalsByPeriod(periodIds: string[]): Promise<Map<string, number>> {
+export async function getPlannedTotalsByPeriod(
+  periodIds: string[],
+): Promise<Map<string, number>> {
   if (periodIds.length === 0) return new Map();
   const supabase = await createClient();
   const [{ data: lines, error }, { data: categories }] = await Promise.all([
-    supabase.from("budget_lines").select("period_id, category_id, planned_amount").in("period_id", periodIds),
+    supabase
+      .from("budget_lines")
+      .select("period_id, category_id, planned_amount")
+      .in("period_id", periodIds),
     supabase.from("categories").select("id, kind"),
   ]);
   if (error) throw error;
 
-  const expenseCategoryIds = new Set((categories ?? []).filter((c) => c.kind === "expense").map((c) => c.id));
+  const expenseCategoryIds = new Set(
+    (categories ?? []).filter((c) => c.kind === "expense").map((c) => c.id),
+  );
   const byPeriod = new Map<string, number>();
   for (const l of lines ?? []) {
     if (!expenseCategoryIds.has(l.category_id)) continue;
-    byPeriod.set(l.period_id, (byPeriod.get(l.period_id) ?? 0) + l.planned_amount);
+    byPeriod.set(
+      l.period_id,
+      (byPeriod.get(l.period_id) ?? 0) + l.planned_amount,
+    );
   }
   return byPeriod;
 }
@@ -509,50 +550,84 @@ export async function getPlannedTotalsByPeriod(periodIds: string[]): Promise<Map
 // doesn't move total household net worth.
 export async function getDebtBalanceHistory(): Promise<NetWorthPoint[]> {
   const supabase = await createClient();
-  const [{ data: accounts }, { data: periods }, { data: transactions }] = await Promise.all([
-    supabase.from("accounts").select("id, starting_balance, is_debt"),
-    supabase.from("periods").select("*").order("start_date", { ascending: true }),
-    supabase
-      .from("transactions")
-      .select("account_id, to_account_id, kind, amount, txn_date")
-      .is("deleted_at", null)
-      .order("txn_date", { ascending: true }),
-  ]);
+  const [{ data: accounts }, { data: periods }, { data: transactions }] =
+    await Promise.all([
+      supabase.from("accounts").select("id, starting_balance, is_debt"),
+      supabase
+        .from("periods")
+        .select("*")
+        .order("start_date", { ascending: true }),
+      supabase
+        .from("transactions")
+        .select("account_id, to_account_id, kind, amount, txn_date")
+        .is("deleted_at", null)
+        .order("txn_date", { ascending: true }),
+    ]);
 
-  const debtAccountIds = new Set((accounts ?? []).filter((a) => a.is_debt).map((a) => a.id));
+  const debtAccountIds = new Set(
+    (accounts ?? []).filter((a) => a.is_debt).map((a) => a.id),
+  );
   const balanceByAccount = new Map<string, number>();
   for (const a of accounts ?? []) {
-    if (debtAccountIds.has(a.id)) balanceByAccount.set(a.id, a.starting_balance);
+    if (debtAccountIds.has(a.id))
+      balanceByAccount.set(a.id, a.starting_balance);
   }
 
-  const sorted = (transactions ?? []).slice().sort((a, b) => a.txn_date.localeCompare(b.txn_date));
+  const sorted = (transactions ?? [])
+    .slice()
+    .sort((a, b) => a.txn_date.localeCompare(b.txn_date));
   let txnIndex = 0;
   const points: NetWorthPoint[] = [];
 
-  for (const period of (periods ?? []) as { id: string; name: string; end_date: string }[]) {
-    while (txnIndex < sorted.length && sorted[txnIndex].txn_date <= period.end_date) {
+  for (const period of (periods ?? []) as {
+    id: string;
+    name: string;
+    end_date: string;
+  }[]) {
+    while (
+      txnIndex < sorted.length &&
+      sorted[txnIndex].txn_date <= period.end_date
+    ) {
       const t = sorted[txnIndex];
       if (t.kind === "transfer") {
         if (t.account_id && balanceByAccount.has(t.account_id)) {
-          balanceByAccount.set(t.account_id, balanceByAccount.get(t.account_id)! - t.amount);
+          balanceByAccount.set(
+            t.account_id,
+            balanceByAccount.get(t.account_id)! - t.amount,
+          );
         }
         if (t.to_account_id && balanceByAccount.has(t.to_account_id)) {
-          balanceByAccount.set(t.to_account_id, balanceByAccount.get(t.to_account_id)! + t.amount);
+          balanceByAccount.set(
+            t.to_account_id,
+            balanceByAccount.get(t.to_account_id)! + t.amount,
+          );
         }
       } else if (t.account_id && balanceByAccount.has(t.account_id)) {
         const delta = t.kind === "income" ? t.amount : -t.amount;
-        balanceByAccount.set(t.account_id, balanceByAccount.get(t.account_id)! + delta);
+        balanceByAccount.set(
+          t.account_id,
+          balanceByAccount.get(t.account_id)! + delta,
+        );
       }
       txnIndex += 1;
     }
     const total = [...balanceByAccount.values()].reduce((sum, v) => sum + v, 0);
-    points.push({ periodId: period.id, periodName: period.name, endDate: period.end_date, netWorth: total });
+    points.push({
+      periodId: period.id,
+      periodName: period.name,
+      endDate: period.end_date,
+      netWorth: total,
+    });
   }
 
   return points;
 }
 
-export type TopCategoryByMonth = { month: string; categoryName: string; amount: number } | null;
+export type TopCategoryByMonth = {
+  month: string;
+  categoryName: string;
+  amount: number;
+} | null;
 
 // The single biggest expense category per month, for a "what drove the
 // spike" callout next to the income/expense chart.
@@ -579,7 +654,10 @@ export async function getTopCategoryByMonth(
   for (const t of rows ?? []) {
     const month = t.txn_date.slice(0, 7);
     const byCategory = byMonthCategory.get(month) ?? new Map<string, number>();
-    byCategory.set(t.category_id!, (byCategory.get(t.category_id!) ?? 0) + t.amount);
+    byCategory.set(
+      t.category_id!,
+      (byCategory.get(t.category_id!) ?? 0) + t.amount,
+    );
     byMonthCategory.set(month, byCategory);
   }
 
@@ -589,7 +667,16 @@ export async function getTopCategoryByMonth(
     for (const [categoryId, amount] of byCategory) {
       if (!top || amount > top.amount) top = { categoryId, amount };
     }
-    result.set(month, top ? { month, categoryName: nameById.get(top.categoryId) ?? "—", amount: top.amount } : null);
+    result.set(
+      month,
+      top
+        ? {
+            month,
+            categoryName: nameById.get(top.categoryId) ?? "—",
+            amount: top.amount,
+          }
+        : null,
+    );
   }
   return result;
 }
@@ -662,7 +749,12 @@ export async function findPossibleDuplicateTransactions(
   amount: number,
   txn_date: string,
   excludeId?: string,
-): Promise<Pick<Transaction, "id" | "description" | "amount" | "txn_date" | "created_by_email">[]> {
+): Promise<
+  Pick<
+    Transaction,
+    "id" | "description" | "amount" | "txn_date" | "created_by_email"
+  >[]
+> {
   if (!account_id || !amount || !txn_date) return [];
   const supabase = await createClient();
 
@@ -688,7 +780,9 @@ export async function findPossibleDuplicateTransactions(
   return data ?? [];
 }
 
-export async function getRecurringTransactions(): Promise<RecurringTransaction[]> {
+export async function getRecurringTransactions(): Promise<
+  RecurringTransaction[]
+> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("recurring_transactions")
@@ -701,7 +795,9 @@ export async function getRecurringTransactions(): Promise<RecurringTransaction[]
 // Which recurring items already have a generated transaction in this period,
 // so the Recurring page can show a reconciliation status instead of just a
 // static list that's disconnected from what's actually been posted.
-export async function getPostedRecurringIds(periodId: string): Promise<Set<string>> {
+export async function getPostedRecurringIds(
+  periodId: string,
+): Promise<Set<string>> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("transactions")
@@ -713,31 +809,52 @@ export async function getPostedRecurringIds(periodId: string): Promise<Set<strin
   return new Set((data ?? []).map((t) => t.recurring_transaction_id as string));
 }
 
-export type NetWorthPoint = { periodId: string; periodName: string; endDate: string; netWorth: number };
+export type NetWorthPoint = {
+  periodId: string;
+  periodName: string;
+  endDate: string;
+  netWorth: number;
+};
 
 // Cumulative balance across all accounts as of the end of each period,
 // oldest first, for a balance-over-time chart.
 export async function getNetWorthHistory(): Promise<NetWorthPoint[]> {
   const supabase = await createClient();
-  const [{ data: accounts }, { data: periods }, { data: transactions }] = await Promise.all([
-    supabase.from("accounts").select("id, starting_balance"),
-    supabase.from("periods").select("*").order("start_date", { ascending: true }),
-    supabase
-      .from("transactions")
-      .select("account_id, to_account_id, kind, amount, txn_date")
-      .is("deleted_at", null)
-      .order("txn_date", { ascending: true }),
-  ]);
+  const [{ data: accounts }, { data: periods }, { data: transactions }] =
+    await Promise.all([
+      supabase.from("accounts").select("id, starting_balance"),
+      supabase
+        .from("periods")
+        .select("*")
+        .order("start_date", { ascending: true }),
+      supabase
+        .from("transactions")
+        .select("account_id, to_account_id, kind, amount, txn_date")
+        .is("deleted_at", null)
+        .order("txn_date", { ascending: true }),
+    ]);
 
-  const startingTotal = (accounts ?? []).reduce((sum, a) => sum + a.starting_balance, 0);
-  const sorted = (transactions ?? []).slice().sort((a, b) => a.txn_date.localeCompare(b.txn_date));
+  const startingTotal = (accounts ?? []).reduce(
+    (sum, a) => sum + a.starting_balance,
+    0,
+  );
+  const sorted = (transactions ?? [])
+    .slice()
+    .sort((a, b) => a.txn_date.localeCompare(b.txn_date));
 
   let runningTotal = startingTotal;
   let txnIndex = 0;
   const points: NetWorthPoint[] = [];
 
-  for (const period of (periods ?? []) as { id: string; name: string; end_date: string }[]) {
-    while (txnIndex < sorted.length && sorted[txnIndex].txn_date <= period.end_date) {
+  for (const period of (periods ?? []) as {
+    id: string;
+    name: string;
+    end_date: string;
+  }[]) {
+    while (
+      txnIndex < sorted.length &&
+      sorted[txnIndex].txn_date <= period.end_date
+    ) {
       const t = sorted[txnIndex];
       // Transfers move money between accounts we're already counting, so the
       // total net worth is unaffected — only income/expense change the sum.
@@ -756,13 +873,70 @@ export async function getNetWorthHistory(): Promise<NetWorthPoint[]> {
   return points;
 }
 
+export type BalancePoint = { date: string; balance: number };
+
+// Daily running total balance across every account for the last `days` days
+// (today inclusive), for a small balance-over-time sparkline.
+export async function getBalanceHistory(days: number): Promise<BalancePoint[]> {
+  const supabase = await createClient();
+  const [{ data: accounts }, { data: transactions }] = await Promise.all([
+    supabase.from("accounts").select("id, starting_balance"),
+    supabase
+      .from("transactions")
+      .select("kind, amount, txn_date")
+      .is("deleted_at", null)
+      .order("txn_date", { ascending: true }),
+  ]);
+
+  const startingTotal = (accounts ?? []).reduce(
+    (sum, a) => sum + a.starting_balance,
+    0,
+  );
+  const sorted = (transactions ?? [])
+    .slice()
+    .sort((a, b) => a.txn_date.localeCompare(b.txn_date));
+
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const end = new Date(`${todayIso}T00:00:00Z`);
+  const start = new Date(end);
+  start.setUTCDate(start.getUTCDate() - (days - 1));
+  const startIso = start.toISOString().slice(0, 10);
+
+  // Fold in every transaction that happened before the window starts, so the
+  // first point reflects the real running balance rather than starting_balance.
+  let runningTotal = startingTotal;
+  let txnIndex = 0;
+  while (txnIndex < sorted.length && sorted[txnIndex].txn_date < startIso) {
+    const t = sorted[txnIndex];
+    if (t.kind === "income") runningTotal += t.amount;
+    else if (t.kind === "expense") runningTotal -= t.amount;
+    txnIndex += 1;
+  }
+
+  const points: BalancePoint[] = [];
+  for (const d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+    const iso = d.toISOString().slice(0, 10);
+    while (txnIndex < sorted.length && sorted[txnIndex].txn_date <= iso) {
+      const t = sorted[txnIndex];
+      if (t.kind === "income") runningTotal += t.amount;
+      else if (t.kind === "expense") runningTotal -= t.amount;
+      txnIndex += 1;
+    }
+    points.push({ date: iso, balance: runningTotal });
+  }
+
+  return points;
+}
+
 export type BudgetGridRow = {
   category: Category;
   plannedByPeriod: Map<string, number>;
 };
 
 // Categories x periods matrix of planned amounts for multi-month planning.
-export async function getBudgetGrid(periodIds: string[]): Promise<BudgetGridRow[]> {
+export async function getBudgetGrid(
+  periodIds: string[],
+): Promise<BudgetGridRow[]> {
   const supabase = await createClient();
   const [{ data: categories }, { data: budgetLines }] = await Promise.all([
     supabase.from("categories").select("*").eq("kind", "expense").order("name"),
@@ -830,11 +1004,15 @@ export async function getSafeToSpend(periodId: string): Promise<number> {
     supabase.from("periods").select("*").eq("id", periodId).single(),
   ]);
 
-  const remainingBudget = categoryProgress.reduce((sum, c) => sum + Math.max(0, c.remaining), 0);
+  const remainingBudget = categoryProgress.reduce(
+    (sum, c) => sum + Math.max(0, c.remaining),
+    0,
+  );
   if (!period) return remainingBudget;
 
   const today = new Date().toISOString().slice(0, 10);
-  const isCurrentPeriod = period.start_date <= today && period.end_date >= today;
+  const isCurrentPeriod =
+    period.start_date <= today && period.end_date >= today;
   if (!isCurrentPeriod) return remainingBudget;
 
   const todayDay = Number(today.slice(8, 10));
@@ -868,7 +1046,9 @@ export type UpcomingBill = {
 // Active expense bills that haven't posted yet this period, for a dashboard
 // "what's coming up" glance — `due` (day_of_month already passed but no
 // transaction generated) surfaces before merely `upcoming` ones.
-export async function getUpcomingBills(periodId: string): Promise<UpcomingBill[]> {
+export async function getUpcomingBills(
+  periodId: string,
+): Promise<UpcomingBill[]> {
   const supabase = await createClient();
   const todayDay = Number(new Date().toISOString().slice(8, 10));
   const [{ data: recurring }, postedIds] = await Promise.all([
@@ -920,8 +1100,12 @@ export async function getTransactionHistory(
   return data ?? [];
 }
 
-
-export type MonthlyFlowPoint = { periodId: string; label: string; income: number; expense: number };
+export type MonthlyFlowPoint = {
+  periodId: string;
+  label: string;
+  income: number;
+  expense: number;
+};
 
 // Income/expense totals per period, oldest first, for the Money Flow bar
 // chart — separate from getNetWorthHistory, which tracks cumulative balance
@@ -935,7 +1119,9 @@ export async function getMonthlyFlow(limit = 12): Promise<MonthlyFlowPoint[]> {
     .limit(limit);
 
   const ordered = (periods ?? []).slice().reverse();
-  const summaries = await Promise.all(ordered.map((p) => getPeriodSummary(p.id)));
+  const summaries = await Promise.all(
+    ordered.map((p) => getPeriodSummary(p.id)),
+  );
 
   return ordered.map((p, i) => ({
     periodId: p.id,

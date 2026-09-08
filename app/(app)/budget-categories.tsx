@@ -14,58 +14,92 @@ export function BudgetCategoriesCard({
   categoryProgress,
   editablePeriodId,
   rangeIsSinglePeriod,
+  limit,
 }: {
   categoryProgress: CategoryProgress[];
   editablePeriodId: string | null;
   rangeIsSinglePeriod: boolean;
+  // Caps how many rows render (over-budget first, then most active, then
+  // alphabetical) so this card can match a sibling panel's height instead of
+  // growing to list every category the household has ever created.
+  limit?: number;
 }) {
-  const sorted = [...categoryProgress].sort((a, b) => a.name.localeCompare(b.name));
+  const sorted = [...categoryProgress].sort((a, b) => {
+    if (a.overBudget !== b.overBudget) return a.overBudget ? -1 : 1;
+    const activity = b.actual + b.planned - (a.actual + a.planned);
+    if (activity !== 0) return activity;
+    return a.name.localeCompare(b.name);
+  });
+  const visible = limit ? sorted.slice(0, limit) : sorted;
 
   return (
-    <div className="min-w-0">
-      <div className="mb-4 flex items-baseline justify-between gap-3">
-        <h2 className="text-heading text-text">Budget categories</h2>
-        {!rangeIsSinglePeriod && categoryProgress.length > 0 && (
-          <span className="hidden text-xs text-text-faint sm:inline">
-            Switch to a single month to edit planned amounts
-          </span>
-        )}
+    <div className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-surface p-5 shadow-card sm:p-6">
+      <div className="mb-1 flex items-center justify-between gap-3">
+        <h2 className="text-heading text-text">Budget Categories</h2>
+        <Link
+          href="/transactions?view=categories"
+          className="text-xs font-medium text-text-faint hover:text-text"
+        >
+          View All
+        </Link>
       </div>
+      {!rangeIsSinglePeriod && categoryProgress.length > 0 && (
+        <p className="mb-3 hidden text-xs text-text-faint sm:block">
+          Switch to a single month to edit planned amounts
+        </p>
+      )}
 
       {sorted.length === 0 ? (
-        <div className="rounded-xl border border-border bg-surface p-4 shadow-card">
-          <EmptyState
-            message="No expense categories yet."
-            action={
-              <Link href="/categories" className="text-xs text-accent underline underline-offset-2">
-                Add one
-              </Link>
-            }
-          />
-        </div>
+        <EmptyState
+          message="No expense categories yet."
+          action={
+            <Link
+              href="/transactions?view=categories"
+              className="text-xs text-accent underline underline-offset-2"
+            >
+              Add one
+            </Link>
+          }
+        />
       ) : (
         <>
           {/* Mobile: compact cards, no horizontal scroll. Desktop: full table. */}
-          <div className="space-y-2 sm:hidden">
-            {sorted.map((c) => (
-              <MobileCategoryCard key={c.id} category={c} editablePeriodId={editablePeriodId} />
+          <div className="mt-3 space-y-2 sm:hidden">
+            {visible.map((c) => (
+              <MobileCategoryCard
+                key={c.id}
+                category={c}
+                editablePeriodId={editablePeriodId}
+              />
             ))}
           </div>
 
-          <div className="hidden overflow-x-auto rounded-xl border border-border bg-surface shadow-card sm:block">
+          <div className="mt-3 hidden overflow-x-auto sm:block">
             <table className="w-full text-left">
               <thead>
-                <tr className="border-b border-border bg-bg">
-                  <th className="px-6 py-2 text-xs font-medium text-text-muted">Name</th>
-                  <th className="px-6 py-2 text-xs font-medium text-text-muted">Planned</th>
-                  <th className="px-6 py-2 text-xs font-medium text-text-muted">Actual</th>
-                  <th className="px-6 py-2 text-xs font-medium text-text-muted">Progress</th>
-                  <th className="px-6 py-2" />
+                <tr className="border-b border-border">
+                  <th className="px-3 py-2 text-xs font-medium text-text-muted">
+                    Name
+                  </th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-text-muted">
+                    Planned
+                  </th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-text-muted">
+                    Actual
+                  </th>
+                  <th className="px-3 py-2 text-xs font-medium text-text-muted">
+                    Progress
+                  </th>
+                  <th className="px-3 py-2" />
                 </tr>
               </thead>
               <tbody>
-                {sorted.map((c) => (
-                  <CategoryRow key={c.id} category={c} editablePeriodId={editablePeriodId} />
+                {visible.map((c) => (
+                  <CategoryRow
+                    key={c.id}
+                    category={c}
+                    editablePeriodId={editablePeriodId}
+                  />
                 ))}
               </tbody>
             </table>
@@ -85,8 +119,14 @@ function MobileCategoryCard({
 }) {
   const [plannedInput, setPlannedInput] = useState(String(c.planned));
   const [, startTransition] = useTransition();
-  const pct = c.planned > 0 ? Math.min(100, (c.actual / c.planned) * 100) : c.actual > 0 ? 100 : 0;
+  const pct =
+    c.planned > 0
+      ? Math.min(100, (c.actual / c.planned) * 100)
+      : c.actual > 0
+        ? 100
+        : 0;
   const color = getCategoryColor(c.id);
+  const isUnbudgeted = c.planned === 0 && c.actual === 0;
 
   function save() {
     if (!editablePeriodId) return;
@@ -104,7 +144,9 @@ function MobileCategoryCard({
           ? `/transactions?period=${editablePeriodId}&category=${c.id}`
           : `/transactions?category=${c.id}`
       }
-      className="block rounded-xl border border-border bg-surface p-3 shadow-card"
+      className={`block rounded-xl border border-border bg-surface p-3 shadow-card ${
+        isUnbudgeted ? "opacity-60" : ""
+      }`}
     >
       <div className="flex items-center gap-2.5">
         <span
@@ -113,40 +155,55 @@ function MobileCategoryCard({
         >
           {getCategoryIcon(c.name, c.icon)}
         </span>
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-text">{c.name}</span>
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-text">
+          {c.name}
+        </span>
         <span
           className={`tabular shrink-0 text-sm font-semibold ${
             c.overBudget ? "text-[#f04438]" : "text-text"
           }`}
         >
-          {c.remaining >= 0 ? formatMoney(c.remaining) : `-${formatMoney(Math.abs(c.remaining))}`}
+          {c.remaining >= 0
+            ? formatMoney(c.remaining)
+            : `-${formatMoney(Math.abs(c.remaining))}`}
         </span>
       </div>
       <div className="mt-2 flex items-center gap-2">
-        <div className="h-1.5 min-w-0 flex-1 rounded-full bg-bg">
-          <div
-            className="h-1.5 rounded-full"
-            style={{
-              width: `${pct}%`,
-              backgroundColor: c.overBudget ? "#f04438" : "var(--accent)",
-            }}
-          />
+        <div className="h-1.5 min-w-0 flex-1 rounded-full bg-[#dde1d8]">
+          {(c.planned > 0 || c.actual > 0) && (
+            <div
+              className="h-1.5 rounded-full"
+              style={{
+                width: `${pct}%`,
+                backgroundColor: c.overBudget ? "#f04438" : "var(--accent)",
+              }}
+            />
+          )}
         </div>
         {editablePeriodId ? (
-          <input
-            type="number"
-            step="0.01"
-            value={plannedInput}
+          <label
+            className="relative shrink-0"
             onClick={(e) => e.preventDefault()}
-            onChange={(e) => setPlannedInput(e.target.value)}
-            onBlur={save}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") e.currentTarget.blur();
-            }}
-            className="tabular w-16 shrink-0 rounded-md border border-border bg-bg px-1.5 py-0.5 text-right text-xs text-text outline-none focus:border-accent"
-          />
+          >
+            <span className="pointer-events-none absolute top-1/2 left-1.5 -translate-y-1/2 text-xs text-text-faint">
+              $
+            </span>
+            <input
+              type="number"
+              step="0.01"
+              value={plannedInput}
+              onChange={(e) => setPlannedInput(e.target.value)}
+              onBlur={save}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+              }}
+              className="tabular no-spinner w-16 rounded-md border border-border bg-bg py-0.5 pr-1.5 pl-3.5 text-right text-xs text-text outline-none focus:border-accent"
+            />
+          </label>
         ) : (
-          <span className="tabular shrink-0 text-xs text-text-faint">{formatMoney(c.planned)}</span>
+          <span className="tabular shrink-0 text-xs text-text-faint">
+            {formatMoney(c.planned)}
+          </span>
         )}
       </div>
     </Link>
@@ -163,7 +220,12 @@ function CategoryRow({
   const [plannedInput, setPlannedInput] = useState(String(c.planned));
   const [, startTransition] = useTransition();
   const txnCount = c.transactions.length;
-  const pct = c.planned > 0 ? Math.min(100, (c.actual / c.planned) * 100) : c.actual > 0 ? 100 : 0;
+  const pct =
+    c.planned > 0
+      ? Math.min(100, (c.actual / c.planned) * 100)
+      : c.actual > 0
+        ? 100
+        : 0;
 
   function save() {
     if (!editablePeriodId) return;
@@ -175,10 +237,15 @@ function CategoryRow({
   }
 
   const color = getCategoryColor(c.id);
+  const isUnbudgeted = c.planned === 0 && c.actual === 0;
 
   return (
-    <tr className="border-b border-border last:border-b-0 hover:bg-bg even:bg-bg/40">
-      <td className="px-6 py-3">
+    <tr
+      className={`border-b border-border last:border-b-0 hover:bg-bg even:bg-bg/40 ${
+        isUnbudgeted ? "opacity-60" : ""
+      }`}
+    >
+      <td className="px-3 py-3">
         <div className="flex items-center gap-2.5">
           <span
             className="flex size-7 shrink-0 items-center justify-center rounded-full text-sm"
@@ -189,34 +256,45 @@ function CategoryRow({
           <span className="text-sm font-medium text-text">{c.name}</span>
         </div>
       </td>
-      <td className="px-6 py-3">
+      <td className="px-3 py-3 text-right">
         {editablePeriodId ? (
-          <input
-            type="number"
-            step="0.01"
-            value={plannedInput}
-            onChange={(e) => setPlannedInput(e.target.value)}
-            onBlur={save}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") e.currentTarget.blur();
-            }}
-            className="tabular w-24 rounded-md border border-border bg-bg px-2 py-1 text-sm text-text outline-none focus:border-accent"
-          />
+          <label className="relative inline-block">
+            <span className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-sm text-text-faint">
+              $
+            </span>
+            <input
+              type="number"
+              step="0.01"
+              value={plannedInput}
+              onChange={(e) => setPlannedInput(e.target.value)}
+              onBlur={save}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+              }}
+              className="tabular no-spinner w-24 rounded-md border border-border bg-bg py-1 pr-2 pl-5 text-right text-sm text-text outline-none focus:border-accent"
+            />
+          </label>
         ) : (
-          <span className="tabular text-sm text-text-muted">{formatMoney(c.planned)}</span>
+          <span className="tabular text-sm text-text-muted">
+            {formatMoney(c.planned)}
+          </span>
         )}
       </td>
-      <td className="tabular px-6 py-3 text-sm text-text">{formatMoney(c.actual)}</td>
-      <td className="px-6 py-3">
+      <td className="tabular px-3 py-3 text-right text-sm text-text">
+        {formatMoney(c.actual)}
+      </td>
+      <td className="px-3 py-3">
         <div className="flex items-center gap-2">
-          <div className="h-1.5 w-24 shrink-0 rounded-full bg-bg">
-            <div
-              className="h-1.5 rounded-full"
-              style={{
-                width: `${pct}%`,
-                backgroundColor: c.overBudget ? "#f04438" : "var(--accent)",
-              }}
-            />
+          <div className="h-1.5 w-24 shrink-0 rounded-full bg-[#dde1d8]">
+            {(c.planned > 0 || c.actual > 0) && (
+              <div
+                className="h-1.5 rounded-full"
+                style={{
+                  width: `${pct}%`,
+                  backgroundColor: c.overBudget ? "#f04438" : "var(--accent)",
+                }}
+              />
+            )}
           </div>
           <span
             className={`tabular whitespace-nowrap text-xs font-medium ${
@@ -230,7 +308,7 @@ function CategoryRow({
           {c.overBudget && <StatusPill variant="danger">Over</StatusPill>}
         </div>
       </td>
-      <td className="px-6 py-3 text-right">
+      <td className="px-3 py-3 text-right">
         {txnCount > 0 ? (
           <Link
             href={

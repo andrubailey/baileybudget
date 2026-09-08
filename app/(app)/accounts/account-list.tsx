@@ -34,6 +34,16 @@ export function AccountList({
   bankOptions: readonly string[];
 }) {
   const [order, setOrder] = useState(accounts);
+  // Server actions here (goal/bank/type/login-url/alert saves, activate,
+  // add, reorder) all revalidate and hand this component a fresh `accounts`
+  // prop — without this, `order` would stay frozen at whatever it was on
+  // mount and every save would show a success toast while the card kept
+  // displaying the old value until a manual page reload.
+  const [lastAccounts, setLastAccounts] = useState(accounts);
+  if (accounts !== lastAccounts) {
+    setLastAccounts(accounts);
+    setOrder(accounts);
+  }
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [showDeactivated, setShowDeactivated] = useState(false);
   const [, startTransition] = useTransition();

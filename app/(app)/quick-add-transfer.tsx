@@ -23,7 +23,11 @@ export function QuickAddTransferButton({
   const showToast = useToast();
 
   async function handleSubmit(formData: FormData) {
-    await createTransfer(formData);
+    const result = await createTransfer(formData);
+    if (!result.ok) {
+      showToast(result.error ? `Couldn't save: ${result.error}` : "Couldn't save transfer");
+      return;
+    }
     setOpen(false);
     showToast("Transfer logged");
   }

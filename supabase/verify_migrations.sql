@@ -30,8 +30,10 @@ select * from (
     ('012_ten_more (objectives.linked_account_id)', exists (select 1 from information_schema.columns where table_name='objectives' and column_name='linked_account_id')),
     ('012_ten_more (transaction_history table)', exists (select 1 from information_schema.tables where table_name='transaction_history')),
     ('013_account_login_url', exists (select 1 from information_schema.columns where table_name='accounts' and column_name='login_url')),
+    ('013_api_tokens (table)', exists (select 1 from information_schema.tables where table_name='api_tokens')),
     ('014_drop_tags (transactions.tags gone)', not exists (select 1 from information_schema.columns where table_name='transactions' and column_name='tags')),
     ('014_drop_tags (recurring_transactions.tags gone)', not exists (select 1 from information_schema.columns where table_name='recurring_transactions' and column_name='tags')),
-    ('015_txn_date_index', exists (select 1 from pg_indexes where tablename='transactions' and indexname='transactions_txn_date_idx'))
+    ('015_txn_date_index', exists (select 1 from pg_indexes where tablename='transactions' and indexname='transactions_txn_date_idx')),
+    ('016_pending_approval', exists (select 1 from information_schema.columns where table_name='transactions' and column_name='pending_approval'))
 ) as checks(migration, ok)
 order by ok asc, migration asc;

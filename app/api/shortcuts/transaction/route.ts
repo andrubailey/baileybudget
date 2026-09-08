@@ -11,7 +11,6 @@ type Body = {
   category?: string;
   txn_date?: string;
   notes?: string;
-  tags?: string[];
 };
 
 // Finds the period covering `date`, auto-creating the current month's
@@ -127,7 +126,6 @@ export async function POST(request: NextRequest) {
         to_account_id,
         category_id: null,
         period_id,
-        tags: body.tags ?? [],
         notes: body.notes?.trim() || null,
         created_by_email: "Shortcuts",
       })
@@ -155,7 +153,6 @@ export async function POST(request: NextRequest) {
       account_id,
       category_id,
       period_id,
-      tags: body.tags ?? [],
       notes: body.notes?.trim() || null,
       created_by_email: "Shortcuts",
     })

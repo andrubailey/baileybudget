@@ -25,7 +25,7 @@ export function UpcomingBillsCard({
     <div className="rounded-xl border border-border bg-surface p-5 shadow-card">
       <div className="mb-3 flex items-baseline justify-between">
         <p className="text-heading text-text">Upcoming bills</p>
-        <Link href="/recurring" className="text-xs font-medium text-accent underline underline-offset-2">
+        <Link href="/transactions?view=recurring" className="text-xs font-medium text-accent underline underline-offset-2">
           View all
         </Link>
       </div>

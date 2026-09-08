@@ -56,7 +56,11 @@ export function TransactionForm({
   }
 
   async function submitFormData(formData: FormData) {
-    await createTransaction(formData);
+    const result = await createTransaction(formData);
+    if (!result.ok) {
+      showToast(result.error ? `Couldn't save: ${result.error}` : "Couldn't save transaction");
+      return;
+    }
     resetForm();
     const label = isDebtAccount ? (kind === "expense" ? "Charge" : "Payment") : kind === "income" ? "Income" : "Expense";
     showToast(`${label} logged`);

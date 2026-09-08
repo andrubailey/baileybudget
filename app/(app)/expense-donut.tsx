@@ -78,7 +78,9 @@ export function ExpenseDonutChart({ segments }: { segments: DonutSegment[] }) {
         <div className="absolute inset-[18%] flex flex-col items-center justify-center rounded-full bg-surface text-center">
           {hoveredArc ? (
             <>
-              <p className="truncate px-2 text-xs text-text-muted">{hoveredArc.name}</p>
+              <p className="truncate px-2 text-xs text-text-muted">
+                {hoveredArc.name}
+              </p>
               <p className="text-lg font-semibold text-text">
                 {hoveredArc.pct.toFixed(1)}%
               </p>
@@ -86,13 +88,15 @@ export function ExpenseDonutChart({ segments }: { segments: DonutSegment[] }) {
           ) : (
             <>
               <p className="text-xs text-text-muted">Total</p>
-              <p className="text-lg font-semibold text-text">{formatMoney(totalSpend)}</p>
+              <p className="text-lg font-semibold text-text">
+                {formatMoney(totalSpend)}
+              </p>
             </>
           )}
         </div>
       </div>
 
-      <div className="flex w-full flex-col">
+      <div className="flex w-full min-w-0 flex-1 flex-col">
         {arcs.map((a) => (
           <button
             key={a.name}
@@ -102,12 +106,17 @@ export function ExpenseDonutChart({ segments }: { segments: DonutSegment[] }) {
             onClick={() => setSelected(a)}
             className="flex items-center gap-2 border-b border-border px-2 py-3 text-left last:border-b-0 hover:bg-bg"
           >
-            <span className="size-3 shrink-0 rounded-full" style={{ backgroundColor: a.color }} />
+            <span
+              className="size-3 shrink-0 rounded-full"
+              style={{ backgroundColor: a.color }}
+            />
             <span className="flex flex-1 items-center gap-1.5 truncate text-[15px] text-text">
               <span className="shrink-0">{getCategoryIcon(a.name)}</span>
               <span className="truncate">{a.name}</span>
             </span>
-            <span className="tabular text-[15px] text-text-faint">{a.pct.toFixed(1)}%</span>
+            <span className="tabular text-[15px] text-text-faint">
+              {a.pct.toFixed(1)}%
+            </span>
           </button>
         ))}
       </div>
@@ -127,7 +136,8 @@ export function ExpenseDonutChart({ segments }: { segments: DonutSegment[] }) {
                   {getCategoryIcon(selected.name)} {selected.name}
                 </h2>
                 <p className="text-sm text-text-muted">
-                  {formatMoney(selected.actual)} · {selected.pct.toFixed(1)}% of spend
+                  {formatMoney(selected.actual)} · {selected.pct.toFixed(1)}% of
+                  spend
                 </p>
               </div>
               <button
@@ -148,9 +158,14 @@ export function ExpenseDonutChart({ segments }: { segments: DonutSegment[] }) {
               ) : (
                 <div className="divide-y divide-border">
                   {selected.transactions.map((t) => (
-                    <div key={t.id} className="flex items-center justify-between py-2.5">
+                    <div
+                      key={t.id}
+                      className="flex items-center justify-between py-2.5"
+                    >
                       <div>
-                        <p className="text-sm font-medium text-text">{t.description}</p>
+                        <p className="text-sm font-medium text-text">
+                          {t.description}
+                        </p>
                         <p className="text-xs text-text-faint">{t.txn_date}</p>
                       </div>
                       <p className="tabular text-sm font-medium text-text">

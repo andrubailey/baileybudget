@@ -7,14 +7,25 @@ import {
   getRecurringVsOtherByMonth,
   getPlannedTotalsByPeriod,
   getObjectives,
+  getAccountsWithBalances,
+  getCategories,
 } from "@/lib/queries";
 import { getPeriods } from "@/lib/periods";
 import { formatMoney } from "@/lib/format";
-import type { ChartPoint } from "@/app/(app)/monthly-trend-chart";
+import type { ChartPoint } from "./monthly-trend-chart";
 import { TrendExplorer } from "./trend-explorer";
 import { EmptyState } from "@/app/(app)/empty-state";
 import { YearSwitcher } from "./year-switcher";
 import { ExportCsvButton } from "./export-csv-button";
+import { WeeklyRecapPanel } from "./weekly-recap-panel";
+import { CsvImport } from "./csv-import";
+import { PageTabs } from "@/app/(app)/page-tabs";
+
+const TABS = [
+  { value: "trends", label: "Trends" },
+  { value: "weekly-recap", label: "Weekly Recap" },
+  { value: "import", label: "Import" },
+];
 
 function iso(d: Date) {
   return d.toISOString().slice(0, 10);
@@ -27,12 +38,49 @@ function monthLabel(month: string) {
   });
 }
 
-export default async function TrendsPage({
+export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ year?: string }>;
+  searchParams: Promise<{ view?: string; year?: string }>;
 }) {
-  const { year: requestedYear } = await searchParams;
+  const { view, year: requestedYear } = await searchParams;
+  const activeView = view ?? "trends";
+
+  return (
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-2xl font-semibold text-text">Reports</h1>
+        <p className="mt-1 text-sm text-text-muted">
+          Yearly trends, a weekly recap, and bulk CSV import.
+        </p>
+      </div>
+
+      <PageTabs tabs={TABS} />
+
+      {activeView === "weekly-recap" ? (
+        <WeeklyRecapPanel />
+      ) : activeView === "import" ? (
+        <ImportPanel />
+      ) : (
+        <TrendsPanel requestedYear={requestedYear} />
+      )}
+    </div>
+  );
+}
+
+async function ImportPanel() {
+  const [accounts, categories] = await Promise.all([getAccountsWithBalances(), getCategories()]);
+  return (
+    <div className="space-y-6">
+      <p className="text-sm text-text-muted">
+        Upload a CSV export from your bank to bulk-add transactions instead of entering them one by one.
+      </p>
+      <CsvImport accounts={accounts} categories={categories} />
+    </div>
+  );
+}
+
+async function TrendsPanel({ requestedYear }: { requestedYear?: string }) {
   const now = new Date();
   const currentYear = now.getUTCFullYear();
   const year = Number(requestedYear) || currentYear;
@@ -145,10 +193,10 @@ export default async function TrendsPage({
     <div className="space-y-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-text">
+          <h2 className="text-heading text-text">
             {year}
             {isCurrentYear ? " Year to Date" : ""}
-          </h1>
+          </h2>
           <p className="mt-1 text-sm text-text-muted">
             Monthly income vs. expenses, {start} – {end}.
           </p>

@@ -1,3 +1,12 @@
+// No display-name field exists on these accounts (just email), so — matching
+// the local-part convention already used for avatars/presence elsewhere in
+// the app — this takes the piece before any "." "_" "+" or "-" separator.
+export function firstNameFromEmail(email: string): string {
+  const localPart = email.split("@")[0] ?? "";
+  const first = localPart.split(/[._+-]/)[0] || localPart;
+  return first.charAt(0).toUpperCase() + first.slice(1);
+}
+
 export function formatMoney(value: number): string {
   return value.toLocaleString("en-US", {
     style: "currency",

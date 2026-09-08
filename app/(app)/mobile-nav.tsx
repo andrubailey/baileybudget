@@ -11,7 +11,7 @@ import { PresenceIndicator } from "@/app/(app)/presence-indicator";
 // Small-screen counterpart to the desktop Sidebar: a sticky top bar with a
 // hamburger button that opens a full-height slide-in drawer, since a
 // permanent 256px-wide sidebar has no room to exist on a phone.
-export function MobileNav() {
+export function MobileNav({ counts }: { counts?: Record<string, number> }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
@@ -100,6 +100,7 @@ export function MobileNav() {
                   {group.links.map((link) => {
                     const active =
                       link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
+                    const count = counts?.[link.href] ?? 0;
                     return (
                       <Link
                         key={link.href}
@@ -114,6 +115,11 @@ export function MobileNav() {
                           {link.icon}
                         </svg>
                         <span className="truncate">{link.label}</span>
+                        {count > 0 && (
+                          <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-accent-bright px-1.5 text-xs font-semibold text-hero-bg">
+                            {count}
+                          </span>
+                        )}
                       </Link>
                     );
                   })}
@@ -122,21 +128,6 @@ export function MobileNav() {
             </nav>
 
             <div className="shrink-0 px-4 py-4">
-              <a
-                href="/api/export"
-                className="mb-1 flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-hero-text-muted hover:bg-hero-bg-2/60 hover:text-hero-text"
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="shrink-0">
-                  <path
-                    d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14"
-                    stroke="currentColor"
-                    strokeWidth={1.6}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                <span>Export data</span>
-              </a>
               <form action={signOut}>
                 <button
                   type="submit"

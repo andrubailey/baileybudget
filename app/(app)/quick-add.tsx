@@ -63,6 +63,7 @@ export function QuickAddButton({
   const [pendingFormData, setPendingFormData] = useState<FormData | null>(null);
   const [accountId, setAccountId] = useState("");
   const [keepOpen, setKeepOpen] = useState(false);
+  const [lastOpen, setLastOpen] = useState(open);
   const descriptionRef = useRef<HTMLInputElement>(null);
   const { bg, title, subtitle } = CONFIG[kind];
   const kindCategories = categories.filter((c) => c.kind === kind);
@@ -109,23 +110,26 @@ export function QuickAddButton({
 
   // Prefill from whatever was used last time this modal was opened for this
   // kind, so a recurring-ish purchase doesn't mean re-picking the same
-  // account and category every single time.
-  useEffect(() => {
-    if (!open) return;
-    try {
-      const savedAccount = localStorage.getItem(lastAccountKey);
-      if (savedAccount && accounts.some((a) => a.id === savedAccount)) {
-        setAccountId(savedAccount);
+  // account and category every single time. Adjusting state during render on
+  // the open/close transition avoids the extra render pass an effect would
+  // cause here (same pattern used for the mobile nav's route-change reset).
+  if (open !== lastOpen) {
+    setLastOpen(open);
+    if (open) {
+      try {
+        const savedAccount = localStorage.getItem(lastAccountKey);
+        if (savedAccount && accounts.some((a) => a.id === savedAccount)) {
+          setAccountId(savedAccount);
+        }
+        const savedCategory = localStorage.getItem(lastCategoryKey);
+        if (savedCategory && kindCategories.some((c) => c.id === savedCategory)) {
+          setCategoryId(savedCategory);
+        }
+      } catch {
+        // ignore — localStorage unavailable
       }
-      const savedCategory = localStorage.getItem(lastCategoryKey);
-      if (savedCategory && kindCategories.some((c) => c.id === savedCategory)) {
-        setCategoryId(savedCategory);
-      }
-    } catch {
-      // ignore — localStorage unavailable
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }
 
   function rememberChoices() {
     try {
@@ -166,16 +170,20 @@ export function QuickAddButton({
   }
 
   async function submitFormData(formData: FormData) {
-    if (split) {
-      await createSplitTransaction(
-        formData,
-        splitRows
-          .filter((r) => r.category_id && r.amount)
-          .map((r) => ({ category_id: r.category_id, amount: Number(r.amount) })),
-      );
-    } else {
-      await createTransaction(formData);
+    const result = split
+      ? await createSplitTransaction(
+          formData,
+          splitRows
+            .filter((r) => r.category_id && r.amount)
+            .map((r) => ({ category_id: r.category_id, amount: Number(r.amount) })),
+        )
+      : await createTransaction(formData);
+
+    if (!result.ok) {
+      showToast(result.error ? `Couldn't save: ${result.error}` : "Couldn't save transaction");
+      return;
     }
+
     rememberChoices();
     showToast(`${actionLabel[0].toUpperCase()}${actionLabel.slice(1)} logged`);
     if (keepOpen) {

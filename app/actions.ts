@@ -139,29 +139,29 @@ export async function createCategory(formData: FormData) {
   if (!name) return;
 
   await supabase.from("categories").insert({ name, kind, is_need, rollover, group_name });
-  revalidatePath("/categories");
+  revalidatePath("/transactions");
 }
 
 export async function updateCategoryRollover(id: string, rollover: boolean) {
   const supabase = await createClient();
   await supabase.from("categories").update({ rollover }).eq("id", id);
-  revalidatePath("/categories");
+  revalidatePath("/transactions");
   revalidatePath("/");
 }
 
 export async function updateCategoryGroup(id: string, group_name: string | null) {
   const supabase = await createClient();
   await supabase.from("categories").update({ group_name }).eq("id", id);
-  revalidatePath("/categories");
-  revalidatePath("/planning");
+  revalidatePath("/transactions");
+  revalidatePath("/budgets");
   revalidatePath("/");
 }
 
 export async function updateCategoryIcon(id: string, icon: string | null) {
   const supabase = await createClient();
   await supabase.from("categories").update({ icon }).eq("id", id);
-  revalidatePath("/categories");
-  revalidatePath("/planning");
+  revalidatePath("/transactions");
+  revalidatePath("/budgets");
   revalidatePath("/");
 }
 
@@ -170,15 +170,15 @@ export async function updateCategoryName(id: string, name: string) {
   if (!trimmed) return;
   const supabase = await createClient();
   await supabase.from("categories").update({ name: trimmed }).eq("id", id);
-  revalidatePath("/categories");
-  revalidatePath("/planning");
+  revalidatePath("/transactions");
+  revalidatePath("/budgets");
   revalidatePath("/");
 }
 
 export async function updateCategoryNeed(id: string, is_need: boolean) {
   const supabase = await createClient();
   await supabase.from("categories").update({ is_need }).eq("id", id);
-  revalidatePath("/categories");
+  revalidatePath("/transactions");
   revalidatePath("/");
 }
 
@@ -187,8 +187,8 @@ export async function updateCategoryNeed(id: string, is_need: boolean) {
 export async function deleteCategory(id: string) {
   const supabase = await createClient();
   await supabase.from("categories").delete().eq("id", id);
-  revalidatePath("/categories");
-  revalidatePath("/planning");
+  revalidatePath("/transactions");
+  revalidatePath("/budgets");
   revalidatePath("/");
 }
 
@@ -204,7 +204,7 @@ export async function upsertBudgetLine(
       { category_id, period_id, planned_amount },
       { onConflict: "category_id,period_id" },
     );
-  revalidatePath("/categories");
+  revalidatePath("/transactions");
   revalidatePath("/");
 }
 
@@ -280,7 +280,9 @@ export async function bulkImportTransactions(
   return { imported: toInsert.length, skippedNoPeriod };
 }
 
-export async function createTransaction(formData: FormData) {
+export async function createTransaction(
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string }> {
   const supabase = await createClient();
 
   const kind = String(formData.get("kind") ?? "expense") as
@@ -295,13 +297,15 @@ export async function createTransaction(formData: FormData) {
   const notes = String(formData.get("notes") ?? "").trim() || null;
   const pending_approval = formData.get("pending_approval") === "on";
 
-  if (!description || !amount || !txn_date || !period_id) return;
+  if (!description || !amount || !txn_date || !period_id) {
+    return { ok: false, error: "Missing required fields." };
+  }
 
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  await supabase.from("transactions").insert({
+  const { error } = await supabase.from("transactions").insert({
     kind,
     description,
     amount,
@@ -315,8 +319,13 @@ export async function createTransaction(formData: FormData) {
     created_by_email: user?.email ?? null,
   });
 
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
   revalidatePath("/transactions");
   revalidatePath("/");
+  return { ok: true };
 }
 
 export async function toggleTransactionPendingApproval(id: string, pending_approval: boolean) {
@@ -380,12 +389,18 @@ export async function getHistoryForTransaction(transactionId: string) {
 
 export async function toggleTransactionCleared(id: string, cleared: boolean) {
   const supabase = await createClient();
-  await supabase.from("transactions").update({ cleared }).eq("id", id);
+  const { error } = await supabase.from("transactions").update({ cleared }).eq("id", id);
+  // The client optimistically flips the checkbox before this resolves, then
+  // reverts on a thrown error — silently swallowing a failed write here would
+  // leave that optimistic state stuck showing the wrong value.
+  if (error) throw error;
   revalidatePath("/transactions");
   revalidatePath("/accounts");
 }
 
-export async function createTransfer(formData: FormData) {
+export async function createTransfer(
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string }> {
   const supabase = await createClient();
 
   const description = String(formData.get("description") ?? "").trim() || "Transfer";
@@ -403,14 +418,14 @@ export async function createTransfer(formData: FormData) {
     !to_account_id ||
     from_account_id === to_account_id
   ) {
-    return;
+    return { ok: false, error: "Missing required fields." };
   }
 
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  await supabase.from("transactions").insert({
+  const { error } = await supabase.from("transactions").insert({
     kind: "transfer",
     description,
     amount,
@@ -423,9 +438,14 @@ export async function createTransfer(formData: FormData) {
     created_by_email: user?.email ?? null,
   });
 
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
   revalidatePath("/transactions");
   revalidatePath("/accounts");
   revalidatePath("/");
+  return { ok: true };
 }
 
 export async function createObjective(formData: FormData) {
@@ -553,7 +573,7 @@ export async function copyBudgetForward(
     await supabase.from("budget_lines").insert(rows);
   }
 
-  revalidatePath("/categories");
+  revalidatePath("/transactions");
   revalidatePath("/");
 }
 
@@ -576,19 +596,19 @@ export async function createRecurringTransaction(formData: FormData) {
     category_id,
     day_of_month,
   });
-  revalidatePath("/recurring");
+  revalidatePath("/transactions");
 }
 
 export async function toggleRecurringActive(id: string, is_active: boolean) {
   const supabase = await createClient();
   await supabase.from("recurring_transactions").update({ is_active }).eq("id", id);
-  revalidatePath("/recurring");
+  revalidatePath("/transactions");
 }
 
 export async function deleteRecurringTransaction(id: string) {
   const supabase = await createClient();
   await supabase.from("recurring_transactions").delete().eq("id", id);
-  revalidatePath("/recurring");
+  revalidatePath("/transactions");
 }
 
 export async function getPriceHistoryForRecurring(id: string) {
@@ -645,7 +665,7 @@ export async function generateRecurringForPeriod(periodId: string) {
   }
 
   revalidatePath("/transactions");
-  revalidatePath("/recurring");
+  revalidatePath("/transactions");
   revalidatePath("/");
 }
 
@@ -655,7 +675,7 @@ export async function generateRecurringForPeriod(periodId: string) {
 export async function createSplitTransaction(
   formData: FormData,
   splits: { category_id: string; amount: number }[],
-) {
+): Promise<{ ok: boolean; error?: string }> {
   const supabase = await createClient();
 
   const kind = "expense" as const;
@@ -667,7 +687,9 @@ export async function createSplitTransaction(
   const validSplits = splits.filter((s) => s.category_id && s.amount > 0);
   const amount = validSplits.reduce((sum, s) => sum + s.amount, 0);
 
-  if (!description || !txn_date || !period_id || validSplits.length < 2 || amount <= 0) return;
+  if (!description || !txn_date || !period_id || validSplits.length < 2 || amount <= 0) {
+    return { ok: false, error: "Missing required fields." };
+  }
 
   const {
     data: { user },
@@ -690,9 +712,11 @@ export async function createSplitTransaction(
     .select()
     .single();
 
-  if (error || !transaction) return;
+  if (error || !transaction) {
+    return { ok: false, error: error?.message ?? "Insert failed." };
+  }
 
-  await supabase.from("transaction_splits").insert(
+  const { error: splitsError } = await supabase.from("transaction_splits").insert(
     validSplits.map((s) => ({
       transaction_id: transaction.id,
       category_id: s.category_id,
@@ -700,8 +724,13 @@ export async function createSplitTransaction(
     })),
   );
 
+  if (splitsError) {
+    return { ok: false, error: splitsError.message };
+  }
+
   revalidatePath("/transactions");
   revalidatePath("/");
+  return { ok: true };
 }
 
 export type ApiTokenSummary = {

@@ -15,6 +15,15 @@ export function DashboardAccountList({
   periodDeltaByAccount?: Map<string, number>;
 }) {
   const [order, setOrder] = useState(accounts);
+  // Adding/editing a transaction revalidates the dashboard and hands this
+  // component a fresh `accounts` prop with updated balances — without this,
+  // `order` would stay frozen at whatever it was on mount and balances would
+  // look stale until a manual page reload.
+  const [lastAccounts, setLastAccounts] = useState(accounts);
+  if (accounts !== lastAccounts) {
+    setLastAccounts(accounts);
+    setOrder(accounts);
+  }
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 

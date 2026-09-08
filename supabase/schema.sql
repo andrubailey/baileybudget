@@ -96,6 +96,9 @@ create table if not exists transactions (
   -- Set when this transaction was auto-generated from a recurring entry, so
   -- generating a period's bills twice never double-creates them.
   recurring_transaction_id uuid references recurring_transactions(id) on delete set null,
+  -- A planned purchase one spouse flagged for the other to see before/after
+  -- it happens — separate from `cleared`, which is about bank reconciliation.
+  pending_approval boolean not null default false,
   created_at timestamptz not null default now(),
   -- A transfer moves money between accounts, it isn't spend against a
   -- budget category, so it can never carry a category_id.
@@ -148,6 +151,18 @@ create table if not exists objectives (
   created_at timestamptz not null default now()
 );
 
+-- Personal access tokens for the iOS Shortcuts integration (quick-add
+-- expense/income/transfer without opening the app or logging in).
+create table if not exists api_tokens (
+  id uuid primary key default gen_random_uuid(),
+  token_hash text not null unique,
+  label text not null,
+  created_by_email text,
+  created_at timestamptz not null default now(),
+  last_used_at timestamptz,
+  revoked_at timestamptz
+);
+
 -- Row Level Security: this is a 2-person shared household budget.
 -- Any authenticated user (you + your wife) can read/write everything —
 -- no per-user partitioning, since the whole point is shared data.
@@ -161,6 +176,7 @@ alter table transactions enable row level security;
 alter table transaction_splits enable row level security;
 alter table transaction_history enable row level security;
 alter table objectives enable row level security;
+alter table api_tokens enable row level security;
 
 drop policy if exists "authenticated read accounts" on accounts;
 drop policy if exists "authenticated write accounts" on accounts;
@@ -206,3 +222,8 @@ drop policy if exists "authenticated read objectives" on objectives;
 drop policy if exists "authenticated write objectives" on objectives;
 create policy "authenticated read objectives" on objectives for select to authenticated using (true);
 create policy "authenticated write objectives" on objectives for all to authenticated using (true) with check (true);
+
+drop policy if exists "authenticated read api_tokens" on api_tokens;
+drop policy if exists "authenticated write api_tokens" on api_tokens;
+create policy "authenticated read api_tokens" on api_tokens for select to authenticated using (true);
+create policy "authenticated write api_tokens" on api_tokens for all to authenticated using (true) with check (true);

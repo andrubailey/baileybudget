@@ -1,7 +1,7 @@
 import { getPeriodSummaryForRange, getCategoryProgressForRange, getTransactionsForRange } from "@/lib/queries";
 import { formatMoney, formatDate } from "@/lib/format";
 
-export default async function WeeklyRecapPage() {
+export async function WeeklyRecapPanel() {
   const end = new Date();
   const start = new Date(end);
   start.setUTCDate(start.getUTCDate() - 6);
@@ -29,8 +29,7 @@ export default async function WeeklyRecapPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-text">Weekly Recap</h1>
-        <p className="mt-1 text-sm text-text-muted">
+        <p className="text-sm text-text-muted">
           {formatDate(iso(start))} – {formatDate(iso(end))}
         </p>
         <p className="mt-1 text-xs text-text-faint">

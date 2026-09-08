@@ -2,126 +2,24 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "@/app/actions";
 import { LogoMark } from "@/app/(app)/logo-mark";
 import { PresenceIndicator } from "@/app/(app)/presence-indicator";
 import { NewTransactionButton } from "@/app/(app)/new-transaction-button";
+import { getAvatarColors } from "@/lib/avatar-colors";
 
-// Daily-use pages first; setup/maintenance pages grouped under their own
-// label so the nav doesn't read as 7 equally-weighted items.
+function initialsFor(email: string) {
+  return email.trim()[0]?.toUpperCase() ?? "?";
+}
+
 const PRIMARY_LINKS = [
   {
     href: "/",
-    label: "Dashboard",
+    label: "Overview",
     icon: (
       <path
         d="M4 12h6V4H4v8Zm0 8h6v-6H4v6Zm10 0h6v-8h-6v8Zm0-16v6h6V4h-6Z"
-        stroke="currentColor"
-        strokeWidth={1.6}
-        strokeLinejoin="round"
-      />
-    ),
-  },
-  {
-    href: "/today",
-    label: "Today",
-    icon: (
-      <path
-        d="M12 8v4l2.5 2.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
-        stroke="currentColor"
-        strokeWidth={1.6}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    ),
-  },
-  {
-    href: "/transactions",
-    label: "Transactions",
-    icon: (
-      <path
-        d="M7 7h13M7 7l3-3M7 7l3 3M17 17H4M17 17l-3 3M17 17l-3-3"
-        stroke="currentColor"
-        strokeWidth={1.6}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    ),
-  },
-  {
-    href: "/recurring",
-    label: "Recurring",
-    icon: (
-      <path
-        d="M4 12a8 8 0 0 1 14.5-4.5M20 12a8 8 0 0 1-14.5 4.5M17 4v4h-4M7 20v-4h4"
-        stroke="currentColor"
-        strokeWidth={1.6}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    ),
-  },
-  {
-    href: "/planning",
-    label: "Planning",
-    icon: (
-      <path
-        d="M4 4h16v16H4V4Zm0 6h16M9 4v16"
-        stroke="currentColor"
-        strokeWidth={1.6}
-        strokeLinejoin="round"
-      />
-    ),
-  },
-  {
-    href: "/calendar",
-    label: "Calendar",
-    icon: (
-      <path
-        d="M7 3v3M17 3v3M4 8h16M5 5h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z"
-        stroke="currentColor"
-        strokeWidth={1.6}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    ),
-  },
-  {
-    href: "/weekly-recap",
-    label: "Weekly Recap",
-    icon: (
-      <path
-        d="M4 19V5m5 14V9m5 10V13m5 6V7"
-        stroke="currentColor"
-        strokeWidth={1.6}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    ),
-  },
-  {
-    href: "/trends",
-    label: "Trends",
-    icon: (
-      <path
-        d="M3 17 9 11l4 4 8-8M21 7h-6m6 0v6"
-        stroke="currentColor"
-        strokeWidth={1.6}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    ),
-  },
-];
-
-const MANAGE_LINKS = [
-  {
-    href: "/categories",
-    label: "Categories",
-    icon: (
-      <path
-        d="M11.05 3.5H6.5A3 3 0 0 0 3.5 6.5v4.55c0 .53.21 1.04.59 1.41l8.9 8.9a2 2 0 0 0 2.82 0l4.55-4.55a2 2 0 0 0 0-2.82l-8.9-8.9a2 2 0 0 0-1.41-.59Z M7.5 8a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1Z"
         stroke="currentColor"
         strokeWidth={1.6}
         strokeLinejoin="round"
@@ -141,11 +39,61 @@ const MANAGE_LINKS = [
     ),
   },
   {
-    href: "/import",
-    label: "Import",
+    href: "/transactions",
+    label: "Transactions",
     icon: (
       <path
-        d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14"
+        d="M7 7h13M7 7l3-3M7 7l3 3M17 17H4M17 17l-3 3M17 17l-3-3"
+        stroke="currentColor"
+        strokeWidth={1.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    ),
+  },
+  {
+    href: "/budgets",
+    label: "Budgets",
+    icon: (
+      <path
+        d="M4 4h16v16H4V4Zm0 6h16M9 4v16"
+        stroke="currentColor"
+        strokeWidth={1.6}
+        strokeLinejoin="round"
+      />
+    ),
+  },
+  {
+    href: "/goals",
+    label: "Goals",
+    icon: (
+      <path
+        d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-4a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0-4a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"
+        stroke="currentColor"
+        strokeWidth={1.6}
+        strokeLinejoin="round"
+      />
+    ),
+  },
+  {
+    href: "/investments",
+    label: "Investments",
+    icon: (
+      <path
+        d="M3 17 9 11l4 4 8-8M21 7h-6m6 0v6"
+        stroke="currentColor"
+        strokeWidth={1.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    ),
+  },
+  {
+    href: "/reports",
+    label: "Reports",
+    icon: (
+      <path
+        d="M4 19V5m5 14V9m5 10V13m5 6V7"
         stroke="currentColor"
         strokeWidth={1.6}
         strokeLinecap="round"
@@ -167,18 +115,26 @@ const MANAGE_LINKS = [
   },
 ];
 
-export const NAV_GROUPS: { label: string | null; links: typeof PRIMARY_LINKS }[] = [
-  { label: null, links: PRIMARY_LINKS },
-  { label: "Manage", links: MANAGE_LINKS },
-];
+export const NAV_GROUPS: {
+  label: string | null;
+  links: typeof PRIMARY_LINKS;
+}[] = [{ label: null, links: PRIMARY_LINKS }];
 
 const COLLAPSE_KEY = "sidebar-collapsed";
 
-export function Sidebar() {
+export function Sidebar({
+  counts,
+  userEmail,
+}: {
+  counts?: Record<string, number>;
+  userEmail?: string | null;
+}) {
   const pathname = usePathname();
+  const router = useRouter();
   // Starts expanded (matching the server-rendered HTML) and reads the saved
   // preference after mount, to avoid a hydration mismatch.
   const [collapsed, setCollapsed] = useState(false);
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     try {
@@ -202,19 +158,50 @@ export function Sidebar() {
     });
   }
 
+  const avatar = userEmail
+    ? getAvatarColors(userEmail)
+    : { bg: "#ecfccb", text: "#5b8a00" };
+
   return (
     <aside
       className={`sticky top-0 hidden h-screen shrink-0 flex-col bg-hero-bg transition-[width] duration-150 lg:flex ${
         collapsed ? "w-[72px]" : "w-64"
       }`}
     >
-      <div className="flex h-[72px] shrink-0 items-center gap-2 px-5">
+      <div
+        className={`flex h-[72px] shrink-0 items-center gap-2 px-5 ${collapsed ? "justify-center" : ""}`}
+      >
         <LogoMark size={32} />
-        {!collapsed && (
-          <span className="truncate text-lg font-bold tracking-tight text-hero-text">
-            Bailey<span className="text-accent">Budget</span>
-          </span>
-        )}
+        <span
+          className={`overflow-hidden truncate text-lg font-bold tracking-tight text-hero-text transition-[max-width,opacity] duration-150 ${
+            collapsed ? "max-w-0 opacity-0" : "max-w-[160px] flex-1 opacity-100"
+          }`}
+        >
+          Bailey<span className="text-accent">Budget</span>
+        </span>
+        <button
+          type="button"
+          onClick={toggle}
+          title={collapsed ? "Expand" : "Collapse"}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className="flex size-7 shrink-0 items-center justify-center rounded-md text-hero-text-muted transition-colors hover:bg-hero-bg-2 hover:text-hero-text"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            className={`shrink-0 transition-transform ${collapsed ? "rotate-180" : ""}`}
+          >
+            <path
+              d="M15 5 8 12l7 7"
+              stroke="currentColor"
+              strokeWidth={1.8}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
       </div>
 
       {!collapsed && (
@@ -223,9 +210,52 @@ export function Sidebar() {
         </div>
       )}
 
+      {!collapsed && (
+        <div className="px-5 pb-3">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              router.push(
+                search
+                  ? `/transactions?q=${encodeURIComponent(search)}`
+                  : "/transactions",
+              );
+            }}
+          >
+            <label className="relative block">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-hero-text-muted"
+              >
+                <path
+                  d="M21 21l-4.35-4.35M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"
+                  stroke="currentColor"
+                  strokeWidth={1.6}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search..."
+                className="w-full rounded-lg bg-hero-bg-2 py-2 pr-3 pl-9 text-sm text-hero-text placeholder:text-hero-text-muted outline-none focus:ring-2 focus:ring-accent-bright/60"
+              />
+            </label>
+          </form>
+        </div>
+      )}
+
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-4 py-2">
         {NAV_GROUPS.map((group, groupIndex) => (
-          <div key={group.label ?? groupIndex} className={groupIndex > 0 ? "mt-4" : undefined}>
+          <div
+            key={group.label ?? groupIndex}
+            className={groupIndex > 0 ? "mt-4" : undefined}
+          >
             {group.label && !collapsed && (
               <p className="px-3 pb-1 text-[11px] font-semibold tracking-wide text-hero-text-muted uppercase">
                 {group.label}
@@ -236,7 +266,10 @@ export function Sidebar() {
             )}
             {group.links.map((link) => {
               const active =
-                link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
+                link.href === "/"
+                  ? pathname === "/"
+                  : pathname.startsWith(link.href);
+              const count = counts?.[link.href] ?? 0;
               return (
                 <Link
                   key={link.href}
@@ -257,7 +290,20 @@ export function Sidebar() {
                   >
                     {link.icon}
                   </svg>
-                  {!collapsed && <span className="truncate">{link.label}</span>}
+                  <span
+                    className={`overflow-hidden whitespace-nowrap transition-[max-width,opacity] duration-150 ${
+                      collapsed
+                        ? "max-w-0 opacity-0"
+                        : "max-w-[160px] opacity-100"
+                    }`}
+                  >
+                    {link.label}
+                  </span>
+                  {!collapsed && count > 0 && (
+                    <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-accent-bright px-1.5 text-xs font-semibold text-hero-bg">
+                      {count}
+                    </span>
+                  )}
                 </Link>
               );
             })}
@@ -270,50 +316,31 @@ export function Sidebar() {
           <NewTransactionButton collapsed={collapsed} menuPosition="above" />
         </div>
 
-        <button
-          type="button"
-          onClick={toggle}
-          title={collapsed ? "Expand" : "Collapse"}
-          className={`mb-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-hero-text-muted transition-colors hover:bg-hero-bg-2/60 hover:text-hero-text ${
-            collapsed ? "justify-center" : ""
-          }`}
-        >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            className={`shrink-0 transition-transform ${collapsed ? "rotate-180" : ""}`}
+        {userEmail && (
+          <div
+            title={collapsed ? userEmail : undefined}
+            className={`mb-1 flex items-center gap-3 rounded-lg px-3 py-2.5 ${
+              collapsed ? "justify-center" : ""
+            }`}
           >
-            <path
-              d="M15 5 8 12l7 7"
-              stroke="currentColor"
-              strokeWidth={1.6}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          {!collapsed && <span>Collapse</span>}
-        </button>
-
-        <a
-          href="/api/export"
-          title={collapsed ? "Export data" : undefined}
-          className={`mb-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-hero-text-muted transition-colors hover:bg-hero-bg-2/60 hover:text-hero-text ${
-            collapsed ? "justify-center" : ""
-          }`}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="shrink-0">
-            <path
-              d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14"
-              stroke="currentColor"
-              strokeWidth={1.6}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          {!collapsed && <span>Export data</span>}
-        </a>
+            <span
+              className="flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
+              style={{ backgroundColor: avatar.bg, color: avatar.text }}
+            >
+              {initialsFor(userEmail)}
+            </span>
+            {!collapsed && (
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-hero-text">
+                  {userEmail.split("@")[0]}
+                </p>
+                <p className="truncate text-xs text-hero-text-muted">
+                  {userEmail}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
 
         <form action={signOut}>
           <button
@@ -323,7 +350,13 @@ export function Sidebar() {
               collapsed ? "justify-center" : ""
             }`}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="shrink-0">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              className="shrink-0"
+            >
               <path
                 d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"
                 stroke="currentColor"
