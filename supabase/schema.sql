@@ -22,6 +22,9 @@ create table if not exists accounts (
   -- Direct link to this account's bank login page — falls back to a
   -- per-bank default in lib/types.ts when unset.
   login_url text,
+  -- Groups the dashboard's Accounts card into Personal/Business instead of
+  -- by account_type.
+  is_business boolean not null default false,
   created_at timestamptz not null default now()
 );
 
@@ -49,6 +52,10 @@ create table if not exists categories (
   -- Freeform label for rolling up related categories (e.g. all "Food"
   -- subcategories) in the dashboard and planning grid.
   group_name text,
+  -- Deactivated categories drop out of new-transaction pickers and the
+  -- Budgets page's default view, but their past transactions and planned
+  -- amounts stay intact.
+  is_active boolean not null default true,
   created_at timestamptz not null default now()
 );
 

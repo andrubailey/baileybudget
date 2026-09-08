@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "@/app/actions";
 import { MOBILE_MORE_LINKS } from "./sidebar";
-import { LogoMark } from "@/app/(app)/logo-mark";
 import { PresenceIndicator } from "@/app/(app)/presence-indicator";
 import { NewTransactionButton } from "@/app/(app)/new-transaction-button";
 
@@ -41,9 +40,8 @@ export function MobileNav({ counts }: { counts?: Record<string, number> }) {
   return (
     <div className="sticky top-0 z-40 flex h-14 shrink-0 items-center justify-between bg-hero-bg px-4 lg:hidden">
       <div className="flex min-w-0 items-center gap-2">
-        <LogoMark size={28} />
         <span className="truncate text-base font-bold tracking-tight text-hero-text">
-          Bailey<span className="text-accent">Budget</span>
+          Bailey <span className="text-accent">Budget</span>
         </span>
         <PresenceIndicator compact />
       </div>
@@ -51,7 +49,7 @@ export function MobileNav({ counts }: { counts?: Record<string, number> }) {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="More"
-        className="flex size-11 shrink-0 items-center justify-center rounded-lg text-hero-text-muted hover:bg-hero-bg-2/60 hover:text-hero-text"
+        className="flex size-11 shrink-0 items-center justify-center rounded-lg text-hero-text-muted transition-colors hover:bg-hero-bg-2/60 hover:text-hero-text"
       >
         <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
           <circle cx="5" cy="12" r="1.8" />
@@ -73,7 +71,7 @@ export function MobileNav({ counts }: { counts?: Record<string, number> }) {
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label="Close menu"
-                className="flex size-11 items-center justify-center rounded-lg text-hero-text-muted hover:bg-hero-bg-2/60 hover:text-hero-text"
+                className="flex size-11 items-center justify-center rounded-lg text-hero-text-muted transition-colors hover:bg-hero-bg-2/60 hover:text-hero-text"
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                   <path
@@ -123,7 +121,7 @@ export function MobileNav({ counts }: { counts?: Record<string, number> }) {
               <form action={signOut}>
                 <button
                   type="submit"
-                  className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-hero-text-muted hover:bg-hero-bg-2/60 hover:text-hero-text"
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-hero-text-muted transition-colors hover:bg-hero-bg-2/60 hover:text-hero-text"
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="shrink-0">
                     <path

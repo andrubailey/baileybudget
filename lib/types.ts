@@ -16,6 +16,12 @@ export type Account = {
   // Direct link to this account's bank login page — falls back to
   // BANK_LOGIN_URLS[bank] when unset.
   login_url: string | null;
+  // Custom uploaded photo, shown instead of the bank-name badge/generic
+  // icon when set.
+  logo_url: string | null;
+  // Groups the dashboard's Accounts card into Personal/Business instead of
+  // by account_type.
+  is_business: boolean;
   created_at: string;
 };
 
@@ -79,6 +85,9 @@ export type Category = {
   // Manual override for the keyword-guessed icon in lib/category-icons.ts —
   // null falls back to the guess.
   icon: string | null;
+  // Deactivated categories drop out of new-transaction pickers and the
+  // Budgets page's default view, but their past data stays intact.
+  is_active: boolean;
   created_at: string;
 };
 

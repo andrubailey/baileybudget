@@ -6,9 +6,9 @@ import { createClient } from "@/lib/supabase/server";
 import { generateToken, hashToken } from "@/lib/tokens";
 import {
   findPossibleDuplicateTransactions,
+  generateRecurringForPeriod as generateRecurringForPeriodQuery,
   getAccountsWithBalances,
   getCategories,
-  getRecurringPriceHistory,
   getTransactionHistory,
   searchTransactions as searchTransactionsQuery,
   suggestCategoryForDescription,
@@ -52,6 +52,7 @@ export async function createAccount(formData: FormData) {
   const goal = goalRaw ? Number(goalRaw) : null;
   const bank = String(formData.get("bank") ?? "").trim() || null;
   const account_type = String(formData.get("account_type") ?? "").trim() || null;
+  const is_business = formData.get("is_business") === "on";
 
   if (!name) return;
 
@@ -65,7 +66,7 @@ export async function createAccount(formData: FormData) {
 
   await supabase
     .from("accounts")
-    .insert({ name, starting_balance, goal, bank, sort_order, account_type });
+    .insert({ name, starting_balance, goal, bank, sort_order, account_type, is_business });
   revalidatePath("/accounts");
   revalidatePath("/");
 }
@@ -146,6 +147,7 @@ export async function updateAccountDetails(
     low_balance_alert: number | null;
     is_debt: boolean;
     is_active: boolean;
+    is_business: boolean;
   },
 ) {
   const supabase = await createClient();
@@ -159,92 +161,176 @@ export async function updateAccountDetails(
       low_balance_alert: data.low_balance_alert,
       is_debt: data.is_debt,
       is_active: data.is_active,
+      is_business: data.is_business,
     })
     .eq("id", id);
   revalidatePath("/accounts");
   revalidatePath("/");
 }
 
-export async function createCategory(formData: FormData) {
+// Backs the file-picker on an account card — uploads straight to the
+// "account-logos" storage bucket (public, any signed-in user can write —
+// see supabase/020_account_logo.sql) and saves the resulting public URL
+// immediately, the same immediate-save pattern as uploadAvatar.
+export async function uploadAccountLogo(
+  accountId: string,
+  formData: FormData,
+): Promise<{ ok: boolean; url?: string; error?: string }> {
   const supabase = await createClient();
-  const name = String(formData.get("name") ?? "").trim();
-  const kind = String(formData.get("kind") ?? "expense") as
-    | "income"
-    | "expense";
-  const is_need = formData.get("is_need") === "on";
-  const rollover = formData.get("rollover") === "on";
-  const group_name = String(formData.get("group_name") ?? "").trim() || null;
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
 
-  if (!name) return;
+  const file = formData.get("logo_file");
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, error: "No file selected." };
+  }
+  if (!file.type.startsWith("image/")) {
+    return { ok: false, error: "Please choose an image file." };
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    return { ok: false, error: "Image must be under 5MB." };
+  }
 
-  await supabase.from("categories").insert({ name, kind, is_need, rollover, group_name });
-  revalidatePath("/transactions");
+  const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+  const path = `${accountId}/${Date.now()}.${ext}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from("account-logos")
+    .upload(path, file, { contentType: file.type, upsert: true });
+  if (uploadError) {
+    return { ok: false, error: uploadError.message };
+  }
+
+  const { data } = supabase.storage.from("account-logos").getPublicUrl(path);
+  const logo_url = data.publicUrl;
+
+  const { error } = await supabase.from("accounts").update({ logo_url }).eq("id", accountId);
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/accounts");
+  revalidatePath("/");
+  return { ok: true, url: logo_url };
 }
 
-export async function updateCategoryRollover(id: string, rollover: boolean) {
+export async function removeAccountLogo(accountId: string) {
   const supabase = await createClient();
-  await supabase.from("categories").update({ rollover }).eq("id", id);
-  revalidatePath("/transactions");
+  await supabase.from("accounts").update({ logo_url: null }).eq("id", accountId);
+  revalidatePath("/accounts");
   revalidatePath("/");
 }
 
-export async function updateCategoryGroup(id: string, group_name: string | null) {
-  const supabase = await createClient();
-  await supabase.from("categories").update({ group_name }).eq("id", id);
-  revalidatePath("/transactions");
-  revalidatePath("/budgets");
-  revalidatePath("/");
-}
-
-export async function updateCategoryIcon(id: string, icon: string | null) {
-  const supabase = await createClient();
-  await supabase.from("categories").update({ icon }).eq("id", id);
-  revalidatePath("/transactions");
-  revalidatePath("/budgets");
-  revalidatePath("/");
-}
-
-export async function updateCategoryName(id: string, name: string) {
+// Backs the "+ New category" quick-add affordance in the transaction
+// modal/forms — a name and a kind is all it needs, no separate management
+// page required just to add one.
+export async function quickCreateCategory(
+  name: string,
+  kind: "income" | "expense",
+): Promise<{ ok: boolean; id?: string; error?: string }> {
   const trimmed = name.trim();
-  if (!trimmed) return;
+  if (!trimmed) return { ok: false, error: "Name is required." };
+
   const supabase = await createClient();
-  await supabase.from("categories").update({ name: trimmed }).eq("id", id);
+  const { data, error } = await supabase
+    .from("categories")
+    .insert({ name: trimmed, kind })
+    .select("id")
+    .single();
+  if (error || !data) {
+    return { ok: false, error: error?.message ?? "Couldn't create category." };
+  }
+
   revalidatePath("/transactions");
   revalidatePath("/budgets");
-  revalidatePath("/");
-}
-
-export async function updateCategoryNeed(id: string, is_need: boolean) {
-  const supabase = await createClient();
-  await supabase.from("categories").update({ is_need }).eq("id", id);
-  revalidatePath("/transactions");
-  revalidatePath("/");
-}
-
-// budget_lines cascade-delete with the category; transactions that referenced
-// it just fall back to category_id: null instead of being removed.
-export async function deleteCategory(id: string) {
-  const supabase = await createClient();
-  await supabase.from("categories").delete().eq("id", id);
-  revalidatePath("/transactions");
-  revalidatePath("/budgets");
-  revalidatePath("/");
+  return { ok: true, id: data.id };
 }
 
 export async function upsertBudgetLine(
   category_id: string,
   period_id: string,
   planned_amount: number,
-) {
+): Promise<{ ok: boolean; error?: string }> {
   const supabase = await createClient();
-  await supabase
+  const { error } = await supabase
     .from("budget_lines")
     .upsert(
       { category_id, period_id, planned_amount },
       { onConflict: "category_id,period_id" },
     );
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+  revalidatePath("/transactions");
+  revalidatePath("/budgets");
+  revalidatePath("/");
+  return { ok: true };
+}
+
+// Clears a single month's planned amount entirely — distinct from saving an
+// explicit $0, which is still "set" as far as copyBudgetForward's
+// don't-clobber check is concerned. Deleting the row means that month goes
+// back to genuinely unbudgeted.
+export async function deleteBudgetLine(
+  category_id: string,
+  period_id: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("budget_lines")
+    .delete()
+    .eq("category_id", category_id)
+    .eq("period_id", period_id);
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+  revalidatePath("/transactions");
+  revalidatePath("/budgets");
+  revalidatePath("/");
+  return { ok: true };
+}
+
+// Deactivating (rather than deleting) a category keeps its past
+// transactions and planned amounts intact — it just drops out of the
+// Budgets page's default view until reactivated.
+export async function updateCategoryActive(
+  id: string,
+  is_active: boolean,
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("categories")
+    .update({ is_active })
+    .eq("id", id);
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+  revalidatePath("/transactions");
+  revalidatePath("/budgets");
+  revalidatePath("/");
+  return { ok: true };
+}
+
+// Manual override for the keyword-guessed icon in lib/category-icons.ts —
+// `icon` null clears the override back to auto-guessing.
+export async function updateCategoryIcon(
+  categoryId: string,
+  icon: string | null,
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("categories")
+    .update({ icon })
+    .eq("id", categoryId);
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+  revalidatePath("/budgets");
   revalidatePath("/transactions");
   revalidatePath("/");
+  return { ok: true };
 }
 
 export async function suggestCategory(description: string): Promise<string | null> {
@@ -323,6 +409,32 @@ export async function bulkImportTransactions(
   return { imported: toInsert.length, skippedNoPeriod };
 }
 
+// Shared by createTransaction's "Make this recurring" checkbox and
+// createRecurringFromTransaction (the detail modal's one-click version) —
+// day_of_month is derived from the transaction's own date rather than asked
+// for separately, since the whole point is "automatically set it up."
+async function insertRecurringRule(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  rule: {
+    kind: "income" | "expense";
+    description: string;
+    amount: number;
+    account_id: string | null;
+    category_id: string | null;
+    txn_date: string;
+  },
+) {
+  const day_of_month = Math.min(28, new Date(`${rule.txn_date}T00:00:00Z`).getUTCDate());
+  return supabase.from("recurring_transactions").insert({
+    kind: rule.kind,
+    description: rule.description,
+    amount: rule.amount,
+    account_id: rule.account_id,
+    category_id: rule.category_id,
+    day_of_month,
+  });
+}
+
 export async function createTransaction(
   formData: FormData,
 ): Promise<{ ok: boolean; error?: string }> {
@@ -339,6 +451,7 @@ export async function createTransaction(
   const period_id = String(formData.get("period_id") ?? "");
   const notes = String(formData.get("notes") ?? "").trim() || null;
   const pending_approval = formData.get("pending_approval") === "on";
+  const make_recurring = formData.get("make_recurring") === "on";
 
   if (!description || !amount || !txn_date || !period_id) {
     return { ok: false, error: "Missing required fields." };
@@ -366,6 +479,23 @@ export async function createTransaction(
     return { ok: false, error: error.message };
   }
 
+  if (make_recurring) {
+    // Best-effort — the transaction itself already saved successfully, so a
+    // hiccup setting up the recurring rule shouldn't be reported as the
+    // whole save having failed.
+    const { error: recurringError } = await insertRecurringRule(supabase, {
+      kind,
+      description,
+      amount,
+      account_id,
+      category_id,
+      txn_date,
+    });
+    if (recurringError) {
+      console.error("Failed to auto-create recurring rule:", recurringError);
+    }
+  }
+
   revalidatePath("/transactions");
   revalidatePath("/");
   return { ok: true };
@@ -376,6 +506,41 @@ export async function toggleTransactionPendingApproval(id: string, pending_appro
   await supabase.from("transactions").update({ pending_approval }).eq("id", id);
   revalidatePath("/transactions");
   revalidatePath("/");
+}
+
+// The detail modal's one-click "Make recurring" — sets up a recurring rule
+// matching an already-logged transaction, so turning a past entry into a
+// standing bill doesn't mean retyping its details into a separate form.
+export async function createRecurringFromTransaction(
+  id: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const { data: t, error: fetchError } = await supabase
+    .from("transactions")
+    .select("kind, description, amount, account_id, category_id, txn_date")
+    .eq("id", id)
+    .single();
+  if (fetchError || !t) {
+    return { ok: false, error: fetchError?.message ?? "Transaction not found." };
+  }
+  if (t.kind === "transfer") {
+    return { ok: false, error: "Transfers can't be made recurring." };
+  }
+
+  const { error } = await insertRecurringRule(supabase, {
+    kind: t.kind as "income" | "expense",
+    description: t.description,
+    amount: t.amount,
+    account_id: t.account_id,
+    category_id: t.category_id,
+    txn_date: t.txn_date,
+  });
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/transactions");
+  return { ok: true };
 }
 
 export async function updateTransaction(id: string, formData: FormData) {
@@ -559,6 +724,38 @@ export async function deleteTransaction(id: string) {
   revalidatePath("/");
 }
 
+// Bulk versions of delete/update for the transactions table's row-selection
+// toolbar — one round trip for N selected rows instead of N separate ones.
+export async function bulkDeleteTransactions(
+  ids: string[],
+): Promise<{ ok: boolean; error?: string }> {
+  if (ids.length === 0) return { ok: true };
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("transactions")
+    .update({ deleted_at: new Date().toISOString() })
+    .in("id", ids);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/transactions");
+  revalidatePath("/accounts");
+  revalidatePath("/");
+  return { ok: true };
+}
+
+export async function bulkUpdateTransactions(
+  ids: string[],
+  patch: { account_id?: string | null; txn_date?: string; category_id?: string | null },
+): Promise<{ ok: boolean; error?: string }> {
+  if (ids.length === 0) return { ok: true };
+  const supabase = await createClient();
+  const { error } = await supabase.from("transactions").update(patch).in("id", ids);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/transactions");
+  revalidatePath("/accounts");
+  revalidatePath("/");
+  return { ok: true };
+}
+
 export async function restoreTransaction(id: string) {
   const supabase = await createClient();
   await supabase.from("transactions").update({ deleted_at: null }).eq("id", id);
@@ -569,20 +766,26 @@ export async function restoreTransaction(id: string) {
 
 // One-off cleanup: attributes every existing transaction to whoever is
 // currently signed in, regardless of who originally logged it.
-export async function reassignAllTransactionsToMe() {
+// Scoped to one transaction at a time — attributing a single transaction to
+// yourself from its detail modal, instead of the old bulk "mark everything
+// as mine" button that overwrote attribution history across every
+// transaction (including your partner's) in one irreversible click.
+export async function claimTransaction(id: string): Promise<{ ok: boolean; error?: string }> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return;
+  if (!user) return { ok: false, error: "Not signed in." };
 
-  await supabase
+  const { error } = await supabase
     .from("transactions")
     .update({ created_by: user.id, created_by_email: user.email ?? null })
-    .not("id", "is", null);
+    .eq("id", id);
+  if (error) return { ok: false, error: error.message };
 
   revalidatePath("/transactions");
   revalidatePath("/");
+  return { ok: true };
 }
 
 // Copies every planned amount from one period's budget onto another,
@@ -591,10 +794,13 @@ export async function reassignAllTransactionsToMe() {
 export async function copyBudgetForward(
   fromPeriodId: string,
   toPeriodId: string,
-) {
+): Promise<{ ok: boolean; copied?: number; error?: string }> {
   const supabase = await createClient();
 
-  const [{ data: fromLines }, { data: existingLines }] = await Promise.all([
+  const [
+    { data: fromLines, error: fromError },
+    { data: existingLines, error: existingError },
+  ] = await Promise.all([
     supabase
       .from("budget_lines")
       .select("category_id, planned_amount")
@@ -604,6 +810,8 @@ export async function copyBudgetForward(
       .select("category_id")
       .eq("period_id", toPeriodId),
   ]);
+  if (fromError) return { ok: false, error: fromError.message };
+  if (existingError) return { ok: false, error: existingError.message };
 
   const alreadySet = new Set((existingLines ?? []).map((l) => l.category_id));
   const rows = (fromLines ?? [])
@@ -615,101 +823,31 @@ export async function copyBudgetForward(
     }));
 
   if (rows.length > 0) {
-    await supabase.from("budget_lines").insert(rows);
+    const { error } = await supabase.from("budget_lines").insert(rows);
+    if (error) return { ok: false, error: error.message };
   }
 
   revalidatePath("/transactions");
+  revalidatePath("/budgets");
   revalidatePath("/");
+  return { ok: true, copied: rows.length };
 }
 
-export async function createRecurringTransaction(formData: FormData) {
-  const supabase = await createClient();
-  const kind = String(formData.get("kind") ?? "expense") as "income" | "expense";
-  const description = String(formData.get("description") ?? "").trim();
-  const amount = Number(formData.get("amount") ?? 0);
-  const account_id = String(formData.get("account_id") ?? "") || null;
-  const category_id = String(formData.get("category_id") ?? "") || null;
-  const day_of_month = Number(formData.get("day_of_month") ?? 1);
-
-  if (!description || !amount || day_of_month < 1 || day_of_month > 28) return;
-
-  await supabase.from("recurring_transactions").insert({
-    kind,
-    description,
-    amount,
-    account_id,
-    category_id,
-    day_of_month,
-  });
-  revalidatePath("/transactions");
-}
-
+// Used from the transaction detail modal to stop a recurring bill that was
+// set up via the "Make this recurring" checkbox (or the one-click "Make
+// recurring" on an existing transaction) — paused rather than deleted, so
+// generateRecurringForPeriod simply stops picking it up going forward.
 export async function toggleRecurringActive(id: string, is_active: boolean) {
   const supabase = await createClient();
   await supabase.from("recurring_transactions").update({ is_active }).eq("id", id);
   revalidatePath("/transactions");
 }
 
-export async function deleteRecurringTransaction(id: string) {
-  const supabase = await createClient();
-  await supabase.from("recurring_transactions").delete().eq("id", id);
-  revalidatePath("/transactions");
-}
-
-export async function getPriceHistoryForRecurring(id: string) {
-  return getRecurringPriceHistory(id);
-}
-
-// Creates one transaction per active recurring entry for the given period,
-// dated on its day_of_month within that period's month. Skips entries that
-// already have a transaction generated for this period (tracked via
-// recurring_transaction_id) so re-running never double-creates.
+// Server Action wrapper around the plain query version (which the
+// Transactions page also calls directly during its own render, where
+// revalidatePath isn't allowed) — kept for any explicit manual trigger.
 export async function generateRecurringForPeriod(periodId: string) {
-  const supabase = await createClient();
-
-  const [{ data: period }, { data: recurring }, { data: existing }, { data: { user } }] =
-    await Promise.all([
-      supabase.from("periods").select("*").eq("id", periodId).single(),
-      supabase.from("recurring_transactions").select("*").eq("is_active", true),
-      supabase
-        .from("transactions")
-        .select("recurring_transaction_id")
-        .eq("period_id", periodId)
-        .not("recurring_transaction_id", "is", null),
-      supabase.auth.getUser(),
-    ]);
-
-  if (!period || !recurring || recurring.length === 0) return;
-
-  const alreadyGenerated = new Set((existing ?? []).map((t) => t.recurring_transaction_id));
-  const periodStart = new Date(period.start_date + "T00:00:00");
-  const year = periodStart.getFullYear();
-  const month = periodStart.getMonth();
-
-  const rows = recurring
-    .filter((r) => !alreadyGenerated.has(r.id))
-    .map((r) => {
-      const day = String(r.day_of_month).padStart(2, "0");
-      const monthStr = String(month + 1).padStart(2, "0");
-      return {
-        kind: r.kind,
-        description: r.description,
-        amount: r.amount,
-        txn_date: `${year}-${monthStr}-${day}`,
-        account_id: r.account_id,
-        category_id: r.category_id,
-        period_id: periodId,
-        recurring_transaction_id: r.id,
-        created_by: user?.id ?? null,
-        created_by_email: user?.email ?? null,
-      };
-    });
-
-  if (rows.length > 0) {
-    await supabase.from("transactions").insert(rows);
-  }
-
-  revalidatePath("/transactions");
+  await generateRecurringForPeriodQuery(periodId);
   revalidatePath("/transactions");
   revalidatePath("/");
 }
@@ -847,4 +985,53 @@ export async function updateMyProfile(formData: FormData): Promise<{ ok: boolean
 
   revalidatePath("/");
   return { ok: true };
+}
+
+// Backs the file-picker in the profile modal — uploads straight to the
+// "avatars" storage bucket (each user's files live under a folder named for
+// their own auth.uid(), see supabase/019_avatars_bucket.sql) and saves the
+// resulting public URL onto the profile immediately, rather than staging it
+// behind the modal's "Save changes" button like the other profile fields.
+export async function uploadAvatar(
+  formData: FormData,
+): Promise<{ ok: boolean; url?: string; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const file = formData.get("avatar_file");
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, error: "No file selected." };
+  }
+  if (!file.type.startsWith("image/")) {
+    return { ok: false, error: "Please choose an image file." };
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    return { ok: false, error: "Image must be under 5MB." };
+  }
+
+  const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+  const path = `${user.id}/${Date.now()}.${ext}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from("avatars")
+    .upload(path, file, { contentType: file.type, upsert: true });
+  if (uploadError) {
+    return { ok: false, error: uploadError.message };
+  }
+
+  const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+  const avatar_url = data.publicUrl;
+
+  const { error } = await supabase
+    .from("profiles")
+    .upsert({ id: user.id, avatar_url, updated_at: new Date().toISOString() });
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/");
+  return { ok: true, url: avatar_url };
 }

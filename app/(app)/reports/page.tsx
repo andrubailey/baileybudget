@@ -11,21 +11,14 @@ import {
   getCategories,
 } from "@/lib/queries";
 import { getPeriods } from "@/lib/periods";
-import { formatMoney } from "@/lib/format";
+import { Money } from "@/app/(app)/money";
 import type { ChartPoint } from "./monthly-trend-chart";
 import { TrendExplorer } from "./trend-explorer";
 import { EmptyState } from "@/app/(app)/empty-state";
 import { YearSwitcher } from "./year-switcher";
 import { ExportCsvButton } from "./export-csv-button";
 import { WeeklyRecapPanel } from "./weekly-recap-panel";
-import { CsvImport } from "./csv-import";
-import { PageTabs } from "@/app/(app)/page-tabs";
-
-const TABS = [
-  { value: "trends", label: "Trends" },
-  { value: "weekly-recap", label: "Weekly Recap" },
-  { value: "import", label: "Import" },
-];
+import { ImportDataButton } from "./import-data-button";
 
 function iso(d: Date) {
   return d.toISOString().slice(0, 10);
@@ -41,41 +34,36 @@ function monthLabel(month: string) {
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; year?: string }>;
+  searchParams: Promise<{ year?: string }>;
 }) {
-  const { view, year: requestedYear } = await searchParams;
-  const activeView = view ?? "trends";
+  const { year: requestedYear } = await searchParams;
+  const [accounts, categories] = await Promise.all([getAccountsWithBalances(), getCategories()]);
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl leading-tight font-semibold tracking-tight text-text sm:text-display">Reports</h1>
-        <p className="mt-1 text-sm text-text-muted">
-          Yearly trends, a weekly recap, and bulk CSV import.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl leading-tight font-semibold tracking-tight text-text sm:text-display">Reports</h1>
+          <p className="mt-1 text-sm text-text-muted">
+            Yearly trends and this week&apos;s recap, at a glance.
+          </p>
+        </div>
+        <ImportDataButton accounts={accounts} categories={categories} />
       </div>
 
-      <PageTabs tabs={TABS} />
-
-      {activeView === "weekly-recap" ? (
-        <WeeklyRecapPanel />
-      ) : activeView === "import" ? (
-        <ImportPanel />
-      ) : (
-        <TrendsPanel requestedYear={requestedYear} />
-      )}
-    </div>
-  );
-}
-
-async function ImportPanel() {
-  const [accounts, categories] = await Promise.all([getAccountsWithBalances(), getCategories()]);
-  return (
-    <div className="space-y-6">
-      <p className="text-sm text-text-muted">
-        Upload a CSV export from your bank to bulk-add transactions instead of entering them one by one.
-      </p>
-      <CsvImport accounts={accounts} categories={categories} />
+      {/* Trends is the primary content; the weekly recap sits alongside it
+          instead of behind its own tab, so both are visible on one page
+          without navigating away. Recap moves below Trends on narrow
+          screens where there's no room for a side column. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:items-start">
+        <div className="lg:col-span-2">
+          <TrendsPanel requestedYear={requestedYear} />
+        </div>
+        <div className="lg:sticky lg:top-6">
+          <h2 className="text-heading mb-3 text-text">Weekly recap</h2>
+          <WeeklyRecapPanel compact />
+        </div>
+      </div>
     </div>
   );
 }
@@ -94,6 +82,9 @@ async function TrendsPanel({ requestedYear }: { requestedYear?: string }) {
   const prevStart = iso(new Date(Date.UTC(year - 1, 0, 1)));
   const prevEnd = iso(new Date(Date.UTC(year - 1, 11, 31)));
 
+  // One combined fetch — the "compare last 3 years" data doesn't depend on
+  // anything above it, so it was previously waiting on a whole separate
+  // round-trip after the main batch for no reason.
   const [
     monthly,
     prevYearMonthly,
@@ -103,6 +94,8 @@ async function TrendsPanel({ requestedYear }: { requestedYear?: string }) {
     recurringVsOtherByMonth,
     objectives,
     periods,
+    yearMinus1,
+    yearMinus2,
   ] = await Promise.all([
     getMonthlyTotals(start, end),
     getMonthlyTotals(prevStart, prevEnd),
@@ -112,10 +105,6 @@ async function TrendsPanel({ requestedYear }: { requestedYear?: string }) {
     getRecurringVsOtherByMonth(start, end),
     getObjectives(),
     getPeriods(),
-  ]);
-
-  // Two more years back, for the "compare last 3 years" small multiples.
-  const [yearMinus1, yearMinus2] = await Promise.all([
     year - 1 <= currentYear
       ? getMonthlyTotals(iso(new Date(Date.UTC(year - 1, 0, 1))), iso(new Date(Date.UTC(year - 1, 11, 31))))
       : Promise.resolve([]),
@@ -224,31 +213,88 @@ async function TrendsPanel({ requestedYear }: { requestedYear?: string }) {
       )}
 
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="YTD Income" value={ytdIncome} />
-        <StatCard label="YTD Expenses" value={ytdExpense} />
-        <StatCard label="YTD Net" value={ytdNet} colorBySign />
+        <StatCard label="YTD Income" value={ytdIncome} index={0} />
+        <StatCard label="YTD Expenses" value={ytdExpense} index={1} />
+        <StatCard label="YTD Net" value={ytdNet} colorBySign index={2} />
         <StatCard
           label="Avg monthly net"
           value={avgMonthlyNet}
           colorBySign
           suffix={savingsRate !== null ? `${savingsRate.toFixed(0)}% savings rate` : undefined}
+          index={3}
         />
       </div>
 
       {hasActivity && bestMonth && worstMonth && bestMonth.month !== worstMonth.month && (
         <p className="text-sm text-text-muted">
           Best month:{" "}
-          <span className="font-medium text-success">
-            {monthLabel(bestMonth.month)} ({formatMoney(bestMonth.net)})
+          <span className="font-medium text-positive">
+            {monthLabel(bestMonth.month)} (<Money amount={bestMonth.net} signDisplay="auto" />)
           </span>
           {" · "}Toughest month:{" "}
           <span className="font-medium text-negative">
-            {monthLabel(worstMonth.month)} ({formatMoney(worstMonth.net)})
+            {monthLabel(worstMonth.month)} (<Money amount={worstMonth.net} signDisplay="auto" />)
           </span>
         </p>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-surface shadow-card">
+      {/* Mobile: one card per month, Net leads since it's the one number
+          that actually answers "how did this month go" — Income/Expenses
+          are secondary detail and Top category drops entirely rather than
+          force a 5-column table into a 375px screen. Desktop keeps the full
+          table below. */}
+      <div className="space-y-2 sm:hidden">
+        {monthly.map((m, i) => {
+          const net = m.income - m.expense;
+          const periodId = periodIdByMonth.get(m.month);
+          const monthName = new Date(`${m.month}-01T00:00:00Z`).toLocaleDateString("en-US", {
+            month: "long",
+            year: "numeric",
+            timeZone: "UTC",
+          });
+          const cardContent = (
+            <>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-medium text-text">{monthName}</p>
+                <Money
+                  amount={net}
+                  signDisplay="auto"
+                  tone={net > 0 ? "positive" : net < 0 ? "negative" : "neutral"}
+                  className="text-sm font-semibold"
+                />
+              </div>
+              <div className="mt-1.5 flex items-center gap-3 text-xs text-text-faint">
+                <span>
+                  <Money amount={m.income} tone="positive" /> in
+                </span>
+                <span>
+                  <Money amount={m.expense} /> out
+                </span>
+              </div>
+            </>
+          );
+          return periodId ? (
+            <Link
+              key={m.month}
+              href={`/transactions?period=${periodId}`}
+              style={{ animationDelay: `${i * 35}ms` }}
+              className="card-hover animate-fade-in-up block rounded-xl border border-border bg-surface p-4 shadow-card"
+            >
+              {cardContent}
+            </Link>
+          ) : (
+            <div
+              key={m.month}
+              style={{ animationDelay: `${i * 35}ms` }}
+              className="animate-fade-in-up rounded-xl border border-border bg-surface p-4 shadow-card"
+            >
+              {cardContent}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="hidden overflow-x-auto rounded-xl border border-border bg-surface shadow-card sm:block">
         <table className="w-full text-left">
           <thead>
             <tr className="border-b border-border bg-bg">
@@ -260,11 +306,15 @@ async function TrendsPanel({ requestedYear }: { requestedYear?: string }) {
             </tr>
           </thead>
           <tbody>
-            {monthly.map((m) => {
+            {monthly.map((m, i) => {
               const net = m.income - m.expense;
               const top = topCategoryByMonth.get(m.month);
               return (
-                <tr key={m.month} className="border-b border-border last:border-b-0 hover:bg-bg even:bg-bg/40">
+                <tr
+                  key={m.month}
+                  style={{ animationDelay: `${i * 30}ms` }}
+                  className="animate-fade-in-up border-b border-border transition-colors last:border-b-0 hover:bg-bg even:bg-bg/40"
+                >
                   <td className="px-6 py-2.5 text-sm font-medium text-text">
                     {new Date(`${m.month}-01T00:00:00Z`).toLocaleDateString("en-US", {
                       month: "long",
@@ -272,21 +322,27 @@ async function TrendsPanel({ requestedYear }: { requestedYear?: string }) {
                       timeZone: "UTC",
                     })}
                   </td>
-                  <td className="tabular px-6 py-2.5 text-right text-sm text-success">
-                    {formatMoney(m.income)}
+                  <td className="px-6 py-2.5 text-right text-sm">
+                    <Money amount={m.income} tone="positive" />
                   </td>
-                  <td className="tabular px-6 py-2.5 text-right text-sm text-text">
-                    {formatMoney(m.expense)}
+                  <td className="px-6 py-2.5 text-right text-sm text-text">
+                    <Money amount={m.expense} />
                   </td>
-                  <td
-                    className={`tabular px-6 py-2.5 text-right text-sm font-medium ${
-                      net > 0 ? "text-success" : net < 0 ? "text-negative" : "text-text-muted"
-                    }`}
-                  >
-                    {formatMoney(net)}
+                  <td className="px-6 py-2.5 text-right text-sm font-medium">
+                    <Money
+                      amount={net}
+                      signDisplay="auto"
+                      tone={net > 0 ? "positive" : net < 0 ? "negative" : "neutral"}
+                    />
                   </td>
                   <td className="px-6 py-2.5 text-sm text-text-muted">
-                    {top ? `${top.categoryName} (${formatMoney(top.amount)})` : "—"}
+                    {top ? (
+                      <>
+                        {top.categoryName} (<Money amount={top.amount} />)
+                      </>
+                    ) : (
+                      "—"
+                    )}
                   </td>
                 </tr>
               );
@@ -304,7 +360,7 @@ async function TrendsPanel({ requestedYear }: { requestedYear?: string }) {
                   <Link
                     key={m.month}
                     href={`/transactions?period=${periodId}`}
-                    className="rounded-md border border-border px-2 py-1 text-xs font-medium text-text-muted hover:bg-bg hover:text-accent"
+                    className="rounded-md border border-border px-2 py-1 text-xs font-medium text-text-muted transition-colors hover:bg-bg hover:text-accent"
                   >
                     {monthLabel(m.month)} →
                   </Link>
@@ -323,25 +379,34 @@ function StatCard({
   value,
   colorBySign,
   suffix,
+  index = 0,
 }: {
   label: string;
   value: number;
   colorBySign?: boolean;
   suffix?: string;
+  index?: number;
 }) {
-  const valueColor = colorBySign
+  const tone = colorBySign
     ? value > 0
-      ? "text-success"
+      ? "positive"
       : value < 0
-        ? "text-negative"
-        : "text-text"
-    : "text-text";
+        ? "negative"
+        : "neutral"
+    : "neutral";
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-5 shadow-card sm:p-6">
+    <div
+      style={{ animationDelay: `${index * 60}ms` }}
+      className="card-hover animate-fade-in-up flex flex-col gap-2 rounded-xl border border-border bg-surface p-5 shadow-card sm:p-6"
+    >
       <p className="text-sm font-medium text-text-muted">{label}</p>
-      <p className={`tabular text-[28px] leading-9 font-semibold tracking-[-0.56px] ${valueColor}`}>
-        {formatMoney(value)}
-      </p>
+      <Money
+        amount={value}
+        variant="balance"
+        signDisplay="auto"
+        tone={tone}
+        className="text-[34px] leading-[40px] font-bold tracking-[-0.005em]"
+      />
       {suffix && <p className="text-xs text-text-faint">{suffix}</p>}
     </div>
   );

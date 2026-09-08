@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { updateMyProfile } from "@/app/actions";
+import { useRef, useState } from "react";
+import { updateMyProfile, uploadAvatar } from "@/app/actions";
 import { SubmitButton } from "@/app/(app)/submit-button";
 import { useToast } from "@/app/(app)/toast";
 
@@ -19,8 +19,15 @@ export function ProfileModal({
   avatarUrl: string | null;
   onClose: () => void;
 }) {
+  // avatarPreview drives the image shown (can briefly be a local blob: URL
+  // while an upload is in flight); avatarUrlValue is the actual form field,
+  // which only ever holds a real URL — so pasting/saving never submits a
+  // blob: URL that would be meaningless outside this tab.
   const [avatarPreview, setAvatarPreview] = useState(avatarUrl ?? "");
+  const [avatarUrlValue, setAvatarUrlValue] = useState(avatarUrl ?? "");
   const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const showToast = useToast();
 
   async function handleSubmit(formData: FormData) {
@@ -32,6 +39,42 @@ export function ProfileModal({
     }
     showToast("Profile updated");
     onClose();
+  }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setError("Please choose an image file.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Image must be under 5MB.");
+      return;
+    }
+
+    setError(null);
+    setUploading(true);
+    // Optimistic local preview while the upload is in flight.
+    const objectUrl = URL.createObjectURL(file);
+    setAvatarPreview(objectUrl);
+
+    const fd = new FormData();
+    fd.set("avatar_file", file);
+    const result = await uploadAvatar(fd);
+    setUploading(false);
+    URL.revokeObjectURL(objectUrl);
+
+    if (!result.ok || !result.url) {
+      setAvatarPreview(avatarUrlValue);
+      setError(result.error ?? "Couldn't upload photo.");
+      return;
+    }
+    setAvatarPreview(result.url);
+    setAvatarUrlValue(result.url);
+    showToast("Photo updated");
   }
 
   return (
@@ -51,7 +94,7 @@ export function ProfileModal({
           <button
             type="button"
             onClick={onClose}
-            className="-mr-2.5 flex size-11 shrink-0 items-center justify-center rounded-lg text-text-faint hover:bg-bg hover:text-text"
+            className="-mr-2.5 flex size-11 shrink-0 items-center justify-center rounded-lg text-text-faint transition-colors hover:bg-bg hover:text-text"
             aria-label="Close"
           >
             ✕
@@ -60,30 +103,58 @@ export function ProfileModal({
 
         <form action={handleSubmit} className="space-y-4">
           <div className="flex items-center gap-3">
-            {avatarPreview ? (
-              // eslint-disable-next-line @next/next/no-img-element -- arbitrary user-supplied URL, not a local/known-domain asset
-              <img
-                src={avatarPreview}
-                alt=""
-                className="size-14 shrink-0 rounded-full object-cover"
-                onError={() => setAvatarPreview("")}
-              />
-            ) : (
-              <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-accent-soft text-lg font-semibold text-accent">
-                {(displayName || userEmail).trim()[0]?.toUpperCase() ?? "?"}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleFileChange}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="group relative size-14 shrink-0 overflow-hidden rounded-full disabled:opacity-70"
+              aria-label="Change profile photo"
+            >
+              {avatarPreview ? (
+                // eslint-disable-next-line @next/next/no-img-element -- arbitrary user-supplied URL, not a local/known-domain asset
+                <img
+                  src={avatarPreview}
+                  alt=""
+                  className="size-14 rounded-full object-cover"
+                  onError={() => setAvatarPreview("")}
+                />
+              ) : (
+                <span className="flex size-14 items-center justify-center rounded-full bg-accent-soft text-lg font-semibold text-accent">
+                  {(displayName || userEmail).trim()[0]?.toUpperCase() ?? "?"}
+                </span>
+              )}
+              <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 text-[11px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
+                {uploading ? "…" : "Change"}
               </span>
-            )}
+            </button>
             <div className="min-w-0 flex-1 space-y-1.5">
-              <label className="text-sm font-medium text-text">Image URL</label>
-              <input
-                name="avatar_url"
-                type="url"
-                defaultValue={avatarUrl ?? ""}
-                onChange={(e) => setAvatarPreview(e.target.value)}
-                placeholder="https://…"
-                className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text outline-none focus:border-accent"
-              />
+              <label className="text-sm font-medium text-text">Photo</label>
+              <p className="text-xs text-text-faint">
+                Click the circle to upload a photo, or paste an image URL below.
+              </p>
             </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-text">Image URL</label>
+            <input
+              name="avatar_url"
+              type="url"
+              value={avatarUrlValue}
+              onChange={(e) => {
+                setAvatarUrlValue(e.target.value);
+                setAvatarPreview(e.target.value);
+              }}
+              placeholder="https://…"
+              className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text outline-none focus:border-accent"
+            />
           </div>
 
           <div className="space-y-1.5">
@@ -104,7 +175,7 @@ export function ProfileModal({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-text-muted hover:bg-bg"
+              className="rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-text-muted transition-colors hover:bg-bg"
             >
               Cancel
             </button>

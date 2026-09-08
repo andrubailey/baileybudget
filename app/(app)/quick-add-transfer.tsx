@@ -74,7 +74,7 @@ export function QuickAddTransferButton({
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="-mr-2.5 flex size-11 shrink-0 items-center justify-center rounded-lg text-text-faint hover:bg-bg hover:text-text"
+                className="-mr-2.5 flex size-11 shrink-0 items-center justify-center rounded-lg text-text-faint transition-colors hover:bg-bg hover:text-text"
                 aria-label="Close"
               >
                 ✕
@@ -139,7 +139,7 @@ export function QuickAddTransferButton({
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
-                  className="rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-text-muted hover:bg-bg"
+                  className="rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-text-muted transition-colors hover:bg-bg"
                 >
                   Cancel
                 </button>

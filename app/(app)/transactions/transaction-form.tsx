@@ -6,6 +6,7 @@ import type { Account, Category } from "@/lib/types";
 import { SubmitButton } from "@/app/(app)/submit-button";
 import { useToast } from "@/app/(app)/toast";
 import { CurrencyInput } from "@/app/(app)/currency-input";
+import { CategorySelect } from "@/app/(app)/category-select";
 import { formatMoney, formatDate } from "@/lib/format";
 import { FIELD_CLASS as fieldClass } from "@/lib/ui";
 
@@ -27,7 +28,6 @@ export function TransactionForm({
   const [duplicates, setDuplicates] = useState<DuplicateMatch[] | null>(null);
   const [pendingFormData, setPendingFormData] = useState<FormData | null>(null);
   const [accountId, setAccountId] = useState("");
-  const filteredCategories = categories.filter((c) => c.kind === kind);
   const showToast = useToast();
 
   // Debt accounts (credit cards, loans) store the opposite of what you'd
@@ -170,22 +170,16 @@ export function TransactionForm({
 
       <div className="space-y-1.5">
         <label className="text-sm font-medium text-text">Category</label>
-        <select
-          name="category_id"
+        <CategorySelect
+          categories={categories}
+          kind={kind}
           value={categoryId}
-          onChange={(e) => {
-            setCategoryId(e.target.value);
+          onChange={(id) => {
+            setCategoryId(id);
             setCategoryTouched(true);
           }}
           className={fieldClass}
-        >
-          <option value="">—</option>
-          {filteredCategories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
+        />
       </div>
 
       <div className="space-y-1.5 sm:col-span-3">
@@ -196,6 +190,18 @@ export function TransactionForm({
           maxLength={140}
           className={fieldClass}
         />
+      </div>
+
+      <div className="flex items-center gap-2 sm:col-span-3">
+        <input
+          type="checkbox"
+          id="make-recurring-toggle"
+          name="make_recurring"
+          className="h-4 w-4 accent-[var(--accent)]"
+        />
+        <label htmlFor="make-recurring-toggle" className="text-sm text-text-muted">
+          Make this recurring — automatically log it again every month
+        </label>
       </div>
 
       {duplicates && duplicates.length > 0 && (
@@ -237,7 +243,7 @@ export function TransactionForm({
         <button
           type="button"
           onClick={resetForm}
-          className="rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-text-muted hover:bg-bg"
+          className="rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-text-muted transition-colors hover:bg-bg"
         >
           Cancel
         </button>

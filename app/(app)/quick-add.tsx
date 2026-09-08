@@ -11,6 +11,7 @@ import type { Account, Category } from "@/lib/types";
 import { SubmitButton } from "@/app/(app)/submit-button";
 import { useToast } from "@/app/(app)/toast";
 import { CurrencyInput } from "@/app/(app)/currency-input";
+import { CategorySelect } from "@/app/(app)/category-select";
 import { formatMoney, formatDate } from "@/lib/format";
 import { FIELD_CLASS as fieldClass } from "@/lib/ui";
 
@@ -272,7 +273,7 @@ export function QuickAddButton({
               <button
                 type="button"
                 onClick={resetForm}
-                className="-mr-2.5 flex size-11 shrink-0 items-center justify-center rounded-lg text-text-faint hover:bg-bg hover:text-text"
+                className="-mr-2.5 flex size-11 shrink-0 items-center justify-center rounded-lg text-text-faint transition-colors hover:bg-bg hover:text-text"
                 aria-label="Close"
               >
                 ✕
@@ -348,22 +349,16 @@ export function QuickAddButton({
               {!split && (
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium text-text">Category</label>
-                  <select
-                    name="category_id"
+                  <CategorySelect
+                    categories={categories}
+                    kind={kind}
                     value={categoryId}
-                    onChange={(e) => {
-                      setCategoryId(e.target.value);
+                    onChange={(id) => {
+                      setCategoryId(id);
                       setCategoryTouched(true);
                     }}
                     className={fieldClass}
-                  >
-                    <option value="">—</option>
-                    {kindCategories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
               )}
 
@@ -386,18 +381,13 @@ export function QuickAddButton({
                 <div className="space-y-2 sm:col-span-2">
                   {splitRows.map((row, i) => (
                     <div key={i} className="flex items-center gap-2">
-                      <select
+                      <CategorySelect
+                        categories={categories}
+                        kind={kind}
                         value={row.category_id}
-                        onChange={(e) => updateSplitRow(i, "category_id", e.target.value)}
+                        onChange={(id) => updateSplitRow(i, "category_id", id)}
                         className={fieldClass}
-                      >
-                        <option value="">Category —</option>
-                        {kindCategories.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </select>
+                      />
                       <input
                         type="number"
                         inputMode="decimal"
@@ -411,7 +401,7 @@ export function QuickAddButton({
                         <button
                           type="button"
                           onClick={() => removeSplitRow(i)}
-                          className="flex size-9 shrink-0 items-center justify-center rounded-lg text-text-faint hover:bg-bg hover:text-negative"
+                          className="flex size-9 shrink-0 items-center justify-center rounded-lg text-text-faint transition-colors hover:bg-bg hover:text-negative"
                           aria-label="Remove split"
                         >
                           ✕
@@ -456,6 +446,20 @@ export function QuickAddButton({
                 </div>
               )}
 
+              {!split && (
+                <div className="flex items-center gap-2 sm:col-span-2">
+                  <input
+                    type="checkbox"
+                    id="make-recurring-toggle"
+                    name="make_recurring"
+                    className="h-4 w-4 accent-[var(--accent)]"
+                  />
+                  <label htmlFor="make-recurring-toggle" className="text-sm text-text-muted">
+                    Make this recurring — automatically log it again every month
+                  </label>
+                </div>
+              )}
+
               {duplicates && duplicates.length > 0 && (
                 <div className="space-y-2 rounded-lg border border-caution bg-caution-bg p-3 sm:col-span-2">
                   <p className="text-sm font-medium text-caution-strong">
@@ -472,7 +476,7 @@ export function QuickAddButton({
                     <button
                       type="button"
                       onClick={confirmAnyway}
-                      className="rounded-md border border-caution px-3 py-1.5 text-xs font-semibold text-caution-strong hover:bg-caution-bg"
+                      className="rounded-md border border-caution px-3 py-1.5 text-xs font-semibold text-caution-strong transition-colors hover:bg-caution-bg"
                     >
                       Add anyway
                     </button>
@@ -482,7 +486,7 @@ export function QuickAddButton({
                         setDuplicates(null);
                         setPendingFormData(null);
                       }}
-                      className="rounded-md px-3 py-1.5 text-xs font-medium text-caution-strong hover:bg-caution-bg"
+                      className="rounded-md px-3 py-1.5 text-xs font-medium text-caution-strong transition-colors hover:bg-caution-bg"
                     >
                       Cancel
                     </button>
@@ -510,7 +514,7 @@ export function QuickAddButton({
                 <button
                   type="button"
                   onClick={resetForm}
-                  className="rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-text-muted hover:bg-bg"
+                  className="rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-text-muted transition-colors hover:bg-bg"
                 >
                   Cancel
                 </button>

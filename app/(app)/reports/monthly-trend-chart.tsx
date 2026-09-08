@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
 import { formatMoney } from "@/lib/format";
 import type { MonthlyTotal } from "@/lib/queries";
 
@@ -17,18 +20,21 @@ export type ChartPoint = MonthlyTotal & {
 
 // Bars (income/expense) and the net trend line all share one Y scale, so
 // the line reads as "the gap between the two bars" rather than a
-// disconnected overlay. `groupWidth` shrinks for the compact multi-year
-// small-multiples view.
+// disconnected overlay. Always measures its own container (same technique
+// as Sparkline) and spaces bars to fill it exactly — never a fixed pixel
+// width with a horizontal scrollbar. `compact` (used for the multi-year
+// small-multiples, three to a row) just shrinks the chart height and drops
+// the axis/legend chrome; it still fills whatever width it's given.
 export function MonthlyTrendChart({
   data,
   prevYearData,
   rollingAvg,
-  showGhost = true,
-  showRollingAvg = true,
+  showGhost = false,
+  showRollingAvg = false,
   showObjectives = true,
-  showBudgetLine = true,
-  showRecurringSplit = true,
-  groupWidth = 64,
+  showBudgetLine = false,
+  showRecurringSplit = false,
+  compact = false,
   showAxisLabels = true,
   showLegend = true,
 }: {
@@ -40,10 +46,25 @@ export function MonthlyTrendChart({
   showObjectives?: boolean;
   showBudgetLine?: boolean;
   showRecurringSplit?: boolean;
-  groupWidth?: number;
+  compact?: boolean;
   showAxisLabels?: boolean;
   showLegend?: boolean;
 }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(640);
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width;
+      if (w) setContainerWidth(w);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   if (data.length === 0) return null;
 
   const nets = data.map((d) => d.income - d.expense);
@@ -58,17 +79,21 @@ export function MonthlyTrendChart({
   );
   const minVal = Math.min(0, ...nets, ...rollingVals);
   const domain = maxVal - minVal || 1;
-  const width = LEFT_PAD * 2 + data.length * groupWidth;
-  const barWidth = Math.min(BAR_WIDTH, groupWidth / 3.2);
-  const chartHeight = groupWidth < 40 ? 100 : HEIGHT;
+  const width = containerWidth;
+  const effectiveGroupWidth = Math.max(12, (width - LEFT_PAD * 2) / data.length);
+  const barWidth = Math.min(BAR_WIDTH, effectiveGroupWidth / 3.2);
+  const chartHeight = compact ? 100 : HEIGHT;
   const topPad = showObjectives ? TOP_PAD : 4;
   const bottomPad = showAxisLabels ? 28 : 4;
+  const totalHeight = topPad + chartHeight + bottomPad;
 
   const yFor = (value: number) => topPad + chartHeight - ((value - minVal) / domain) * chartHeight;
   const baselineY = yFor(0);
 
+  const groupXFor = (i: number) => LEFT_PAD + i * effectiveGroupWidth + effectiveGroupWidth / 2;
+
   const netPoints = data.map((d, i) => ({
-    x: LEFT_PAD + i * groupWidth + groupWidth / 2,
+    x: groupXFor(i),
     y: yFor(d.income - d.expense),
   }));
   const linePath = netPoints
@@ -78,7 +103,7 @@ export function MonthlyTrendChart({
   const avgSegments: string[] = [];
   let currentSegment: string | null = null;
   (rollingAvg ?? []).forEach((v, i) => {
-    const x = LEFT_PAD + i * groupWidth + groupWidth / 2;
+    const x = groupXFor(i);
     if (v === null || !showRollingAvg) {
       currentSegment = null;
       return;
@@ -92,26 +117,62 @@ export function MonthlyTrendChart({
     }
   });
 
+  // Same crosshair + floating tooltip pattern as the Total Balance card's
+  // Sparkline — hovering anywhere over the chart snaps to the nearest
+  // month's bars instead of relying on the browser's native (slow,
+  // inconsistent) title tooltip.
+  function handleMove(e: React.PointerEvent<SVGSVGElement>) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const fraction = (e.clientX - rect.left) / rect.width;
+    const px = fraction * width;
+    const index = Math.round((px - LEFT_PAD - effectiveGroupWidth / 2) / effectiveGroupWidth);
+    setHoverIndex(Math.min(data.length - 1, Math.max(0, index)));
+  }
+
+  const hovered = hoverIndex !== null ? data[hoverIndex] : null;
+  const hoveredX = hoverIndex !== null ? groupXFor(hoverIndex) : null;
+  const hoveredNetY = hoverIndex !== null ? netPoints[hoverIndex].y : null;
+  const leftPct = hoveredX !== null ? (hoveredX / width) * 100 : 0;
+  const topPct = hoveredNetY !== null ? (hoveredNetY / totalHeight) * 100 : 0;
+
   return (
-    <div className="overflow-x-auto">
+    <div ref={containerRef} className="w-full">
+      <div className="relative">
       <svg
-        viewBox={`0 0 ${width} ${topPad + chartHeight + bottomPad}`}
+        viewBox={`0 0 ${width} ${totalHeight}`}
         width={width}
-        height={topPad + chartHeight + bottomPad}
-        className="min-w-full"
+        height={totalHeight}
+        className="w-full cursor-crosshair"
+        style={{ height: totalHeight }}
+        onPointerMove={handleMove}
+        onPointerLeave={() => setHoverIndex(null)}
       >
         <line x1={0} y1={baselineY} x2={width} y2={baselineY} stroke="var(--border)" strokeWidth={1} />
 
+        {hoveredX !== null && (
+          <line
+            x1={hoveredX}
+            y1={topPad}
+            x2={hoveredX}
+            y2={topPad + chartHeight}
+            stroke="var(--text-faint)"
+            strokeWidth={1}
+            strokeDasharray="2 2"
+            opacity={0.5}
+          />
+        )}
+
         {data.map((d, i) => {
-          const groupX = LEFT_PAD + i * groupWidth + groupWidth / 2;
+          const groupX = groupXFor(i);
           const incomeY = yFor(d.income);
           const expenseY = yFor(d.expense);
           const prev = prevYearData?.[i];
           const split = showRecurringSplit ? d.expenseSplit : null;
           const recurringY = split ? yFor(split.recurring) : null;
+          const isHovered = hoverIndex === i;
 
           return (
-            <g key={d.month + i}>
+            <g key={d.month + i} opacity={hoverIndex !== null && !isHovered ? 0.45 : 1}>
               {showGhost && prev && (
                 <>
                   <rect
@@ -124,9 +185,7 @@ export function MonthlyTrendChart({
                     stroke="var(--accent)"
                     strokeOpacity={0.4}
                     strokeDasharray="2 2"
-                  >
-                    <title>{`${d.label} last year: ${formatMoney(prev.income)} income`}</title>
-                  </rect>
+                  />
                   <rect
                     x={groupX + 2}
                     y={Math.min(yFor(prev.expense), baselineY)}
@@ -137,9 +196,7 @@ export function MonthlyTrendChart({
                     stroke="var(--negative)"
                     strokeOpacity={0.4}
                     strokeDasharray="2 2"
-                  >
-                    <title>{`${d.label} last year: ${formatMoney(prev.expense)} expenses`}</title>
-                  </rect>
+                  />
                 </>
               )}
 
@@ -153,9 +210,7 @@ export function MonthlyTrendChart({
                 fillOpacity={d.isCurrent ? 0.5 : 1}
                 className="animate-bar-grow"
                 style={{ animationDelay: `${i * 30}ms` }}
-              >
-                <title>{`${d.label}: ${formatMoney(d.income)} income${d.isCurrent ? " (in progress)" : ""}`}</title>
-              </rect>
+              />
 
               {split && recurringY !== null ? (
                 <>
@@ -169,9 +224,7 @@ export function MonthlyTrendChart({
                     fillOpacity={d.isCurrent ? 0.35 : 0.75}
                     className="animate-bar-grow-top"
                     style={{ animationDelay: `${i * 30}ms` }}
-                  >
-                    <title>{`${d.label}: ${formatMoney(split.recurring)} recurring bills`}</title>
-                  </rect>
+                  />
                   <rect
                     x={groupX + 2}
                     y={Math.min(expenseY, recurringY)}
@@ -181,9 +234,7 @@ export function MonthlyTrendChart({
                     fillOpacity={d.isCurrent ? 0.2 : 0.4}
                     className="animate-bar-grow-top"
                     style={{ animationDelay: `${i * 30}ms` }}
-                  >
-                    <title>{`${d.label}: ${formatMoney(split.other)} other spending`}</title>
-                  </rect>
+                  />
                 </>
               ) : (
                 <rect
@@ -196,9 +247,7 @@ export function MonthlyTrendChart({
                   fillOpacity={d.isCurrent ? 0.4 : 0.75}
                   className="animate-bar-grow-top"
                   style={{ animationDelay: `${i * 30}ms` }}
-                >
-                  <title>{`${d.label}: ${formatMoney(d.expense)} expenses${d.isCurrent ? " (in progress)" : ""}`}</title>
-                </rect>
+                />
               )}
 
               {showBudgetLine && d.planned != null && d.planned > 0 && (
@@ -211,9 +260,7 @@ export function MonthlyTrendChart({
                   strokeWidth={2}
                   strokeDasharray="1 3"
                   strokeLinecap="round"
-                >
-                  <title>{`${d.label}: ${formatMoney(d.planned)} planned`}</title>
-                </line>
+                />
               )}
 
               {d.isAnomaly && (
@@ -256,9 +303,15 @@ export function MonthlyTrendChart({
           strokeLinejoin="round"
         />
         {netPoints.map((p, i) => (
-          <circle key={i} cx={p.x} cy={p.y} r={3} fill="var(--projected)">
-            <title>{`${data[i].label}: ${formatMoney(nets[i])} net`}</title>
-          </circle>
+          <circle
+            key={i}
+            cx={p.x}
+            cy={p.y}
+            r={hoverIndex === i ? 4 : 3}
+            fill="var(--projected)"
+            stroke={hoverIndex === i ? "var(--surface)" : "none"}
+            strokeWidth={hoverIndex === i ? 1.5 : 0}
+          />
         ))}
 
         {avgSegments.map((d, i) => (
@@ -273,6 +326,35 @@ export function MonthlyTrendChart({
           />
         ))}
       </svg>
+
+      {hovered && hoveredX !== null && (
+        <div
+          className="pointer-events-none absolute z-10 -translate-x-1/2 rounded-lg border border-border bg-surface px-3 py-2 text-xs whitespace-nowrap shadow-card"
+          style={{
+            left: `${leftPct}%`,
+            top: `${topPct}%`,
+            transform: "translate(-50%, calc(-100% - 12px))",
+          }}
+        >
+          <p className="font-semibold text-text">
+            {hovered.label}
+            {hovered.isCurrent ? " (in progress)" : ""}
+          </p>
+          <p className="mt-1 text-accent">
+            <span className="font-medium">{formatMoney(hovered.income)}</span> income
+          </p>
+          <p className="text-negative">
+            <span className="font-medium">{formatMoney(hovered.expense)}</span> expenses
+          </p>
+          <p className="text-text-faint">
+            Net{" "}
+            <span className="font-medium text-text">
+              {formatMoney(hovered.income - hovered.expense)}
+            </span>
+          </p>
+        </div>
+      )}
+      </div>
 
       {showLegend && (
         <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-text-muted">

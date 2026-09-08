@@ -1,9 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
+import { searchTransactions } from "@/app/actions";
+import type { TransactionSearchResult } from "@/lib/queries";
+import { formatMoney, formatDate } from "@/lib/format";
+import { getLetterColors } from "@/lib/letter-colors";
+import { NAV_GROUPS } from "./sidebar";
 
 type DisplayMessage = { role: "user" | "assistant"; text: string };
+
+const ALL_LINKS = NAV_GROUPS.flatMap((g) => g.links);
+
+type Match =
+  | { type: "page"; href: string; label: string; icon: React.ReactNode }
+  | { type: "transaction"; href: string; result: TransactionSearchResult };
 
 const COLLAPSE_KEY = "finances-chat-collapsed";
 const WIDTH_KEY = "finances-chat-width";
@@ -61,7 +73,7 @@ function ChatMessages({
   scrollRef: React.RefObject<HTMLDivElement | null>;
 }) {
   return (
-    <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+    <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
       {messages.map((m, i) => (
         <div
           key={i}
@@ -81,70 +93,280 @@ function ChatMessages({
   );
 }
 
+// The small "press Enter to go" affordance on the right of every row —
+// mirrors the browser's own ⌘K tab switcher (icon left, label, a hint +
+// arrow chip right) instead of a bare text row.
+function GoArrow() {
+  return (
+    <span className="flex size-6 shrink-0 items-center justify-center rounded-md border border-border bg-surface text-text-faint">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+        <path
+          d="M5 12h14M13 6l6 6-6 6"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </span>
+  );
+}
+
+// Renders inline where ChatMessages normally goes, swapped in whenever the
+// "Search" toggle is active — a live, keyboard-navigable list of matching
+// pages and transactions instead of the conversation thread, so the one
+// panel serves both purposes without a second modal.
+function SearchResults({
+  matches,
+  pageMatchCount,
+  activeIndex,
+  setActiveIndex,
+  searching,
+  trimmed,
+  onSelect,
+}: {
+  matches: Match[];
+  pageMatchCount: number;
+  activeIndex: number;
+  setActiveIndex: (i: number) => void;
+  searching: boolean;
+  trimmed: string;
+  onSelect: (match: Match) => void;
+}) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 py-2">
+      {matches.length === 0 && !searching && (
+        <p className="px-3 py-4 text-center text-sm text-text-faint">
+          {trimmed ? "No matches." : "Type to search pages and transactions."}
+        </p>
+      )}
+
+      {pageMatchCount > 0 && (
+        <p className="px-3 pt-1.5 pb-0.5 text-[11px] font-semibold tracking-wide text-text-faint uppercase">
+          Pages
+        </p>
+      )}
+      {matches.map((match, i) => {
+        if (match.type === "page") {
+          return (
+            <button
+              key={`page-${match.href}`}
+              type="button"
+              onMouseEnter={() => setActiveIndex(i)}
+              onClick={() => onSelect(match)}
+              className={`flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left text-sm font-medium transition-colors ${
+                i === activeIndex ? "bg-accent-soft text-accent" : "text-text hover:bg-bg"
+              }`}
+            >
+              <span
+                className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${
+                  i === activeIndex ? "bg-surface" : "bg-bg"
+                }`}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  {match.icon}
+                </svg>
+              </span>
+              <span className="min-w-0 flex-1 truncate">{match.label}</span>
+              <span className="hidden shrink-0 items-center gap-2 sm:flex">
+                <span className="text-xs font-normal text-text-faint">Go to page</span>
+                <GoArrow />
+              </span>
+            </button>
+          );
+        }
+
+        const t = match.result;
+        const isFirstTxn = i === pageMatchCount;
+        return (
+          <div key={`txn-${t.id}`}>
+            {isFirstTxn && (
+              <p className="px-3 pt-2 pb-0.5 text-[11px] font-semibold tracking-wide text-text-faint uppercase">
+                Transactions
+              </p>
+            )}
+            <button
+              type="button"
+              onMouseEnter={() => setActiveIndex(i)}
+              onClick={() => onSelect(match)}
+              className={`flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left text-sm transition-colors ${
+                i === activeIndex ? "bg-accent-soft" : "hover:bg-bg"
+              }`}
+            >
+              <span
+                className="flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
+                style={{
+                  backgroundColor: getLetterColors(t.description).bg,
+                  color: getLetterColors(t.description).text,
+                }}
+              >
+                {t.description.trim()[0]?.toUpperCase() ?? "?"}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium text-text">{t.description}</p>
+                <p className="truncate text-xs text-text-faint">
+                  {[t.category_name, t.account_name, formatDate(t.txn_date)]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              </div>
+              <span
+                className={`tabular shrink-0 text-sm font-medium ${
+                  t.kind === "income" ? "text-success" : "text-text"
+                }`}
+              >
+                {t.kind === "income" ? "+" : t.kind === "expense" ? "-" : ""}
+                {formatMoney(t.amount)}
+              </span>
+              <span className="hidden shrink-0 sm:flex">
+                <GoArrow />
+              </span>
+            </button>
+          </div>
+        );
+      })}
+
+      {searching && (
+        <p className="px-3 py-2 text-center text-xs text-text-faint">Searching transactions…</p>
+      )}
+    </div>
+  );
+}
+
 function ChatInputForm({
   input,
   setInput,
   loading,
   listening,
   speechSupported,
+  queryKind,
+  onSetQueryKind,
   onSend,
   onToggleVoice,
+  onSearchKeyDown,
+  inputRef,
+  position = "bottom",
 }: {
   input: string;
   setInput: (v: string) => void;
   loading: boolean;
   listening: boolean;
   speechSupported: boolean;
+  queryKind: "ai" | "search";
+  onSetQueryKind: (k: "ai" | "search") => void;
   onSend: (e: React.FormEvent) => void;
   onToggleVoice: () => void;
+  onSearchKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => boolean;
+  inputRef?: (el: HTMLTextAreaElement | null) => void;
+  // "top" — a Spotlight/⌘K-style search bar leading the panel (used for
+  // Search, the default mode). "bottom" — the usual chat-input position,
+  // anchored near the newest message (used once "Ask AI" is picked).
+  position?: "top" | "bottom";
 }) {
+  const isSearching = input.trim().length > 0;
   return (
-    <form onSubmit={onSend} className="flex shrink-0 flex-col gap-2 border-t border-border p-3">
-      <textarea
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            onSend(e);
-          }
-        }}
-        rows={2}
-        placeholder="Log a batch of transactions…"
-        className="w-full resize-none rounded-lg border border-border bg-bg px-3 py-2 text-base text-text outline-none focus:border-accent sm:text-sm"
-      />
-      <div className="flex justify-end gap-2">
-        {speechSupported && (
+    <form
+      onSubmit={onSend}
+      className={`flex shrink-0 flex-col gap-2 p-3 ${
+        position === "top" ? "border-b border-border" : "border-t border-border"
+      }`}
+    >
+      {isSearching && (
+        <div className="flex gap-1.5">
           <button
             type="button"
-            onClick={onToggleVoice}
-            aria-label={listening ? "Stop voice input" : "Log by voice"}
-            title={listening ? "Stop voice input" : "Log by voice"}
-            className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${
-              listening
-                ? "bg-negative text-white"
-                : "border border-border text-text-muted hover:bg-bg"
+            onClick={() => onSetQueryKind("ai")}
+            className={`rounded-full px-2.5 py-1 text-xs font-semibold transition-colors ${
+              queryKind === "ai" ? "bg-accent text-white" : "bg-bg text-text-muted hover:text-text"
             }`}
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0M12 19v2"
-                stroke="currentColor"
-                strokeWidth={1.8}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+            ✨ Ask AI
           </button>
+          <button
+            type="button"
+            onClick={() => onSetQueryKind("search")}
+            className={`rounded-full px-2.5 py-1 text-xs font-semibold transition-colors ${
+              queryKind === "search"
+                ? "bg-accent text-white"
+                : "bg-bg text-text-muted hover:text-text"
+            }`}
+          >
+            🔍 Search
+          </button>
+        </div>
+      )}
+      <div className="relative">
+        {position === "top" && queryKind === "search" && (
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-text-faint"
+          >
+            <path
+              d="m21 21-4.34-4.34M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"
+              stroke="currentColor"
+              strokeWidth={1.8}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
         )}
-        <button
-          type="submit"
-          disabled={loading || !input.trim()}
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-        >
-          Send
-        </button>
+        <textarea
+          ref={inputRef}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (queryKind === "search" && onSearchKeyDown(e)) return;
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              onSend(e);
+            }
+          }}
+          rows={position === "top" && queryKind === "search" ? 1 : 2}
+          placeholder={
+            queryKind === "search" ? "Search pages or transactions…" : "Log a batch of transactions…"
+          }
+          className={`w-full resize-none rounded-lg border border-border bg-bg py-2 text-base text-text outline-none focus:border-accent sm:text-sm ${
+            position === "top" && queryKind === "search" ? "pr-3 pl-9" : "px-3"
+          }`}
+        />
       </div>
+      {queryKind === "ai" && (
+        <div className="flex justify-end gap-2">
+          {speechSupported && (
+            <button
+              type="button"
+              onClick={onToggleVoice}
+              aria-label={listening ? "Stop voice input" : "Log by voice"}
+              title={listening ? "Stop voice input" : "Log by voice"}
+              className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${
+                listening
+                  ? "bg-negative text-white"
+                  : "border border-border text-text-muted hover:bg-bg"
+              }`}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0M12 19v2"
+                  stroke="currentColor"
+                  strokeWidth={1.8}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          )}
+          <button
+            type="submit"
+            disabled={loading || !input.trim()}
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            Send
+          </button>
+        </div>
+      )}
     </form>
   );
 }
@@ -175,11 +397,116 @@ export function FinancesChat() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [listening, setListening] = useState(false);
+  // Whether the current draft is meant to log/ask the AI assistant or to
+  // search pages/transactions — the toggle that appears once typing starts.
+  // Starts as "search" — ⌘K should open a plain search bar, not the AI chat,
+  // until the person explicitly picks "Ask AI" below.
+  const [queryKind, setQueryKind] = useState<"ai" | "search">("search");
+  const [txnResults, setTxnResults] = useState<TransactionSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
   const apiState = useRef<unknown[]>([]);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const mobileScrollRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const searchSeq = useRef(0);
   const speechSupported = getSpeechRecognition() !== null;
+
+  const trimmedInput = input.trim();
+  // The desktop popup starts as just a bare search bar (Spotlight-style) and
+  // grows to reveal results once there's something to show them for —
+  // either a query typed, or the AI conversation (which always needs the
+  // full height once picked). Height, not max-height, is what's animated:
+  // a max-height transition on a flex-col with min-h-0 children still lets
+  // the browser's default intrinsic sizing jump instantly, whereas a fixed
+  // height on both ends is what actually tweens smoothly.
+  const searchExpanded = queryKind === "ai" || trimmedInput.length > 0;
+  // Every link's label vacuously matches an empty query — without the length
+  // guard, opening ⌘K on a blank input dumped the entire sidebar nav as
+  // "results" instead of the empty, type-to-search state (Spotlight/Arc's
+  // ⌘T both start blank and only populate once you type).
+  const pageMatches =
+    queryKind === "search" && trimmedInput.length > 0
+      ? ALL_LINKS.filter((link) => link.label.toLowerCase().includes(trimmedInput.toLowerCase()))
+      : [];
+  const matches: Match[] =
+    queryKind === "search"
+      ? [
+          ...pageMatches.map((link) => ({
+            type: "page" as const,
+            href: link.href,
+            label: link.label,
+            icon: link.icon,
+          })),
+          ...txnResults.map((result) => ({
+            type: "transaction" as const,
+            href: `/transactions?period=${result.period_id}&highlight=${result.id}`,
+            result,
+          })),
+        ]
+      : [];
+
+  // Reset the active selection whenever the draft or mode changes, adjusted
+  // during render (React's recommended pattern for deriving state off
+  // another value) rather than in an effect.
+  const [lastSearchKey, setLastSearchKey] = useState(`${queryKind}:${trimmedInput}`);
+  const searchKey = `${queryKind}:${trimmedInput}`;
+  if (searchKey !== lastSearchKey) {
+    setLastSearchKey(searchKey);
+    setActiveIndex(0);
+  }
+
+  // Debounced transaction search — fires ~250ms after typing stops, and a
+  // sequence number discards any response that isn't from the latest
+  // keystroke.
+  useEffect(() => {
+    if (queryKind !== "search" || trimmedInput.length < 2) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clearing stale results when the debounced search below no longer applies, not deriving render output
+      setTxnResults([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    const seq = ++searchSeq.current;
+    const timer = setTimeout(async () => {
+      const results = await searchTransactions(trimmedInput);
+      if (searchSeq.current === seq) {
+        setTxnResults(results);
+        setSearching(false);
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [queryKind, trimmedInput]);
+
+  function go(match: Match) {
+    router.push(match.href);
+    setInput("");
+    setTxnResults([]);
+    setQueryKind("ai");
+    if (mode === "popup" && popupOpen) closePopup();
+    setMobileOpen(false);
+  }
+
+  function handleSearchKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>): boolean {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIndex((i) => Math.min(i + 1, matches.length - 1));
+      return true;
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIndex((i) => Math.max(i - 1, 0));
+      return true;
+    }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      const target = matches[activeIndex];
+      if (target) go(target);
+      return true;
+    }
+    return false;
+  }
 
   useEffect(() => {
     try {
@@ -206,6 +533,34 @@ export function FinancesChat() {
       // ignore — localStorage unavailable
     }
   }, []);
+
+  // ⌘K / "/" (see GlobalShortcuts) opens this same panel and focuses it —
+  // it doubles as the app's search, so there's no separate palette to open.
+  // Each fresh open lands on Search first (not the AI chat) — the toggle
+  // that appears once typing starts is what actually picks "Ask AI" — unless
+  // there's already an AI conversation in progress (more than the initial
+  // welcome message), in which case reopening continues it instead of
+  // bouncing back to search.
+  useEffect(() => {
+    function handleOpenChat() {
+      if (messages.length <= 1) setQueryKind("search");
+      // flushSync forces the panel/sheet's DOM to actually commit before
+      // this function continues — a plain setState + requestAnimationFrame
+      // raced React's own commit here, so the textarea sometimes wasn't in
+      // the document yet when .focus() ran and the keystroke that opened
+      // ⌘K would land nowhere until you clicked in first.
+      if (window.innerWidth < 1024) {
+        flushSync(() => setMobileOpen(true));
+      } else if (mode === "popup") {
+        flushSync(() => setPopupOpen(true));
+      } else if (collapsed) {
+        flushSync(() => toggle());
+      }
+      inputRef.current?.focus();
+    }
+    window.addEventListener("budgetapp:open-chat", handleOpenChat);
+    return () => window.removeEventListener("budgetapp:open-chat", handleOpenChat);
+  }, [mode, collapsed, messages.length]);
 
   function setModeAndPersist(next: "popup" | "sidebar") {
     setMode(next);
@@ -374,105 +729,139 @@ export function FinancesChat() {
 
   return (
     <>
-      {/* Desktop, popup mode (default): a floating bubble that opens a small
-          anchored panel instead of permanently eating screen width. */}
-      {mode === "popup" && (
-        <>
-          {!popupOpen && !popupClosing && (
-            <button
-              type="button"
-              onClick={() => setPopupOpen(true)}
-              aria-label="Open finances chat"
-              className="animate-fade-in-up fixed right-6 bottom-6 z-40 hidden size-14 items-center justify-center rounded-full bg-accent text-white shadow-raised transition-transform duration-150 hover:scale-105 active:scale-95 lg:flex"
-            >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                <path
-                  d={CHAT_ICON_PATH}
-                  stroke="white"
-                  strokeWidth={1.8}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
-          )}
-
-          {(popupOpen || popupClosing) && (
-            <div
-              className={`fixed right-6 bottom-6 z-40 hidden h-[560px] max-h-[70vh] w-96 max-w-[calc(100vw-3rem)] flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-modal lg:flex ${
-                popupClosing ? "animate-chat-popup-out" : "animate-chat-popup"
-              }`}
-            >
-              <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                      <path
-                        d={CHAT_ICON_PATH}
-                        stroke="currentColor"
-                        strokeWidth={1.6}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </span>
-                  <p className="truncate text-sm font-semibold text-text">Finances chat</p>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setModeAndPersist("sidebar")}
-                    title="Switch to sidebar"
-                    aria-label="Switch to sidebar"
-                    className="flex size-8 shrink-0 items-center justify-center rounded-md text-text-faint transition-colors hover:bg-bg hover:text-text"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                      <path
-                        d={DOCK_ICON_PATH}
-                        stroke="currentColor"
-                        strokeWidth={1.6}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={closePopup}
-                    title="Close"
-                    aria-label="Close finances chat"
-                    className="flex size-8 shrink-0 items-center justify-center rounded-md text-text-faint transition-colors hover:bg-bg hover:text-text"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                      <path
-                        d="M6 6l12 12M18 6 6 18"
-                        stroke="currentColor"
-                        strokeWidth={1.8}
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                  </button>
-                </div>
+      {/* Desktop, popup mode (default): opens as a centered modal — like any
+          other command palette — instead of a bubble anchored bottom-right.
+          There's no floating trigger button; it only appears via ⌘K, "/", or
+          the sidebar search field's ghost ⌘K badge, and always lands on
+          Search first. The chat conversation itself only shows once "Ask AI"
+          is picked in the input form below. */}
+      {mode === "popup" && (popupOpen || popupClosing) && (
+        <div
+          className={`fixed inset-0 z-50 hidden items-start justify-center bg-black/40 p-4 pt-[12vh] lg:flex ${
+            popupClosing ? "animate-modal-backdrop-out" : "animate-modal-backdrop"
+          }`}
+          onClick={closePopup}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ height: searchExpanded ? "min(560px, 70vh)" : "128px" }}
+            className={`flex w-full max-w-lg flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-modal transition-[height] duration-300 ease-out ${
+              popupClosing ? "animate-modal-panel-out" : "animate-modal-panel"
+            }`}
+          >
+            <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d={CHAT_ICON_PATH}
+                      stroke="currentColor"
+                      strokeWidth={1.6}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </span>
+                <p className="truncate text-sm font-semibold text-text">Finances chat</p>
               </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setModeAndPersist("sidebar")}
+                  title="Switch to sidebar"
+                  aria-label="Switch to sidebar"
+                  className="flex size-8 shrink-0 items-center justify-center rounded-md text-text-faint transition-colors hover:bg-bg hover:text-text"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d={DOCK_ICON_PATH}
+                      stroke="currentColor"
+                      strokeWidth={1.6}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={closePopup}
+                  title="Close"
+                  aria-label="Close finances chat"
+                  className="flex size-8 shrink-0 items-center justify-center rounded-md text-text-faint transition-colors hover:bg-bg hover:text-text"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M6 6l12 12M18 6 6 18"
+                      stroke="currentColor"
+                      strokeWidth={1.8}
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
 
-              <ChatMessages
-                messages={messages}
-                loading={loading}
-                listening={listening}
-                scrollRef={scrollRef}
-              />
+            {queryKind === "search" && (
               <ChatInputForm
                 input={input}
                 setInput={setInput}
                 loading={loading}
                 listening={listening}
                 speechSupported={speechSupported}
+                queryKind={queryKind}
+                onSetQueryKind={setQueryKind}
                 onSend={handleSend}
                 onToggleVoice={toggleVoice}
+                onSearchKeyDown={handleSearchKeyDown}
+                position="top"
+                inputRef={(el) => {
+                  inputRef.current = el;
+                }}
               />
-            </div>
-          )}
-        </>
+            )}
+            {queryKind === "search" ? (
+              <div
+                className={`flex min-h-0 flex-1 flex-col transition-opacity duration-200 ${
+                  searchExpanded ? "opacity-100" : "opacity-0"
+                }`}
+              >
+                <SearchResults
+                  matches={matches}
+                  pageMatchCount={pageMatches.length}
+                  activeIndex={activeIndex}
+                  setActiveIndex={setActiveIndex}
+                  searching={searching}
+                  trimmed={trimmedInput}
+                  onSelect={go}
+                />
+              </div>
+            ) : (
+              <>
+                <ChatMessages
+                  messages={messages}
+                  loading={loading}
+                  listening={listening}
+                  scrollRef={scrollRef}
+                />
+                <ChatInputForm
+                  input={input}
+                  setInput={setInput}
+                  loading={loading}
+                  listening={listening}
+                  speechSupported={speechSupported}
+                  queryKind={queryKind}
+                  onSetQueryKind={setQueryKind}
+                  onSend={handleSend}
+                  onToggleVoice={toggleVoice}
+                  onSearchKeyDown={handleSearchKeyDown}
+                  inputRef={(el) => {
+                    inputRef.current = el;
+                  }}
+                />
+              </>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Desktop, sidebar mode: persistent right-docked column, collapsible
@@ -589,21 +978,59 @@ export function FinancesChat() {
             </div>
           </div>
 
-          <ChatMessages
-            messages={messages}
-            loading={loading}
-            listening={listening}
-            scrollRef={scrollRef}
-          />
-          <ChatInputForm
-            input={input}
-            setInput={setInput}
-            loading={loading}
-            listening={listening}
-            speechSupported={speechSupported}
-            onSend={handleSend}
-            onToggleVoice={toggleVoice}
-          />
+          {queryKind === "search" && (
+            <ChatInputForm
+              input={input}
+              setInput={setInput}
+              loading={loading}
+              listening={listening}
+              speechSupported={speechSupported}
+              queryKind={queryKind}
+              onSetQueryKind={setQueryKind}
+              onSend={handleSend}
+              onToggleVoice={toggleVoice}
+              onSearchKeyDown={handleSearchKeyDown}
+              position="top"
+              inputRef={(el) => {
+                inputRef.current = el;
+              }}
+            />
+          )}
+          {queryKind === "search" ? (
+            <SearchResults
+              matches={matches}
+              pageMatchCount={pageMatches.length}
+              activeIndex={activeIndex}
+              setActiveIndex={setActiveIndex}
+              searching={searching}
+              trimmed={trimmedInput}
+              onSelect={go}
+            />
+          ) : (
+            <>
+              <ChatMessages
+                messages={messages}
+                loading={loading}
+                listening={listening}
+                scrollRef={scrollRef}
+              />
+              <ChatInputForm
+                input={input}
+                setInput={setInput}
+                loading={loading}
+                listening={listening}
+                speechSupported={speechSupported}
+                queryKind={queryKind}
+                onSetQueryKind={setQueryKind}
+                onSend={handleSend}
+                onToggleVoice={toggleVoice}
+                onSearchKeyDown={handleSearchKeyDown}
+                inputRef={(el) => {
+                  inputRef.current = el;
+                }}
+              />
+            </>
+          )}
         </div>
       ))}
 
@@ -636,7 +1063,7 @@ export function FinancesChat() {
               type="button"
               onClick={() => setMobileOpen(false)}
               aria-label="Close finances chat"
-              className="flex size-11 items-center justify-center rounded-lg text-text-faint hover:bg-bg hover:text-text"
+              className="flex size-11 items-center justify-center rounded-lg text-text-faint transition-colors hover:bg-bg hover:text-text"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                 <path
@@ -649,21 +1076,59 @@ export function FinancesChat() {
             </button>
           </div>
 
-          <ChatMessages
-            messages={messages}
-            loading={loading}
-            listening={listening}
-            scrollRef={mobileScrollRef}
-          />
-          <ChatInputForm
-            input={input}
-            setInput={setInput}
-            loading={loading}
-            listening={listening}
-            speechSupported={speechSupported}
-            onSend={handleSend}
-            onToggleVoice={toggleVoice}
-          />
+          {queryKind === "search" && (
+            <ChatInputForm
+              input={input}
+              setInput={setInput}
+              loading={loading}
+              listening={listening}
+              speechSupported={speechSupported}
+              queryKind={queryKind}
+              onSetQueryKind={setQueryKind}
+              onSend={handleSend}
+              onToggleVoice={toggleVoice}
+              onSearchKeyDown={handleSearchKeyDown}
+              position="top"
+              inputRef={(el) => {
+                inputRef.current = el;
+              }}
+            />
+          )}
+          {queryKind === "search" ? (
+            <SearchResults
+              matches={matches}
+              pageMatchCount={pageMatches.length}
+              activeIndex={activeIndex}
+              setActiveIndex={setActiveIndex}
+              searching={searching}
+              trimmed={trimmedInput}
+              onSelect={go}
+            />
+          ) : (
+            <>
+              <ChatMessages
+                messages={messages}
+                loading={loading}
+                listening={listening}
+                scrollRef={mobileScrollRef}
+              />
+              <ChatInputForm
+                input={input}
+                setInput={setInput}
+                loading={loading}
+                listening={listening}
+                speechSupported={speechSupported}
+                queryKind={queryKind}
+                onSetQueryKind={setQueryKind}
+                onSend={handleSend}
+                onToggleVoice={toggleVoice}
+                onSearchKeyDown={handleSearchKeyDown}
+                inputRef={(el) => {
+                  inputRef.current = el;
+                }}
+              />
+            </>
+          )}
         </div>
       )}
     </>

@@ -84,11 +84,16 @@ export function TrendExplorer({
   year: number;
 }) {
   const [viewMode, setViewMode] = useState<"month" | "quarter">("month");
-  const [showGhost, setShowGhost] = useState(true);
-  const [showRollingAvg, setShowRollingAvg] = useState(true);
+  // Everything below defaults off — income bars, expense bars, and the net
+  // trend line tell the "how did this period go" story on their own. Each
+  // overlay (last year, 3-mo avg, planned line, recurring split) adds a real
+  // question it can answer, but stacking all of them by default is what
+  // made the chart chaotic; power users can still switch them on.
+  const [showGhost, setShowGhost] = useState(false);
+  const [showRollingAvg, setShowRollingAvg] = useState(false);
   const [showObjectives, setShowObjectives] = useState(true);
-  const [showBudgetLine, setShowBudgetLine] = useState(true);
-  const [showRecurringSplit, setShowRecurringSplit] = useState(true);
+  const [showBudgetLine, setShowBudgetLine] = useState(false);
+  const [showRecurringSplit, setShowRecurringSplit] = useState(false);
   const [showMultiYear, setShowMultiYear] = useState(false);
   const chartWrapRef = useRef<HTMLDivElement>(null);
 
@@ -144,21 +149,25 @@ export function TrendExplorer({
           <button
             type="button"
             onClick={() => downloadChartPng(chartWrapRef.current, `trends-${year}-chart.png`)}
-            className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-text-muted hover:bg-bg"
+            className="hidden rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-text-muted transition-colors hover:bg-bg sm:block"
           >
             Save chart as PNG
           </button>
           <button
             type="button"
             onClick={() => window.print()}
-            className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-text-muted hover:bg-bg"
+            className="hidden rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-text-muted transition-colors hover:bg-bg sm:block"
           >
             Print
           </button>
         </div>
       </div>
 
-      <div className="mb-4 flex flex-wrap gap-x-4 gap-y-2 print:hidden">
+      {/* Chart-customization toggles are a desktop power-user feature — on
+          mobile the chart just renders with the sensible defaults instead of
+          spending a whole screen of vertical space on checkboxes before any
+          actual data appears. */}
+      <div className="mb-4 hidden flex-wrap gap-x-4 gap-y-2 sm:flex print:hidden">
         {toggles.map((t) => (
           <label key={t.key} className="flex items-center gap-1.5 text-xs text-text-muted">
             <input
@@ -201,7 +210,7 @@ export function TrendExplorer({
               <p className="mb-2 text-xs font-semibold text-text-muted">{y.year}</p>
               <MonthlyTrendChart
                 data={y.data.map((d) => ({ ...d, label: d.month.slice(5, 7) }))}
-                groupWidth={20}
+                compact
                 showGhost={false}
                 showRollingAvg={false}
                 showObjectives={false}
@@ -215,12 +224,16 @@ export function TrendExplorer({
         </div>
       )}
 
-      <div className="mt-6 grid grid-cols-1 gap-6 border-t border-border pt-6 lg:grid-cols-3">
+      {/* Three secondary mini-trends — genuinely useful but not essential
+          next to the headline income/expense chart and stat cards below, so
+          mobile skips straight to those instead of three more screens of
+          scrolling. */}
+      <div className="mt-10 hidden grid-cols-1 gap-x-12 gap-y-10 border-t border-border pt-10 lg:grid lg:grid-cols-3 lg:divide-x lg:divide-border">
         <div>
           <h3 className="mb-3 text-sm font-semibold text-text">Savings rate</h3>
           <SimpleLineChart points={savingsRatePoints} color="var(--positive)" formatValue={(v) => `${v.toFixed(0)}%`} />
         </div>
-        <div>
+        <div className="lg:pl-12">
           <h3 className="mb-3 text-sm font-semibold text-text">Net worth</h3>
           {netWorthPoints.length >= 2 ? (
             <SimpleLineChart points={netWorthPoints} color="var(--projected)" formatValue={formatMoney} />
@@ -228,7 +241,7 @@ export function TrendExplorer({
             <p className="text-sm text-text-muted">Needs at least two months of data.</p>
           )}
         </div>
-        <div>
+        <div className="lg:pl-12">
           <h3 className="mb-3 text-sm font-semibold text-text">Debt balance</h3>
           {debtPoints.length >= 2 ? (
             <SimpleLineChart points={debtPoints} color="var(--caution)" formatValue={formatMoney} />

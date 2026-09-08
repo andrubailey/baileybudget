@@ -2,29 +2,29 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
+  bulkDeleteTransactions,
+  bulkUpdateTransactions,
+  claimTransaction,
+  createRecurringFromTransaction,
   deleteTransaction,
-  getHistoryForTransaction,
   restoreTransaction,
+  toggleRecurringActive,
   toggleTransactionCleared,
   toggleTransactionPendingApproval,
   updateTransaction,
 } from "@/app/actions";
 import { formatMoney, formatDate } from "@/lib/format";
-import type {
-  Account,
-  Category,
-  Transaction,
-  TransactionHistoryEntry,
-} from "@/lib/types";
+import type { Account, Category, Period, Transaction } from "@/lib/types";
 import type { SplitDetail } from "@/lib/queries";
-import { SubmitButton } from "@/app/(app)/submit-button";
 import { BankLogo } from "@/app/(app)/accounts/bank-logo";
-import { getAvatarColors } from "@/lib/avatar-colors";
-import { getAccountColor } from "@/lib/account-colors";
-import { getCategoryColor } from "@/lib/category-colors";
+import { getLetterColors } from "@/lib/letter-colors";
 import { getCategoryIcon } from "@/lib/category-icons";
 import { EmptyState } from "@/app/(app)/empty-state";
 import { COMPACT_FIELD_CLASS as fieldClass } from "@/lib/ui";
+import { Money } from "@/app/(app)/money";
+import { useToast } from "@/app/(app)/toast";
+import { CategorySelect } from "@/app/(app)/category-select";
+import { PeriodSwitcher } from "@/app/(app)/period-switcher";
 
 // The ✓ and action columns stay pinned first/last — reordering a checkbox
 // away from the row's edge, or the row's action buttons into the middle,
@@ -37,6 +37,7 @@ const REORDERABLE_COLUMNS = [
   "date",
   "by",
   "amount",
+  "notes",
 ] as const;
 type ColumnKey = (typeof REORDERABLE_COLUMNS)[number];
 const COLUMN_LABELS: Record<ColumnKey, string> = {
@@ -46,6 +47,7 @@ const COLUMN_LABELS: Record<ColumnKey, string> = {
   date: "Date",
   by: "By",
   amount: "Amount",
+  notes: "Notes",
 };
 const DEFAULT_WIDTHS: Record<ColumnKey, number> = {
   description: 260,
@@ -54,7 +56,23 @@ const DEFAULT_WIDTHS: Record<ColumnKey, number> = {
   date: 110,
   by: 56,
   amount: 120,
+  notes: 180,
 };
+// Columns whose values can't be meaningfully sorted/compared (drag handles,
+// selection, etc. aren't in this list at all — this is just for excluding
+// "Notes" from the sortable set, since free text has no natural order).
+const SORTABLE_COLUMNS = new Set<ColumnKey>([
+  "description",
+  "category",
+  "account",
+  "date",
+  "by",
+  "amount",
+]);
+// Column-header filter icon only shows up for Category and Amount — search
+// and the top filter bar already cover description/account, and per-column
+// filtering the rest just added clutter nobody used.
+const FILTERABLE_COLUMNS = new Set<ColumnKey>(["category", "amount"]);
 const MIN_COLUMN_WIDTH = 48;
 const COLUMN_ORDER_KEY = "transactions-table-column-order";
 const COLUMN_WIDTHS_KEY = "transactions-table-column-widths";
@@ -67,32 +85,9 @@ function isColumnOrder(value: unknown): value is ColumnKey[] {
   );
 }
 
-function initials(name: string) {
-  const parts = name.trim().split(/\s+/);
-  return (parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "");
-}
-
 function creatorInitial(email: string | null) {
   if (!email) return null;
   return email.trim()[0]?.toUpperCase() ?? null;
-}
-
-// Turns a transaction_history snapshot row (recorded right before an edit)
-// back into FormData shaped like what updateTransaction expects, so "undo"
-// can just replay the same action instead of needing a separate code path.
-function snapshotToFormData(snapshot: Record<string, unknown>): FormData {
-  const fd = new FormData();
-  fd.set("kind", String(snapshot.kind ?? "expense"));
-  fd.set("description", String(snapshot.description ?? ""));
-  fd.set("amount", String(snapshot.amount ?? "0"));
-  fd.set("txn_date", String(snapshot.txn_date ?? ""));
-  fd.set("account_id", snapshot.account_id ? String(snapshot.account_id) : "");
-  fd.set(
-    "category_id",
-    snapshot.category_id ? String(snapshot.category_id) : "",
-  );
-  fd.set("notes", snapshot.notes ? String(snapshot.notes) : "");
-  return fd;
 }
 
 export function TransactionsTable({
@@ -104,6 +99,8 @@ export function TransactionsTable({
   initialAccountFilter,
   initialSearch,
   highlightId,
+  periods,
+  selectedPeriodId,
 }: {
   transactions: Transaction[];
   accounts: Account[];
@@ -116,6 +113,11 @@ export function TransactionsTable({
   // transaction into view and briefly flashes it, so "click a search result"
   // actually lands you ON the transaction instead of just the right period.
   highlightId?: string;
+  // Rendered as a month picker in the same row as the All/Income/Expenses/
+  // Transfers tabs — both are "which transactions am I looking at" filters,
+  // so they read as one control group instead of one living down by the form.
+  periods: Period[];
+  selectedPeriodId: string;
 }) {
   const [search, setSearch] = useState(initialSearch ?? "");
   const [accountFilter, setAccountFilter] = useState(
@@ -151,6 +153,62 @@ export function TransactionsTable({
   const [kindFilter, setKindFilter] = useState<
     "" | "income" | "expense" | "transfer"
   >("");
+  // Sliding highlight behind the active All/Income/Expenses/Transfers tab —
+  // measured off the actual button elements (same technique as the sidebar's
+  // active-link pill) so it stays correct regardless of label width.
+  const kindTabRefs = useRef(new Map<string, HTMLButtonElement>());
+  const [kindTabPill, setKindTabPill] = useState<{ left: number; width: number } | null>(null);
+  useEffect(() => {
+    const el = kindTabRefs.current.get(kindFilter);
+    setKindTabPill(el ? { left: el.offsetLeft, width: el.offsetWidth } : null);
+  }, [kindFilter]);
+  // Per-column filters, set from a popover opened by clicking the filter
+  // icon next to that column's name in the header — only Category and
+  // Amount get one (see FILTERABLE_COLUMNS above); the header itself also
+  // has a search box and account picker that filter description/account.
+  const [amountMin, setAmountMin] = useState("");
+  const [amountMax, setAmountMax] = useState("");
+  // Which column's filter popover is open, if any — only one at a time.
+  const [openFilterCol, setOpenFilterCol] = useState<ColumnKey | null>(null);
+
+  function columnHasFilter(col: ColumnKey): boolean {
+    switch (col) {
+      case "category":
+        return categoryFilter !== "";
+      case "amount":
+        return amountMin !== "" || amountMax !== "";
+      default:
+        return false;
+    }
+  }
+
+  function clearColumnFilter(col: ColumnKey) {
+    switch (col) {
+      case "category":
+        setCategoryFilter("");
+        break;
+      case "amount":
+        setAmountMin("");
+        setAmountMax("");
+        break;
+    }
+  }
+  // Click a sortable column header to sort by it — asc, then desc, then
+  // back to the table's natural (server-provided, newest-first) order.
+  const [sortColumn, setSortColumn] = useState<ColumnKey | null>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+
+  function handleSortClick(col: ColumnKey) {
+    if (!SORTABLE_COLUMNS.has(col)) return;
+    if (sortColumn !== col) {
+      setSortColumn(col);
+      setSortDirection("asc");
+    } else if (sortDirection === "asc") {
+      setSortDirection("desc");
+    } else {
+      setSortColumn(null);
+    }
+  }
   // Briefly highlights a row when it first shows up in `transactions` (a new
   // transaction logged, an import, an undo) — otherwise it just appears
   // between renders with no visual acknowledgment that something landed.
@@ -173,20 +231,33 @@ export function TransactionsTable({
     setLastTransactions(transactions);
     if (freshIds.size > 0) setNewIds(freshIds);
   }
+  // Which transaction's detail modal is open. Closing plays the modal's exit
+  // animation before actually unmounting — set detailClosing, wait for the
+  // animation to finish, then clear editingId — instead of just vanishing.
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [historyId, setHistoryId] = useState<string | null>(null);
-  const [historyEntries, setHistoryEntries] = useState<
-    TransactionHistoryEntry[]
-  >([]);
+  const [detailClosing, setDetailClosing] = useState(false);
+
+  function openDetail(id: string) {
+    setEditingId(id);
+  }
+  function closeDetail() {
+    setDetailClosing(true);
+    setTimeout(() => {
+      setEditingId(null);
+      setDetailClosing(false);
+    }, 150);
+  }
+
+  // Row-selection for the bulk action bar (delete / change account / change
+  // date / change category across everything checked at once).
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkDate, setBulkDate] = useState("");
+  const showToast = useToast();
   const [undoRow, setUndoRow] = useState<{
     id: string;
     description: string;
   } | null>(null);
-  const [editUndo, setEditUndo] = useState<{
-    id: string;
-    snapshot: Record<string, unknown>;
-  } | null>(null);
-  const [markingAllCleared, setMarkingAllCleared] = useState(false);
   // Optimistic overrides for the cleared toggle, keyed by transaction id.
   // Without this the checkbox/swipe just reflects the `transactions` prop,
   // which only catches up once the server action's revalidation round-trips
@@ -303,18 +374,14 @@ export function TransactionsTable({
     () => new Map(accounts.map((a) => [a.id, a.bank])),
     [accounts],
   );
-  const accountColorById = useMemo(
-    () =>
-      new Map(
-        accounts.map((a) => [a.id, getAccountColor(a.account_type, a.is_debt)]),
-      ),
-    [accounts],
-  );
   const categoryById = useMemo(
     () => new Map(categories.map((c) => [c.id, c.name])),
     [categories],
   );
-
+  const categoryIconById = useMemo(
+    () => new Map(categories.map((c) => [c.id, c.icon])),
+    [categories],
+  );
   const effectiveTransactions = useMemo(
     () =>
       transactions.map((t) =>
@@ -335,6 +402,8 @@ export function TransactionsTable({
       return false;
     }
     if (categoryFilter && t.category_id !== categoryFilter) return false;
+    if (amountMin && t.amount < Number(amountMin)) return false;
+    if (amountMax && t.amount > Number(amountMax)) return false;
     if (search) {
       const q = search.toLowerCase();
       const haystack = [
@@ -350,13 +419,38 @@ export function TransactionsTable({
     return true;
   });
 
-  const filteredIncome = filtered
-    .filter((t) => t.kind === "income")
-    .reduce((sum, t) => sum + t.amount, 0);
-  const filteredExpense = filtered
-    .filter((t) => t.kind === "expense")
-    .reduce((sum, t) => sum + t.amount, 0);
-  const uncleared = filtered.filter((t) => !t.cleared);
+  function sortValue(t: Transaction, col: ColumnKey): string | number {
+    switch (col) {
+      case "description":
+        return t.description.toLowerCase();
+      case "category":
+        return t.category_id ? (categoryById.get(t.category_id) ?? "").toLowerCase() : "";
+      case "account":
+        return t.account_id ? (accountById.get(t.account_id) ?? "").toLowerCase() : "";
+      case "date":
+        return t.txn_date;
+      case "by":
+        return (t.created_by_email ?? "").toLowerCase();
+      case "amount":
+        return t.amount;
+      default:
+        return "";
+    }
+  }
+
+  const sortedFiltered = useMemo(() => {
+    if (!sortColumn) return filtered;
+    const copy = [...filtered];
+    copy.sort((a, b) => {
+      const av = sortValue(a, sortColumn);
+      const bv = sortValue(b, sortColumn);
+      if (av < bv) return sortDirection === "asc" ? -1 : 1;
+      if (av > bv) return sortDirection === "asc" ? 1 : -1;
+      return 0;
+    });
+    return copy;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sortValue closes over accountById/categoryById, which are already deps of `filtered` upstream; re-listing them here would just re-sort on every render for no behavior change
+  }, [filtered, sortColumn, sortDirection]);
 
   async function handleDelete(t: Transaction) {
     setDeletingIds((current) => new Set(current).add(t.id));
@@ -378,26 +472,6 @@ export function TransactionsTable({
     setUndoRow(null);
   }
 
-  // After an edit saves, transaction_history already has the pre-edit state
-  // recorded (see updateTransaction) — grab it and offer to replay it back,
-  // the same undo pattern as delete, instead of edits being final.
-  async function handleEditSaved(id: string) {
-    setEditingId(null);
-    const entries = await getHistoryForTransaction(id);
-    const previous = entries[0];
-    if (!previous) return;
-    setEditUndo({ id, snapshot: previous.snapshot });
-    setTimeout(() => {
-      setEditUndo((current) => (current?.id === id ? null : current));
-    }, 8000);
-  }
-
-  async function handleUndoEdit() {
-    if (!editUndo) return;
-    await updateTransaction(editUndo.id, snapshotToFormData(editUndo.snapshot));
-    setEditUndo(null);
-  }
-
   async function handleToggleCleared(id: string, cleared: boolean) {
     setClearedOverrides((prev) => ({ ...prev, [id]: cleared }));
     try {
@@ -415,23 +489,82 @@ export function TransactionsTable({
     }
   }
 
-  async function handleMarkAllCleared() {
-    setMarkingAllCleared(true);
-    try {
-      await Promise.all(uncleared.map((t) => handleToggleCleared(t.id, true)));
-    } finally {
-      setMarkingAllCleared(false);
-    }
+  function toggleSelect(id: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
-  async function toggleHistory(id: string) {
-    if (historyId === id) {
-      setHistoryId(null);
+  function toggleSelectAll() {
+    setSelectedIds((current) =>
+      filtered.every((t) => current.has(t.id)) ? new Set() : new Set(filtered.map((t) => t.id)),
+    );
+  }
+
+  async function handleBulkDelete() {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`Delete ${selectedIds.size} transaction${selectedIds.size === 1 ? "" : "s"}? This can be undone from each one's own undo toast right after — not in bulk.`)) {
       return;
     }
-    setHistoryId(id);
-    const entries = await getHistoryForTransaction(id);
-    setHistoryEntries(entries);
+    setBulkBusy(true);
+    const result = await bulkDeleteTransactions([...selectedIds]);
+    setBulkBusy(false);
+    if (!result.ok) {
+      showToast(result.error ? `Couldn't delete: ${result.error}` : "Couldn't delete transactions");
+      return;
+    }
+    showToast(`${selectedIds.size} transaction${selectedIds.size === 1 ? "" : "s"} deleted`);
+    setSelectedIds(new Set());
+  }
+
+  async function handleBulkAccountChange(account_id: string) {
+    if (!account_id || selectedIds.size === 0) return;
+    setBulkBusy(true);
+    const result = await bulkUpdateTransactions([...selectedIds], { account_id });
+    setBulkBusy(false);
+    if (!result.ok) {
+      showToast(result.error ? `Couldn't update: ${result.error}` : "Couldn't change account");
+      return;
+    }
+    showToast(`Account changed for ${selectedIds.size} transaction${selectedIds.size === 1 ? "" : "s"}`);
+    setSelectedIds(new Set());
+  }
+
+  async function handleBulkDateChange(txn_date: string) {
+    if (!txn_date || selectedIds.size === 0) return;
+    setBulkBusy(true);
+    const result = await bulkUpdateTransactions([...selectedIds], { txn_date });
+    setBulkBusy(false);
+    setBulkDate("");
+    if (!result.ok) {
+      showToast(result.error ? `Couldn't update: ${result.error}` : "Couldn't change date");
+      return;
+    }
+    showToast(`Date changed for ${selectedIds.size} transaction${selectedIds.size === 1 ? "" : "s"}`);
+    setSelectedIds(new Set());
+  }
+
+  async function handleBulkCategoryChange(category_id: string) {
+    if (!category_id || selectedIds.size === 0) return;
+    // A transfer can never carry a category (enforced by a DB constraint) —
+    // silently drop any selected transfers from this particular action
+    // rather than sending an update the database would reject wholesale.
+    const targetIds = [...selectedIds].filter(
+      (id) => filtered.find((t) => t.id === id)?.kind !== "transfer",
+    );
+    if (targetIds.length === 0) return;
+    setBulkBusy(true);
+    const result = await bulkUpdateTransactions(targetIds, { category_id });
+    setBulkBusy(false);
+    if (!result.ok) {
+      showToast(result.error ? `Couldn't update: ${result.error}` : "Couldn't change category");
+      return;
+    }
+    showToast(`Category changed for ${targetIds.length} transaction${targetIds.length === 1 ? "" : "s"}`);
+    setSelectedIds(new Set());
   }
 
   const exportHref = (() => {
@@ -450,88 +583,100 @@ export function TransactionsTable({
 
   return (
     <div>
-      <div className="mb-3 flex flex-wrap items-center gap-3">
-        <div className="flex gap-1 rounded-lg border border-border bg-surface p-1">
-          {KIND_TABS.map((tab) => (
-            <button
-              key={tab.label}
-              type="button"
-              onClick={() => setKindFilter(tab.value)}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                kindFilter === tab.value
-                  ? "bg-accent-soft text-accent"
-                  : "text-text-muted hover:bg-bg"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative flex gap-1 rounded-lg border border-border bg-surface p-1">
+            {kindTabPill && (
+              <div
+                aria-hidden="true"
+                className="absolute top-1 bottom-1 rounded-md bg-accent-soft transition-[left,width] duration-200 ease-out"
+                style={{ left: kindTabPill.left, width: kindTabPill.width }}
+              />
+            )}
+            {KIND_TABS.map((tab) => (
+              <button
+                key={tab.label}
+                ref={(el) => {
+                  if (el) kindTabRefs.current.set(tab.value, el);
+                  else kindTabRefs.current.delete(tab.value);
+                }}
+                type="button"
+                onClick={() => setKindFilter(tab.value)}
+                className={`relative rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  kindFilter === tab.value
+                    ? "text-accent"
+                    : "text-text-muted hover:bg-bg"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
-        {(kindFilter === "" ||
-          kindFilter === "income" ||
-          kindFilter === "expense") && (
-          <span className="tabular text-xs text-text-muted">
-            {kindFilter !== "expense" && (
-              <span className="text-success">
-                +{formatMoney(filteredIncome)}
-              </span>
-            )}
-            {kindFilter === "" && " · "}
-            {kindFilter !== "income" && (
-              <span>-{formatMoney(filteredExpense)}</span>
-            )}
-          </span>
-        )}
+        <PeriodSwitcher periods={periods} selectedId={selectedPeriodId} />
       </div>
 
+      {selectedIds.size > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-accent-border bg-accent-soft px-4 py-2.5">
+          <span className="text-sm font-semibold text-accent">
+            {selectedIds.size} selected
+          </span>
+          <button
+            type="button"
+            onClick={handleBulkDelete}
+            disabled={bulkBusy}
+            className="text-xs font-medium text-negative hover:underline disabled:opacity-50"
+          >
+            Delete all
+          </button>
+          <select
+            value=""
+            disabled={bulkBusy}
+            onChange={(e) => handleBulkAccountChange(e.target.value)}
+            className="rounded-lg border border-border bg-surface px-2 py-1.5 text-xs text-text outline-none focus:border-accent disabled:opacity-50"
+          >
+            <option value="">Change account to…</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+          <input
+            type="date"
+            value={bulkDate}
+            disabled={bulkBusy}
+            onChange={(e) => handleBulkDateChange(e.target.value)}
+            className="rounded-lg border border-border bg-surface px-2 py-1.5 text-xs text-text outline-none focus:border-accent disabled:opacity-50"
+          />
+          <select
+            value=""
+            disabled={bulkBusy}
+            onChange={(e) => handleBulkCategoryChange(e.target.value)}
+            className="rounded-lg border border-border bg-surface px-2 py-1.5 text-xs text-text outline-none focus:border-accent disabled:opacity-50"
+          >
+            <option value="">Change category to…</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => setSelectedIds(new Set())}
+            className="ml-auto text-xs font-medium text-accent hover:underline"
+          >
+            Clear selection
+          </button>
+        </div>
+      )}
+
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <input
-          type="text"
-          placeholder="Search description, notes…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full max-w-xs rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text outline-none focus:border-accent"
-        />
-        <select
-          value={accountFilter}
-          onChange={(e) => setAccountFilter(e.target.value)}
-          className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text outline-none focus:border-accent"
-        >
-          <option value="">All accounts</option>
-          {accounts.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
-        <select
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
-          className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text outline-none focus:border-accent"
-        >
-          <option value="">All categories</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
         {(search || accountFilter || categoryFilter || kindFilter) && (
           <span className="text-xs text-text-faint">
             {filtered.length} of {transactions.length}
           </span>
-        )}
-        {uncleared.length > 0 && (
-          <button
-            type="button"
-            onClick={handleMarkAllCleared}
-            disabled={markingAllCleared}
-            className="text-xs font-medium text-accent hover:underline disabled:opacity-50"
-          >
-            {markingAllCleared
-              ? "Marking…"
-              : `Mark ${uncleared.length} cleared`}
-          </button>
         )}
         {exportHref && (
           <a
@@ -558,35 +703,22 @@ export function TransactionsTable({
         </div>
       )}
 
-      {editUndo && (
-        <div className="mb-4 flex items-center justify-between rounded-lg border border-accent-border bg-accent-soft px-4 py-2.5 text-sm">
-          <span className="text-accent">Transaction edited.</span>
-          <button
-            type="button"
-            onClick={handleUndoEdit}
-            className="font-semibold text-accent underline underline-offset-2 hover:text-accent-bright"
-          >
-            Undo
-          </button>
-        </div>
-      )}
-
       {/* Mobile: swipeable cards. Desktop: full table. A table row can't be
           reliably transform-animated for swipe gestures across browsers, so
           small screens get their own list instead of a squeezed table. */}
-      <div className="space-y-2 sm:hidden">
-        {filtered.map((t) => (
+      <div key={kindFilter} className="animate-fade-in-up space-y-2 sm:hidden">
+        {sortedFiltered.map((t) => (
           <MobileTransactionCard
             key={t.id}
             transaction={t}
             accountName={
               t.account_id ? (accountById.get(t.account_id) ?? "—") : "—"
             }
-            accountColor={
-              t.account_id ? accountColorById.get(t.account_id) : undefined
-            }
             categoryName={
               t.category_id ? (categoryById.get(t.category_id) ?? null) : null
+            }
+            categoryIcon={
+              t.category_id ? categoryIconById.get(t.category_id) : null
             }
             onDelete={() => handleDelete(t)}
             onToggleCleared={(cleared) => handleToggleCleared(t.id, cleared)}
@@ -603,7 +735,14 @@ export function TransactionsTable({
         )}
       </div>
 
-      <div className="hidden overflow-x-auto rounded-xl border border-border bg-surface shadow-card sm:block">
+      {openFilterCol && (
+        <div className="fixed inset-0 z-20" onClick={() => setOpenFilterCol(null)} />
+      )}
+
+      <div
+        key={kindFilter}
+        className="animate-fade-in-up hidden overflow-x-auto rounded-xl border border-border bg-surface shadow-card sm:block"
+      >
         <table className="w-full text-left [table-layout:fixed]">
           <thead>
             <tr className="border-b border-border bg-bg">
@@ -611,7 +750,13 @@ export function TransactionsTable({
                 style={{ width: 40 }}
                 className="sticky top-0 z-10 bg-bg px-4 py-2 text-xs font-medium text-text-muted"
               >
-                ✓
+                <input
+                  type="checkbox"
+                  checked={filtered.length > 0 && filtered.every((t) => selectedIds.has(t.id))}
+                  onChange={toggleSelectAll}
+                  aria-label="Select all"
+                  className="h-4 w-4 accent-[var(--accent)]"
+                />
               </th>
               {columnOrder.map((col) => (
                 <th
@@ -624,10 +769,49 @@ export function TransactionsTable({
                   className={`sticky top-0 z-10 cursor-grab bg-bg px-4 py-2 text-xs font-medium text-text-muted select-none active:cursor-grabbing ${
                     col === "amount" ? "text-right" : ""
                   } ${draggedColumn === col ? "opacity-40" : ""}`}
-                  title="Drag to reorder"
+                  title={SORTABLE_COLUMNS.has(col) ? "Click to sort, drag to reorder" : "Drag to reorder"}
                 >
-                  <span className="relative block">
-                    {COLUMN_LABELS[col]}
+                  <span className="relative flex items-center gap-1">
+                    {SORTABLE_COLUMNS.has(col) ? (
+                      <button
+                        type="button"
+                        onClick={() => handleSortClick(col)}
+                        className={`inline-flex items-center gap-1 transition-colors hover:text-text ${
+                          sortColumn === col ? "text-accent" : ""
+                        }`}
+                      >
+                        {COLUMN_LABELS[col]}
+                        {sortColumn === col && (
+                          <span aria-hidden="true">{sortDirection === "asc" ? "↑" : "↓"}</span>
+                        )}
+                      </button>
+                    ) : (
+                      COLUMN_LABELS[col]
+                    )}
+                    {FILTERABLE_COLUMNS.has(col) && (
+                      <button
+                        type="button"
+                        draggable={false}
+                        onDragStart={(e) => e.preventDefault()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenFilterCol((current) => (current === col ? null : col));
+                        }}
+                        aria-label={`Filter ${COLUMN_LABELS[col]}`}
+                        className={`rounded p-0.5 transition-colors hover:bg-border ${
+                          columnHasFilter(col) ? "text-accent" : "text-text-faint"
+                        }`}
+                      >
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+                          <path
+                            d="M4 5h16l-6.5 7.5V19l-3-1.5v-5L4 5Z"
+                            stroke="currentColor"
+                            strokeWidth={2}
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </button>
+                    )}
                     <span
                       onMouseDown={(e) => {
                         e.preventDefault();
@@ -636,6 +820,54 @@ export function TransactionsTable({
                       }}
                       className="absolute inset-y-0 -right-4 z-20 w-2 cursor-col-resize touch-none hover:bg-accent-border active:bg-accent"
                     />
+                    {openFilterCol === col && (
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        className="animate-modal-panel absolute top-full left-0 z-30 mt-1 w-48 cursor-auto rounded-lg border border-border bg-surface p-2 font-normal normal-case shadow-modal"
+                      >
+                        {col === "category" && (
+                          <select
+                            value={categoryFilter}
+                            onChange={(e) => setCategoryFilter(e.target.value)}
+                            className="w-full rounded border border-border bg-bg px-1.5 py-1 text-xs text-text outline-none focus:border-accent"
+                          >
+                            <option value="">All</option>
+                            {categories.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.name}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                        {col === "amount" && (
+                          <div className="flex flex-col gap-1">
+                            <input
+                              type="number"
+                              placeholder="Min"
+                              value={amountMin}
+                              onChange={(e) => setAmountMin(e.target.value)}
+                              className="w-full rounded border border-border bg-bg px-1.5 py-1 text-[11px] text-text outline-none focus:border-accent"
+                            />
+                            <input
+                              type="number"
+                              placeholder="Max"
+                              value={amountMax}
+                              onChange={(e) => setAmountMax(e.target.value)}
+                              className="w-full rounded border border-border bg-bg px-1.5 py-1 text-[11px] text-text outline-none focus:border-accent"
+                            />
+                          </div>
+                        )}
+                        {columnHasFilter(col) && (
+                          <button
+                            type="button"
+                            onClick={() => clearColumnFilter(col)}
+                            className="mt-1.5 text-[11px] font-medium text-accent hover:underline"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </span>
                 </th>
               ))}
@@ -643,42 +875,28 @@ export function TransactionsTable({
             </tr>
           </thead>
           <tbody>
-            {filtered.map((t) =>
-              editingId === t.id ? (
-                <EditRow
-                  key={t.id}
-                  transaction={t}
-                  accounts={accounts}
-                  categories={categories}
-                  onCancel={() => setEditingId(null)}
-                  onSaved={() => handleEditSaved(t.id)}
-                />
-              ) : (
+            {sortedFiltered.map((t) => (
                 <Fragment key={t.id}>
                   <tr
                     ref={(el) => {
                       if (el) rowRefs.current.set(t.id, el);
                       else rowRefs.current.delete(t.id);
                     }}
-                    className={`border-b border-border transition-opacity duration-300 last:border-b-0 hover:bg-bg even:bg-bg/40 ${
+                    onClick={() => openDetail(t.id)}
+                    className={`h-14 cursor-pointer overflow-hidden border-b border-border transition-[opacity,background-color] duration-300 last:border-b-0 hover:bg-bg even:bg-bg/40 ${
                       deletingIds.has(t.id) ? "opacity-0" : "opacity-100"
-                    } ${newIds.has(t.id) ? "animate-row-highlight" : ""}`}
+                    } ${newIds.has(t.id) ? "animate-row-highlight" : ""} ${
+                      selectedIds.has(t.id) ? "bg-accent-soft/60" : ""
+                    }`}
                   >
-                    <td className="px-4 py-3">
-                      <label
-                        className="flex cursor-pointer items-center justify-center py-1.5"
-                        title={t.cleared ? "Cleared" : "Pending — mark cleared"}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={t.cleared}
-                          onChange={(e) =>
-                            handleToggleCleared(t.id, e.target.checked)
-                          }
-                          aria-label={t.cleared ? "Cleared" : "Pending — mark cleared"}
-                          className="h-4 w-4 accent-[var(--accent)]"
-                        />
-                      </label>
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(t.id)}
+                        onChange={() => toggleSelect(t.id)}
+                        aria-label={`Select ${t.description}`}
+                        className="h-4 w-4 accent-[var(--accent)]"
+                      />
                     </td>
                     {columnOrder.map((col) => (
                       <td
@@ -686,10 +904,8 @@ export function TransactionsTable({
                         style={{ width: columnWidths[col] }}
                         className={
                           col === "amount"
-                            ? `tabular px-4 py-3 text-right text-sm font-medium ${
-                                t.kind === "income" ? "text-success" : "text-text"
-                              }`
-                            : "px-4 py-3 text-sm text-text-muted"
+                            ? "overflow-hidden px-4 py-3 text-right text-sm font-medium"
+                            : "overflow-hidden px-4 py-3 text-sm text-text-muted"
                         }
                       >
                         {col === "description" && (
@@ -697,53 +913,50 @@ export function TransactionsTable({
                             <span
                               className="flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
                               style={{
-                                backgroundColor: getAvatarColors(t.id).bg,
-                                color: getAvatarColors(t.id).text,
+                                backgroundColor: getLetterColors(t.description).bg,
+                                color: getLetterColors(t.description).text,
                               }}
                             >
-                              {initials(t.description)}
+                              {t.description.trim()[0]?.toUpperCase() ?? "?"}
                             </span>
-                            <div className="min-w-0">
-                              <span className="flex items-center gap-1.5 truncate text-sm font-medium text-text">
-                                <span className="truncate">{t.description}</span>
-                                {t.recurring_transaction_id && (
-                                  <span
-                                    className="shrink-0 text-xs"
-                                    title="Recurring"
-                                  >
-                                    🔁
-                                  </span>
-                                )}
-                                {t.pending_approval && (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      toggleTransactionPendingApproval(t.id, false)
-                                    }
-                                    title="Needs approval — click to approve"
-                                    className="shrink-0 rounded-full bg-caution-bg px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap text-caution-strong hover:bg-caution-border"
-                                  >
-                                    Needs approval
-                                  </button>
-                                )}
+                            <div className="flex min-w-0 items-center gap-1.5">
+                              <span className="truncate text-sm font-medium text-text">
+                                {t.description}
                               </span>
-                              {t.notes && (
-                                <span className="block truncate text-xs text-text-faint">
-                                  {t.notes}
+                              {t.recurring_transaction_id && (
+                                <span
+                                  className="shrink-0 text-xs"
+                                  title="Recurring"
+                                >
+                                  🔁
                                 </span>
+                              )}
+                              {t.pending_approval && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleTransactionPendingApproval(t.id, false);
+                                  }}
+                                  title="Needs approval — click to approve"
+                                  className="shrink-0 rounded-full bg-caution-bg px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap text-caution-strong transition-colors hover:bg-caution-border"
+                                >
+                                  Needs approval
+                                </button>
                               )}
                             </div>
                           </div>
                         )}
                         {col === "category" &&
                           (t.category_id && categoryById.get(t.category_id) ? (
-                            <span className="flex items-center gap-1.5">
-                              <span
-                                className="size-1.5 shrink-0 rounded-full"
-                                style={{ backgroundColor: getCategoryColor(t.category_id) }}
-                              />
-                              <span>{getCategoryIcon(categoryById.get(t.category_id)!)}</span>
-                              <span>{categoryById.get(t.category_id)}</span>
+                            <span className="flex items-center gap-1.5 truncate">
+                              <span className="shrink-0">
+                                {getCategoryIcon(
+                                  categoryById.get(t.category_id)!,
+                                  categoryIconById.get(t.category_id),
+                                )}
+                              </span>
+                              <span className="truncate">{categoryById.get(t.category_id)}</span>
                             </span>
                           ) : splitsByTransaction?.has(t.id) ? (
                             <span
@@ -763,70 +976,31 @@ export function TransactionsTable({
                           ))}
                         {col === "account" &&
                           (t.kind === "transfer" ? (
-                            <div className="flex items-center gap-1.5">
-                              {t.account_id && (
-                                <span
-                                  className="size-1.5 shrink-0 rounded-full"
-                                  style={{
-                                    backgroundColor: accountColorById.get(
-                                      t.account_id,
-                                    ),
-                                  }}
-                                />
+                            <div className="flex items-center gap-1.5 truncate">
+                              {t.account_id && accountBankById.get(t.account_id) && (
+                                <BankLogo bank={accountBankById.get(t.account_id)!} size="sm" />
                               )}
-                              {t.account_id &&
-                                accountBankById.get(t.account_id) && (
-                                  <BankLogo
-                                    bank={accountBankById.get(t.account_id)!}
-                                    size="sm"
-                                  />
-                                )}
-                              <span>
+                              <span className="truncate">
                                 {t.account_id
                                   ? (accountById.get(t.account_id) ?? "—")
                                   : "—"}
                               </span>
-                              <span>→</span>
-                              {t.to_account_id && (
-                                <span
-                                  className="size-1.5 shrink-0 rounded-full"
-                                  style={{
-                                    backgroundColor: accountColorById.get(
-                                      t.to_account_id,
-                                    ),
-                                  }}
-                                />
+                              <span className="shrink-0">→</span>
+                              {t.to_account_id && accountBankById.get(t.to_account_id) && (
+                                <BankLogo bank={accountBankById.get(t.to_account_id)!} size="sm" />
                               )}
-                              {t.to_account_id &&
-                                accountBankById.get(t.to_account_id) && (
-                                  <BankLogo
-                                    bank={accountBankById.get(t.to_account_id)!}
-                                    size="sm"
-                                  />
-                                )}
-                              <span>
+                              <span className="truncate">
                                 {t.to_account_id
                                   ? (accountById.get(t.to_account_id) ?? "—")
                                   : "—"}
                               </span>
                             </div>
                           ) : t.account_id ? (
-                            <div className="flex items-center gap-1.5">
-                              <span
-                                className="size-1.5 shrink-0 rounded-full"
-                                style={{
-                                  backgroundColor: accountColorById.get(
-                                    t.account_id,
-                                  ),
-                                }}
-                              />
+                            <div className="flex items-center gap-1.5 truncate">
                               {accountBankById.get(t.account_id) && (
-                                <BankLogo
-                                  bank={accountBankById.get(t.account_id)!}
-                                  size="sm"
-                                />
+                                <BankLogo bank={accountBankById.get(t.account_id)!} size="sm" />
                               )}
-                              <span>{accountById.get(t.account_id)}</span>
+                              <span className="truncate">{accountById.get(t.account_id)}</span>
                             </div>
                           ) : (
                             "—"
@@ -842,78 +1016,36 @@ export function TransactionsTable({
                             </span>
                           )}
                         {col === "amount" && (
-                          <>
-                            {t.kind === "income"
-                              ? "+"
-                              : t.kind === "expense"
-                                ? "-"
-                                : ""}
-                            {formatMoney(t.amount)}
-                          </>
+                          <Money
+                            amount={t.amount}
+                            signDisplay={
+                              t.kind === "income" ? "+" : t.kind === "expense" ? "-" : "none"
+                            }
+                            tone={t.kind === "income" ? "positive" : "neutral"}
+                          />
+                        )}
+                        {col === "notes" && (
+                          <span className="block truncate" title={t.notes ?? undefined}>
+                            {t.notes || "—"}
+                          </span>
                         )}
                       </td>
                     ))}
-                    <td className="px-4 py-3 text-right whitespace-nowrap">
-                      {t.kind !== "transfer" && (
-                        <button
-                          type="button"
-                          onClick={() => setEditingId(t.id)}
-                          className="mr-3 inline-block py-2 text-xs text-text-faint hover:text-accent"
-                        >
-                          Edit
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => toggleHistory(t.id)}
-                        className="mr-3 inline-block py-2 text-xs text-text-faint hover:text-accent"
-                      >
-                        History
-                      </button>
+                    <td className="px-4 py-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                       <button
                         type="button"
                         onClick={() => handleDelete(t)}
-                        className="inline-block py-2 text-xs text-text-faint hover:text-negative"
+                        className="inline-block py-2 text-xs text-text-faint transition-colors hover:text-negative"
                       >
                         Delete
                       </button>
                     </td>
                   </tr>
-                  {historyId === t.id && (
-                    <tr className="border-b border-border bg-bg/40 last:border-b-0">
-                      <td colSpan={8} className="px-4 py-3">
-                        {historyEntries.length === 0 ? (
-                          <p className="text-xs text-text-muted">
-                            No edits recorded for this transaction yet.
-                          </p>
-                        ) : (
-                          <ul className="space-y-1.5">
-                            {historyEntries.map((h) => (
-                              <li
-                                key={h.id}
-                                className="text-xs text-text-muted"
-                              >
-                                <span className="font-medium text-text">
-                                  {h.edited_by_email ?? "Someone"}
-                                </span>{" "}
-                                edited this on{" "}
-                                {formatDate(h.edited_at.slice(0, 10))} —
-                                previously &ldquo;
-                                {String(h.snapshot.description)}&rdquo; for{" "}
-                                {formatMoney(Number(h.snapshot.amount))}
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </td>
-                    </tr>
-                  )}
                 </Fragment>
-              ),
-            )}
+              ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-6 py-4">
+                <td colSpan={9} className="px-6 py-4">
                   <EmptyState
                     message={
                       transactions.length === 0
@@ -927,6 +1059,36 @@ export function TransactionsTable({
           </tbody>
         </table>
       </div>
+
+      {editingId &&
+        (() => {
+          const detailTransaction = effectiveTransactions.find((t) => t.id === editingId);
+          if (!detailTransaction) return null;
+          return (
+            <TransactionDetailModal
+              transaction={detailTransaction}
+              accounts={accounts}
+              categories={categories}
+              accountName={
+                detailTransaction.account_id
+                  ? (accountById.get(detailTransaction.account_id) ?? "—")
+                  : "—"
+              }
+              toAccountName={
+                detailTransaction.to_account_id
+                  ? (accountById.get(detailTransaction.to_account_id) ?? "—")
+                  : null
+              }
+              categoryName={
+                detailTransaction.category_id
+                  ? (categoryById.get(detailTransaction.category_id) ?? null)
+                  : null
+              }
+              closing={detailClosing}
+              onClose={closeDetail}
+            />
+          );
+        })()}
     </div>
   );
 }
@@ -937,15 +1099,15 @@ export function TransactionsTable({
 function MobileTransactionCard({
   transaction: t,
   accountName,
-  accountColor,
   categoryName,
+  categoryIcon,
   onDelete,
   onToggleCleared,
 }: {
   transaction: Transaction;
   accountName: string;
-  accountColor: string | undefined;
   categoryName: string | null;
+  categoryIcon?: string | null;
   onDelete: () => void;
   onToggleCleared: (cleared: boolean) => void;
 }) {
@@ -1024,11 +1186,11 @@ function MobileTransactionCard({
         <span
           className="flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
           style={{
-            backgroundColor: getAvatarColors(t.id).bg,
-            color: getAvatarColors(t.id).text,
+            backgroundColor: getLetterColors(t.description).bg,
+            color: getLetterColors(t.description).text,
           }}
         >
-          {initials(t.description)}
+          {t.description.trim()[0]?.toUpperCase() ?? "?"}
         </span>
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-1.5 truncate text-sm font-medium text-text">
@@ -1040,16 +1202,10 @@ function MobileTransactionCard({
             )}
           </p>
           <p className="flex items-center gap-1.5 text-xs text-text-faint">
-            {accountColor && (
-              <span
-                className="size-1.5 shrink-0 rounded-full"
-                style={{ backgroundColor: accountColor }}
-              />
-            )}
             <span className="min-w-0 truncate">{accountName}</span>
             {categoryName && (
               <span className="shrink-0 whitespace-nowrap">
-                · {getCategoryIcon(categoryName)} {categoryName}
+                · {getCategoryIcon(categoryName, categoryIcon)} {categoryName}
               </span>
             )}
             <span className="shrink-0 whitespace-nowrap">
@@ -1057,14 +1213,12 @@ function MobileTransactionCard({
             </span>
           </p>
         </div>
-        <span
-          className={`tabular shrink-0 text-sm font-medium ${
-            t.kind === "income" ? "text-success" : "text-text"
-          }`}
-        >
-          {t.kind === "income" ? "+" : t.kind === "expense" ? "-" : ""}
-          {formatMoney(t.amount)}
-        </span>
+        <Money
+          amount={t.amount}
+          signDisplay={t.kind === "income" ? "+" : t.kind === "expense" ? "-" : "none"}
+          tone={t.kind === "income" ? "positive" : "neutral"}
+          className="shrink-0 text-sm font-medium"
+        />
         {!t.cleared && (
           <span
             className="size-1.5 shrink-0 rounded-full bg-caution"
@@ -1076,19 +1230,66 @@ function MobileTransactionCard({
   );
 }
 
-function EditRow({
+// Replaces the old inline "Edit" row — clicking any transaction opens this
+// instead, showing its full details and (for income/expense) an editable
+// form. Transfers show read-only details, matching the old Edit button's
+// behavior of not offering an edit path for them at all.
+function TransactionDetailModal({
   transaction: t,
   accounts,
   categories,
-  onCancel,
-  onSaved,
+  accountName,
+  toAccountName,
+  categoryName,
+  closing,
+  onClose,
 }: {
   transaction: Transaction;
   accounts: Account[];
   categories: Category[];
-  onCancel: () => void;
-  onSaved: () => void;
+  accountName: string;
+  toAccountName: string | null;
+  categoryName: string | null;
+  closing: boolean;
+  onClose: () => void;
 }) {
+  const [claiming, setClaiming] = useState(false);
+  const [recurringBusy, setRecurringBusy] = useState(false);
+  const [isRecurring, setIsRecurring] = useState(!!t.recurring_transaction_id);
+  const showToast = useToast();
+
+  async function handleClaim() {
+    setClaiming(true);
+    const result = await claimTransaction(t.id);
+    setClaiming(false);
+    if (!result.ok) {
+      showToast(result.error ? `Couldn't claim: ${result.error}` : "Couldn't claim transaction");
+      return;
+    }
+    showToast("Transaction claimed");
+  }
+
+  async function handleMakeRecurring() {
+    setRecurringBusy(true);
+    const result = await createRecurringFromTransaction(t.id);
+    setRecurringBusy(false);
+    if (!result.ok) {
+      showToast(result.error ? `Couldn't set up: ${result.error}` : "Couldn't set up recurring bill");
+      return;
+    }
+    setIsRecurring(true);
+    showToast("Set up as recurring");
+  }
+
+  async function handleStopRecurring() {
+    if (!t.recurring_transaction_id) return;
+    setRecurringBusy(true);
+    await toggleRecurringActive(t.recurring_transaction_id, false);
+    setRecurringBusy(false);
+    setIsRecurring(false);
+    showToast("Recurring bill stopped");
+  }
+
   const [accountId, setAccountId] = useState(t.account_id ?? "");
   // Debt accounts store the opposite of what you'd expect (a charge is
   // "income", a payment is "expense"), so the initial display kind is
@@ -1111,102 +1312,206 @@ function EditRow({
       ? "income"
       : "expense"
     : kind;
-  const filteredCategories = categories.filter((c) => c.kind === kind);
+  const [categoryId, setCategoryId] = useState(t.category_id ?? "");
+  const formRef = useRef<HTMLFormElement>(null);
+
+  // Closing the modal — click outside, the ✕ button, or the Done button —
+  // plays the exit animation immediately instead of waiting on the network,
+  // which is what made every open/close feel like it stuttered. The save
+  // (skipped for the transfer read-only view, or if a required field was
+  // cleared) runs in the background afterward and doesn't touch the modal's
+  // open/close state.
+  function handleClose() {
+    onClose();
+    if (t.kind === "transfer") return;
+    const form = formRef.current;
+    if (!form || !form.reportValidity()) return;
+    const formData = new FormData(form);
+    formData.set("kind", effectiveKind);
+    updateTransaction(t.id, formData).catch(() =>
+      showToast("Couldn't save your changes"),
+    );
+  }
 
   return (
-    <tr className="border-b border-border bg-bg/40 last:border-b-0">
-      <td colSpan={8} className="p-4">
-        <form
-          action={async (formData) => {
-            formData.set("kind", effectiveKind);
-            await updateTransaction(t.id, formData);
-            onSaved();
-          }}
-          className="grid grid-cols-1 gap-3 sm:grid-cols-3"
-        >
-          <select
-            value={kind}
-            onChange={(e) => setKind(e.target.value as "income" | "expense")}
-            className={fieldClass}
+    <div
+      className={`fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4 ${
+        closing ? "animate-modal-backdrop-out" : "animate-modal-backdrop"
+      }`}
+      onClick={handleClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className={`w-full max-w-lg overflow-hidden rounded-xl border border-border bg-surface shadow-modal ${
+          closing ? "animate-modal-panel-out" : "animate-modal-panel"
+        }`}
+      >
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <h2 className="text-lg font-semibold text-text">Transaction details</h2>
+          <button
+            type="button"
+            onClick={handleClose}
+            aria-label="Close"
+            className="-mr-1.5 flex size-9 shrink-0 items-center justify-center rounded-lg text-text-faint transition-colors hover:bg-bg hover:text-text"
           >
-            <option value="expense">
-              {isDebtAccount ? "Charge" : "Expense"}
-            </option>
-            <option value="income">
-              {isDebtAccount ? "Payment" : "Income"}
-            </option>
-          </select>
-          <input
-            name="description"
-            required
-            defaultValue={t.description}
-            placeholder="Description"
-            className={`${fieldClass} sm:col-span-2`}
-          />
-          <input
-            type="number"
-            step="0.01"
-            name="amount"
-            required
-            defaultValue={t.amount}
-            className={fieldClass}
-          />
-          <input
-            type="date"
-            name="txn_date"
-            required
-            defaultValue={t.txn_date}
-            className={fieldClass}
-          />
-          <select
-            name="account_id"
-            value={accountId}
-            onChange={(e) => setAccountId(e.target.value)}
-            className={fieldClass}
+            ✕
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 border-b border-border bg-bg px-5 py-2.5 text-xs">
+          <span className="text-text-faint">
+            Logged by{" "}
+            <span className="font-medium text-text-muted">
+              {t.created_by_email ?? "someone before attribution was tracked"}
+            </span>
+          </span>
+          <button
+            type="button"
+            onClick={handleClaim}
+            disabled={claiming}
+            className="shrink-0 font-medium text-accent hover:underline disabled:opacity-50"
           >
-            <option value="">—</option>
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
-          <select
-            name="category_id"
-            defaultValue={t.category_id ?? ""}
-            className={`${fieldClass} sm:col-span-2`}
-          >
-            <option value="">—</option>
-            {filteredCategories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-          <input
-            name="notes"
-            defaultValue={t.notes ?? ""}
-            placeholder="Notes"
-            maxLength={140}
-            className={fieldClass}
-          />
-          <div className="flex gap-2 sm:col-span-3">
-            <SubmitButton
-              pendingText="Saving…"
-              className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-white transition-opacity hover:opacity-90"
-            >
-              Save
-            </SubmitButton>
-            <button
-              type="button"
-              onClick={onCancel}
-              className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-text-muted hover:bg-bg"
-            >
-              Cancel
-            </button>
+            {claiming ? "Claiming…" : "Claim as mine"}
+          </button>
+        </div>
+
+        {t.kind === "transfer" ? (
+          <div className="space-y-3 p-5 text-sm">
+            <div className="flex justify-between">
+              <span className="text-text-muted">Amount</span>
+              <span className="font-medium text-text">{formatMoney(t.amount)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-text-muted">From</span>
+              <span className="font-medium text-text">{accountName}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-text-muted">To</span>
+              <span className="font-medium text-text">{toAccountName ?? "—"}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-text-muted">Date</span>
+              <span className="font-medium text-text">{formatDate(t.txn_date)}</span>
+            </div>
+            {t.notes && (
+              <div className="flex justify-between gap-4">
+                <span className="shrink-0 text-text-muted">Notes</span>
+                <span className="text-right font-medium text-text">{t.notes}</span>
+              </div>
+            )}
           </div>
-        </form>
-      </td>
-    </tr>
+        ) : (
+          <form
+            ref={formRef}
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleClose();
+            }}
+            className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2"
+          >
+            <select
+              value={kind}
+              onChange={(e) => setKind(e.target.value as "income" | "expense")}
+              className={fieldClass}
+            >
+              <option value="expense">
+                {isDebtAccount ? "Charge" : "Expense"}
+              </option>
+              <option value="income">
+                {isDebtAccount ? "Payment" : "Income"}
+              </option>
+            </select>
+            <input
+              type="number"
+              step="0.01"
+              name="amount"
+              required
+              defaultValue={t.amount}
+              className={fieldClass}
+            />
+            <input
+              name="description"
+              required
+              defaultValue={t.description}
+              placeholder="Description"
+              className={`${fieldClass} sm:col-span-2`}
+            />
+            <input
+              type="date"
+              name="txn_date"
+              required
+              defaultValue={t.txn_date}
+              className={fieldClass}
+            />
+            <select
+              name="account_id"
+              value={accountId}
+              onChange={(e) => setAccountId(e.target.value)}
+              className={fieldClass}
+            >
+              <option value="">—</option>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+            <div className="sm:col-span-2">
+              <CategorySelect
+                categories={categories}
+                kind={kind}
+                value={categoryId}
+                onChange={setCategoryId}
+                className={fieldClass}
+              />
+            </div>
+            <input
+              name="notes"
+              defaultValue={t.notes ?? ""}
+              placeholder="Notes"
+              maxLength={140}
+              className={`${fieldClass} sm:col-span-2`}
+            />
+            {categoryName && (
+              <p className="text-xs text-text-faint sm:col-span-2">
+                Currently: {categoryName}
+              </p>
+            )}
+            <div className="flex items-center justify-between gap-2 sm:col-span-2">
+              {isRecurring ? (
+                <button
+                  type="button"
+                  onClick={handleStopRecurring}
+                  disabled={recurringBusy}
+                  className="text-xs font-medium text-negative hover:underline disabled:opacity-50"
+                >
+                  {recurringBusy ? "Stopping…" : "Stop this recurring bill"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleMakeRecurring}
+                  disabled={recurringBusy}
+                  className="text-xs font-medium text-accent hover:underline disabled:opacity-50"
+                >
+                  {recurringBusy ? "Setting up…" : "Make recurring"}
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-2 sm:col-span-2">
+              <button
+                type="submit"
+                className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+              >
+                Done
+              </button>
+              <span className="text-xs text-text-faint">
+                Changes save automatically when you close this
+              </span>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
   );
 }

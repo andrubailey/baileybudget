@@ -1,7 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { updateAccountDetails, reorderAccounts } from "@/app/actions";
+import { useRef, useState, useTransition } from "react";
+import {
+  removeAccountLogo,
+  updateAccountDetails,
+  uploadAccountLogo,
+  reorderAccounts,
+} from "@/app/actions";
 import { formatMoney, progressColor } from "@/lib/format";
 import type { AccountWithBalance } from "@/lib/queries";
 import { ACCOUNT_TYPE_LABELS, ACCOUNT_TYPES, BANK_LOGIN_URLS } from "@/lib/types";
@@ -86,17 +91,6 @@ export function AccountList({
   return (
     <div>
       <Celebration celebrationKey={celebrationKey} />
-      {deactivatedCount > 0 && (
-        <button
-          type="button"
-          onClick={() => setShowDeactivated((v) => !v)}
-          className="mb-4 text-xs font-medium text-text-faint hover:text-accent"
-        >
-          {showDeactivated
-            ? "Hide deactivated accounts"
-            : `Show ${deactivatedCount} deactivated account${deactivatedCount === 1 ? "" : "s"}`}
-        </button>
-      )}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {visible.map((a, i) => {
           const progress =
@@ -131,7 +125,12 @@ export function AccountList({
                   Overview dashboard's metric cards — one neutral icon style
                   for every account instead of a per-type color accent. */}
               <div className="flex items-start justify-between">
-                {a.bank ? (
+                {a.logo_url ? (
+                  <span className="inline-flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-white">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- user-uploaded storage URL, not a local/known-domain asset */}
+                    <img src={a.logo_url} alt="" className="size-full object-cover" />
+                  </span>
+                ) : a.bank ? (
                   <BankLogo bank={a.bank} size="lg" />
                 ) : (
                   <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-bg text-text-muted">
@@ -149,7 +148,7 @@ export function AccountList({
                   type="button"
                   onClick={() => setEditingId(a.id)}
                   aria-label={`Edit ${a.name}`}
-                  className="flex size-10 shrink-0 items-center justify-center rounded-lg text-text-faint hover:bg-bg hover:text-text"
+                  className="flex size-10 shrink-0 items-center justify-center rounded-lg text-text-faint transition-colors hover:bg-bg hover:text-text"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                     <path
@@ -165,11 +164,16 @@ export function AccountList({
 
               <p className="mt-3 truncate font-medium text-text">{a.name}</p>
 
-              {(a.account_type || a.is_debt || !a.is_active) && (
+              {(a.account_type || a.is_debt || a.is_business || !a.is_active) && (
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {a.account_type && (
                     <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] font-semibold text-text-faint">
                       {ACCOUNT_TYPE_LABELS[a.account_type]}
+                    </span>
+                  )}
+                  {a.is_business && (
+                    <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] font-semibold text-text-faint">
+                      Business
                     </span>
                   )}
                   {a.is_debt && (
@@ -245,6 +249,18 @@ export function AccountList({
         })}
       </div>
 
+      {deactivatedCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowDeactivated((v) => !v)}
+          className="mt-6 text-[11px] text-text-faint/70 hover:text-text-faint"
+        >
+          {showDeactivated
+            ? "Hide deactivated accounts"
+            : `Show ${deactivatedCount} deactivated account${deactivatedCount === 1 ? "" : "s"}`}
+        </button>
+      )}
+
       {editingAccount && (
         <AccountEditModal
           account={editingAccount}
@@ -269,6 +285,54 @@ function AccountEditModal({
   onSaved: () => void;
 }) {
   const [isDebt, setIsDebt] = useState(a.is_debt);
+  const [isBusiness, setIsBusiness] = useState(a.is_business);
+  const [logoPreview, setLogoPreview] = useState(a.logo_url ?? "");
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoError, setLogoError] = useState<string | null>(null);
+  const logoFileInputRef = useRef<HTMLInputElement>(null);
+  const showToast = useToast();
+
+  async function handleLogoFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setLogoError("Please choose an image file.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setLogoError("Image must be under 5MB.");
+      return;
+    }
+
+    setLogoError(null);
+    setLogoUploading(true);
+    const objectUrl = URL.createObjectURL(file);
+    setLogoPreview(objectUrl);
+
+    const fd = new FormData();
+    fd.set("logo_file", file);
+    const result = await uploadAccountLogo(a.id, fd);
+    setLogoUploading(false);
+    URL.revokeObjectURL(objectUrl);
+
+    if (!result.ok || !result.url) {
+      setLogoPreview(a.logo_url ?? "");
+      setLogoError(result.error ?? "Couldn't upload photo.");
+      return;
+    }
+    setLogoPreview(result.url);
+    showToast("Photo updated");
+  }
+
+  async function handleRemoveLogo() {
+    setLogoUploading(true);
+    await removeAccountLogo(a.id);
+    setLogoUploading(false);
+    setLogoPreview("");
+    showToast("Photo removed");
+  }
 
   async function handleSubmit(formData: FormData) {
     const goalRaw = String(formData.get("goal") ?? "").trim();
@@ -278,6 +342,7 @@ function AccountEditModal({
     const lowBalanceRaw = String(formData.get("low_balance_alert") ?? "").trim();
     const is_debt = formData.get("is_debt") === "on";
     const is_active = formData.get("is_active") === "on";
+    const is_business = formData.get("is_business") === "on";
 
     await updateAccountDetails(a.id, {
       goal: goalRaw ? Number(goalRaw) : null,
@@ -287,6 +352,7 @@ function AccountEditModal({
       low_balance_alert: is_debt || !lowBalanceRaw ? null : Number(lowBalanceRaw),
       is_debt,
       is_active,
+      is_business,
     });
     onSaved();
     onClose();
@@ -306,7 +372,7 @@ function AccountEditModal({
           <button
             type="button"
             onClick={onClose}
-            className="-mr-2.5 flex size-11 shrink-0 items-center justify-center rounded-lg text-text-faint hover:bg-bg hover:text-text"
+            className="-mr-2.5 flex size-11 shrink-0 items-center justify-center rounded-lg text-text-faint transition-colors hover:bg-bg hover:text-text"
             aria-label="Close"
           >
             ✕
@@ -314,6 +380,59 @@ function AccountEditModal({
         </div>
 
         <form action={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="flex items-center gap-3 sm:col-span-2">
+            <input
+              ref={logoFileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleLogoFileChange}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => logoFileInputRef.current?.click()}
+              disabled={logoUploading}
+              className="group relative size-14 shrink-0 overflow-hidden rounded-full border border-border bg-white disabled:opacity-70"
+              aria-label="Change account photo"
+            >
+              {logoPreview ? (
+                // eslint-disable-next-line @next/next/no-img-element -- user-uploaded storage URL, not a local/known-domain asset
+                <img src={logoPreview} alt="" className="size-14 object-cover" />
+              ) : (
+                <span className="flex size-14 items-center justify-center text-text-faint">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M3 10h18M6 6h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z"
+                      stroke="currentColor"
+                      strokeWidth={1.6}
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </span>
+              )}
+              <span className="absolute inset-0 flex items-center justify-center bg-black/50 text-[11px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
+                {logoUploading ? "…" : "Change"}
+              </span>
+            </button>
+            <div className="min-w-0 flex-1 space-y-1">
+              <p className="text-sm font-medium text-text">Account photo</p>
+              <p className="text-xs text-text-faint">
+                Used instead of the bank badge, e.g. for a bank not in the list.
+              </p>
+              {logoPreview && (
+                <button
+                  type="button"
+                  onClick={handleRemoveLogo}
+                  disabled={logoUploading}
+                  className="text-xs font-medium text-negative hover:underline disabled:opacity-50"
+                >
+                  Remove photo
+                </button>
+              )}
+              {logoError && <p className="text-xs text-negative">{logoError}</p>}
+            </div>
+          </div>
+
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-text">Goal</label>
             <input
@@ -389,6 +508,17 @@ function AccountEditModal({
           <label className="flex items-center gap-2 text-sm text-text sm:col-span-2">
             <input
               type="checkbox"
+              name="is_business"
+              checked={isBusiness}
+              onChange={(e) => setIsBusiness(e.target.checked)}
+              className="h-4 w-4 accent-[var(--accent)]"
+            />
+            Business account (groups it separately on the dashboard)
+          </label>
+
+          <label className="flex items-center gap-2 text-sm text-text sm:col-span-2">
+            <input
+              type="checkbox"
               name="is_active"
               defaultChecked={a.is_active}
               className="h-4 w-4 accent-[var(--accent)]"
@@ -401,7 +531,7 @@ function AccountEditModal({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-text-muted hover:bg-bg"
+              className="rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-text-muted transition-colors hover:bg-bg"
             >
               Cancel
             </button>

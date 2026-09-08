@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { getPeriods, pickPeriod } from "@/lib/periods";
 import { resolveRange, getPreviousRange } from "@/lib/ranges";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentSession, getCurrentUserProfile } from "@/lib/profile";
 import {
   getAccountsWithBalances,
   getBalanceHistory,
+  getCategories,
   getCategoryProgressForRange,
   getNetWorthHistory,
   getObjectives,
@@ -15,18 +16,14 @@ import {
 } from "@/lib/queries";
 import { AnimatedMoney } from "@/app/(app)/animated-number";
 import { GreetingHeader } from "@/app/(app)/greeting-header";
-import { formatMoney, formatDate, firstNameFromEmail, progressColor } from "@/lib/format";
+import { formatMoney, formatDate, firstNameFromEmail } from "@/lib/format";
 import { BudgetCategoriesCard } from "@/app/(app)/budget-categories";
 import { GoalBanner } from "@/app/(app)/goal-banner";
 import { NewTransactionButton } from "@/app/(app)/new-transaction-button";
 import { BankLogo } from "@/app/(app)/accounts/bank-logo";
 import { EmptyState } from "@/app/(app)/empty-state";
-import { getAvatarColors } from "@/lib/avatar-colors";
-
-function initials(name: string) {
-  const parts = name.trim().split(/\s+/);
-  return (parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "");
-}
+import { getLetterColors } from "@/lib/letter-colors";
+import { Sparkline } from "@/app/(app)/sparkline";
 
 type Trend = { pct: number; good: boolean } | null;
 
@@ -57,29 +54,21 @@ export default async function DashboardPage({
   const range = resolveRange(requestedRange, customStart, customEnd);
   const previousRange = getPreviousRange(range.start, range.end);
 
-  const supabase = await createClient();
-  // getSession() reads the JWT from cookies with no network call, unlike
-  // getUser() — the layout above (and proxy.ts's middleware before that)
-  // already did the real, network-validated auth check for this request, so
-  // this is purely reading an already-verified session for the greeting.
+  // getCurrentSession() reads the JWT from cookies with no network call,
+  // unlike getUser() — the layout above (and proxy.ts's middleware before
+  // that) already did the real, network-validated auth check for this
+  // request. It's also cache()-wrapped, so this reuses the exact call the
+  // layout already made for the same request instead of decoding it twice.
+  // None of the data queries below depend on the session or on periods, so
+  // everything fires in one batch instead of waiting on auth first — only
+  // the profile lookup genuinely needs the session's user id, so that one
+  // stays sequential after (and is itself cache()-deduped against the
+  // layout's own profile lookup).
   const [
-    {
-      data: { session },
-    },
+    session,
     periods,
-  ] = await Promise.all([supabase.auth.getSession(), getPeriods()]);
-  const firstName = session?.user?.email
-    ? firstNameFromEmail(session.user.email)
-    : "there";
-
-  // Only used to find the prior period for the balance trend comparison.
-  const currentPeriod = pickPeriod(periods);
-  const previousPeriod = currentPeriod
-    ? periods[periods.findIndex((p) => p.id === currentPeriod.id) + 1]
-    : undefined;
-
-  const [
     accounts,
+    categories,
     summary,
     previousSummary,
     categoryProgress,
@@ -90,7 +79,10 @@ export default async function DashboardPage({
     savingsTransfers,
     previousSavingsTransfers,
   ] = await Promise.all([
+    getCurrentSession(),
+    getPeriods(),
     getAccountsWithBalances(),
+    getCategories(),
     getPeriodSummaryForRange(range.start, range.end),
     getPeriodSummaryForRange(previousRange.start, previousRange.end),
     getCategoryProgressForRange(range.start, range.end),
@@ -101,10 +93,22 @@ export default async function DashboardPage({
     getSavingsTransferTotal(range.start, range.end),
     getSavingsTransferTotal(previousRange.start, previousRange.end),
   ]);
+  const user = session?.user ?? null;
+  const profile = user ? await getCurrentUserProfile(user.id) : null;
+  const firstName =
+    profile?.display_name?.trim() ||
+    (user?.email ? firstNameFromEmail(user.email) : "there");
+
+  // Only used to find the prior period for the balance trend comparison.
+  const currentPeriod = pickPeriod(periods);
+  const previousPeriod = currentPeriod
+    ? periods[periods.findIndex((p) => p.id === currentPeriod.id) + 1]
+    : undefined;
 
   const activeAccounts = accounts.filter((a) => a.is_active);
 
   const recentTransactions = transactions.slice(0, 7);
+  const accountNameById = new Map(accounts.map((a) => [a.id, a.name]));
 
   // Planned amounts live on a single period (budget_lines), so they're only
   // directly editable here when the visible range is exactly one existing
@@ -114,11 +118,17 @@ export default async function DashboardPage({
       (p) => p.start_date === range.start && p.end_date === range.end,
     ) ?? null;
 
-  // Total balance = the real cash across every active account right now, not
+  // Total balance = net worth across every active account right now, not
   // budget remaining — compared against last month's end-of-period net worth
   // snapshot (transfers cancel out there, so it's the same total-across-
-  // accounts figure) to show whether that total is trending up or down.
-  const totalBalance = activeAccounts.reduce((sum, a) => sum + a.balance, 0);
+  // accounts figure) to show whether that total is trending up or down. A
+  // debt account's `balance` is money owed, a liability — it subtracts here
+  // instead of adding, or a credit card balance would inflate this figure
+  // instead of reducing it.
+  const totalBalance = activeAccounts.reduce(
+    (sum, a) => sum + (a.is_debt ? -a.balance : a.balance),
+    0,
+  );
   const previousTotalBalance = previousPeriod
     ? (netWorthHistory.find((p) => p.periodId === previousPeriod.id)
         ?.netWorth ?? null)
@@ -132,7 +142,6 @@ export default async function DashboardPage({
     invert: true,
   });
 
-  const balanceSparklinePoints = balanceHistory.map((p) => p.balance);
 
   // Savings rate = the share of income actually kept, for this range vs. the
   // same-length prior range. "Kept" includes money moved into (or pulled
@@ -172,7 +181,7 @@ export default async function DashboardPage({
           <Link
             href="/transactions"
             aria-label="Transactions needing approval"
-            className="relative flex size-11 shrink-0 items-center justify-center rounded-full border border-border text-text-muted hover:bg-bg hover:text-text"
+            className="relative flex size-11 shrink-0 items-center justify-center rounded-full border border-border text-text-muted transition-colors hover:bg-bg hover:text-text"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
               <path
@@ -190,7 +199,15 @@ export default async function DashboardPage({
               />
             </svg>
           </Link>
-          <NewTransactionButton variant="inline" menuAlign="right" />
+          <NewTransactionButton
+            variant="inline"
+            menuAlign="right"
+            initialContext={{
+              periodId: currentPeriod?.id ?? null,
+              accounts: activeAccounts,
+              categories,
+            }}
+          />
         </div>
       </div>
 
@@ -213,19 +230,19 @@ export default async function DashboardPage({
           value={
             <AnimatedMoney
               value={totalBalance}
-              className={`tabular text-[34px] leading-[40px] font-bold tracking-[-0.02em] ${
+              className={`tabular text-[34px] leading-[40px] font-bold tracking-[-0.005em] ${
                 totalBalance >= 0 ? "text-text" : "text-danger"
               }`}
             />
           }
           trendValue={balanceTrend}
           graph={
-            balanceSparklinePoints.length > 1 && (
+            balanceHistory.length > 1 && (
               <Sparkline
-                points={balanceSparklinePoints}
+                points={balanceHistory}
                 color={
-                  balanceSparklinePoints[balanceSparklinePoints.length - 1] >=
-                  balanceSparklinePoints[0]
+                  balanceHistory[balanceHistory.length - 1].balance >=
+                  balanceHistory[0].balance
                     ? "var(--success)"
                     : "var(--danger)"
                 }
@@ -251,7 +268,7 @@ export default async function DashboardPage({
           value={
             <AnimatedMoney
               value={summary.income}
-              className="tabular text-[34px] leading-[40px] font-bold tracking-[-0.02em] text-text"
+              className="tabular text-[34px] leading-[40px] font-bold tracking-[-0.005em] text-text"
             />
           }
           trendValue={incomeTrend}
@@ -274,7 +291,7 @@ export default async function DashboardPage({
           value={
             <AnimatedMoney
               value={summary.expense}
-              className="tabular text-[34px] leading-[40px] font-bold tracking-[-0.02em] text-text"
+              className="tabular text-[34px] leading-[40px] font-bold tracking-[-0.005em] text-text"
             />
           }
           trendValue={expenseTrend}
@@ -295,11 +312,18 @@ export default async function DashboardPage({
             />
           }
           value={
-            <p className="tabular text-[34px] leading-[40px] font-bold tracking-[-0.02em] text-text">
+            <p className="tabular text-[34px] leading-[40px] font-bold tracking-[-0.005em] text-text">
               {Math.round(savingsRate)}%
             </p>
           }
           trendValue={savingsRateTrend}
+          badge={
+            savingsTransfers < 0 ? (
+              <span className="tabular rounded-full bg-negative-bg px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap text-negative-strong">
+                -{formatMoney(Math.abs(savingsTransfers))} withdrawn
+              </span>
+            ) : null
+          }
         />
       </div>
 
@@ -336,18 +360,29 @@ export default async function DashboardPage({
           </div>
 
           <div className="divide-y divide-border">
-            {recentTransactions.map((t) => {
-              const avatar = getAvatarColors(t.id);
+            {recentTransactions.map((t, i) => {
+              const avatar = getLetterColors(t.description);
+              const fromAccount = t.account_id
+                ? (accountNameById.get(t.account_id) ?? null)
+                : null;
+              const toAccount = t.to_account_id
+                ? (accountNameById.get(t.to_account_id) ?? null)
+                : null;
+              const accountLabel =
+                t.kind === "transfer"
+                  ? [fromAccount, toAccount].filter(Boolean).join(" → ")
+                  : fromAccount;
               return (
                 <div
                   key={t.id}
-                  className="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
+                  style={{ animationDelay: `${i * 35}ms` }}
+                  className="animate-fade-in-up flex items-center gap-3 py-3 first:pt-0 last:pb-0"
                 >
                   <span
                     className="flex size-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
                     style={{ backgroundColor: avatar.bg, color: avatar.text }}
                   >
-                    {initials(t.description)}
+                    {t.description.trim()[0]?.toUpperCase() ?? "?"}
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-text">
@@ -357,6 +392,11 @@ export default async function DashboardPage({
                       {formatDate(t.txn_date)}
                     </p>
                   </div>
+                  {accountLabel && (
+                    <span className="hidden max-w-28 shrink-0 truncate text-xs text-text-faint sm:block">
+                      {accountLabel}
+                    </span>
+                  )}
                   <span
                     className={`tabular ml-4 shrink-0 text-sm font-medium ${
                       t.kind === "income" ? "text-success" : "text-text"
@@ -390,64 +430,93 @@ export default async function DashboardPage({
   );
 }
 
+// Grouped by Personal vs. Business, with debt accounts pulled into their own
+// group regardless of which side they're on — "here's what you have" vs.
+// "here's what you owe" is the mental split that actually matters when
+// working through every account one by one, and a subtotal per group is real
+// information the flat list never surfaced. One quiet line per account
+// (name + balance) instead of a stacked mini-card, so the list stays a fast
+// checklist rather than a scroll of repeated bars and big numbers.
 function AccountsGlanceCard({ accounts }: { accounts: AccountWithBalance[] }) {
   if (accounts.length === 0) return null;
+
+  const debt = accounts.filter((a) => a.is_debt);
+  const groups: {
+    key: string;
+    label: string;
+    accounts: AccountWithBalance[];
+  }[] = [
+    {
+      key: "business",
+      label: "Business",
+      accounts: accounts
+        .filter((a) => !a.is_debt && a.is_business)
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    },
+    {
+      key: "personal",
+      label: "Personal",
+      accounts: accounts
+        .filter((a) => !a.is_debt && !a.is_business)
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    },
+  ].filter((g) => g.accounts.length > 0);
+
+  if (debt.length > 0) {
+    groups.push({
+      key: "debt",
+      label: "Debt",
+      accounts: debt.slice().sort((a, b) => a.name.localeCompare(b.name)),
+    });
+  }
+
   return (
     <div className="rounded-xl border border-border bg-surface p-5 shadow-card sm:p-6">
       <div className="mb-4 flex items-center justify-between gap-3">
         <p className="text-heading text-text">Accounts</p>
         <Link
           href="/accounts"
-          className="text-xs font-medium text-text-faint hover:text-text"
+          className="text-xs font-medium text-text-faint transition-colors hover:text-text"
         >
           View All
         </Link>
       </div>
-      <div className="-my-1 divide-y divide-border">
-        {accounts.map((a) => {
-          const progress =
-            !a.is_debt && a.goal && a.goal > 0
-              ? Math.min(100, Math.max(0, (a.balance / a.goal) * 100))
-              : null;
-          // Debt payoff progress: how much of the gap between the starting
-          // balance and the goal (usually 0) has been paid down so far —
-          // same formula the Accounts page cards use.
-          const payoffSpan = a.starting_balance - (a.goal ?? 0);
-          const payoffProgress =
-            a.is_debt && payoffSpan !== 0
-              ? Math.min(100, Math.max(0, ((a.starting_balance - a.balance) / payoffSpan) * 100))
-              : null;
-          const barPct = progress ?? payoffProgress;
-
-          return (
-            <div key={a.id} className="py-3 first:pt-1 last:pb-1">
-              <div className="flex items-center gap-2.5">
-                {a.bank && <BankLogo bank={a.bank} size="sm" />}
-                <span className="min-w-0 truncate text-sm text-text-muted">{a.name}</span>
-              </div>
-              <span className="tabular mt-1.5 block text-xl font-semibold text-text">
-                {formatMoney(a.balance)}
-                {a.is_debt && <span className="ml-1.5 text-sm font-normal text-text-faint">owed</span>}
-              </span>
-              {barPct !== null && (
-                <div className="mt-1.5 flex items-center gap-2.5">
-                  <div className="h-1 min-w-0 flex-1 rounded-full bg-bg">
-                    <div
-                      className="h-1 rounded-full"
-                      style={{
-                        width: `${barPct}%`,
-                        backgroundColor: progress !== null ? progressColor(progress) : "var(--success)",
-                      }}
-                    />
-                  </div>
-                  <span className="tabular shrink-0 text-[11px] text-text-faint">
-                    {barPct.toFixed(0)}%
+      <div className="space-y-6">
+        {(() => {
+          let rowIndex = 0;
+          return groups.map((group) => (
+          <div key={group.key}>
+            <p className="mb-2.5 text-[11px] font-semibold tracking-wide text-text-faint uppercase">
+              {group.label}
+            </p>
+            <div className="divide-y divide-border">
+              {group.accounts.map((a) => {
+                const i = rowIndex++;
+                return (
+                <div
+                  key={a.id}
+                  style={{ animationDelay: `${i * 35}ms` }}
+                  className="animate-fade-in-up flex items-center gap-3 py-3 first:pt-0 last:pb-0"
+                >
+                  {a.bank && <BankLogo bank={a.bank} size="sm" />}
+                  <span className="min-w-0 flex-1 truncate text-sm text-text-muted">
+                    {a.name}
+                  </span>
+                  <span
+                    className={`tabular shrink-0 text-sm font-semibold ${
+                      a.is_debt ? "text-negative" : "text-text"
+                    }`}
+                  >
+                    {a.is_debt ? "-" : ""}
+                    {formatMoney(a.balance)}
                   </span>
                 </div>
-              )}
+                );
+              })}
             </div>
-          );
-        })}
+          </div>
+          ));
+        })()}
       </div>
     </div>
   );
@@ -462,6 +531,7 @@ function MetricCard({
   trendValue,
   graph,
   footnote,
+  badge,
   className,
   index = 0,
 }: {
@@ -473,6 +543,10 @@ function MetricCard({
   trendValue: Trend;
   graph?: React.ReactNode;
   footnote?: React.ReactNode;
+  // Small pill pinned to the top-right corner of the card, for a called-out
+  // fact that doesn't fit the label/value/trend shape (e.g. a savings
+  // withdrawal that dragged the rate down).
+  badge?: React.ReactNode;
   className?: string;
   // Staggers this card's entrance behind the ones before it, so the row
   // reads left-to-right instead of every card fading in at once.
@@ -512,8 +586,13 @@ function MetricCard({
     return (
       <div
         style={{ animationDelay: `${index * 60}ms` }}
-        className={`card-hover animate-fade-in-up flex h-full flex-col justify-between rounded-xl border border-border bg-surface p-5 shadow-card sm:p-6 ${className ?? ""}`}
+        className={`card-hover animate-fade-in-up relative flex h-full flex-col justify-between rounded-xl border border-border bg-surface p-5 shadow-card sm:p-6 ${className ?? ""}`}
       >
+        {badge && (
+          <div className="absolute top-5 right-5 sm:top-6 sm:right-6">
+            {badge}
+          </div>
+        )}
         <span
           className="flex size-9 shrink-0 items-center justify-center rounded-full"
           style={{ backgroundColor: iconBg, color: iconColor }}
@@ -544,81 +623,8 @@ function MetricCard({
       </p>
       <div className="mt-5">{value}</div>
       {trendNote}
-      {graph && <div className="mt-4 max-w-[280px]">{graph}</div>}
+      {graph && <div className="mt-4">{graph}</div>}
     </div>
   );
 }
 
-// Minimal non-interactive line chart — 90 daily balance points normalized
-// into a 0-1 range so the visual trend reads clearly regardless of the
-// account's actual balance magnitude.
-// Catmull-Rom -> cubic Bézier conversion, so the line curves smoothly through
-// every point instead of the sharp zig-zag a plain polyline produces across
-// 90 daily balance readings.
-function smoothPath(points: { x: number; y: number }[]): string {
-  if (points.length < 2) return "";
-  let d = `M ${points[0].x},${points[0].y}`;
-  for (let i = 0; i < points.length - 1; i++) {
-    const p0 = points[i - 1] ?? points[i];
-    const p1 = points[i];
-    const p2 = points[i + 1];
-    const p3 = points[i + 2] ?? p2;
-    const cp1x = p1.x + (p2.x - p0.x) / 6;
-    const cp1y = p1.y + (p2.y - p0.y) / 6;
-    const cp2x = p2.x - (p3.x - p1.x) / 6;
-    const cp2y = p2.y - (p3.y - p1.y) / 6;
-    d += ` C ${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
-  }
-  return d;
-}
-
-function Sparkline({ points, color }: { points: number[]; color: string }) {
-  const width = 240;
-  const height = 64;
-  const min = Math.min(...points);
-  const max = Math.max(...points);
-  const range = max - min || 1;
-  const step = width / (points.length - 1);
-  const coords = points.map((p, i) => ({
-    x: i * step,
-    y: height - ((p - min) / range) * (height - 10) - 5,
-  }));
-  const linePath = smoothPath(coords);
-  const last = coords[coords.length - 1];
-  const first = coords[0];
-  // Closes the line into a filled shape dropping straight down to the
-  // baseline, for the soft gradient wash under the curve — a bare stroke
-  // floating with nothing under it read as flat/thin against the rest of
-  // the dashboard's more visually-weighted cards.
-  const areaPath = `${linePath} L ${last.x},${height} L ${first.x},${height} Z`;
-  // One gradient id per color variant (success/danger) is enough — no risk
-  // of collision since those are the only two colors this ever renders.
-  const gradientId = `sparkline-fill-${color.replace(/[^a-zA-Z0-9]/g, "")}`;
-
-  return (
-    <svg
-      viewBox={`0 0 ${width} ${height}`}
-      preserveAspectRatio="none"
-      className="h-16 w-full overflow-visible"
-    >
-      <defs>
-        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity={0.28} />
-          <stop offset="100%" stopColor={color} stopOpacity={0} />
-        </linearGradient>
-      </defs>
-      <path d={areaPath} fill={`url(#${gradientId})`} stroke="none" />
-      <path
-        d={linePath}
-        pathLength={1}
-        className="animate-draw-line"
-        fill="none"
-        stroke={color}
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle cx={last.x} cy={last.y} r={3} fill={color} />
-    </svg>
-  );
-}

@@ -52,7 +52,7 @@ export function ApiTokensSection({ tokens }: { tokens: ApiTokenSummary[] }) {
             <button
               type="button"
               onClick={copyToken}
-              className="shrink-0 rounded-md border border-accent-border bg-surface px-3 py-2 text-xs font-semibold text-accent hover:bg-bg"
+              className="shrink-0 rounded-md border border-accent-border bg-surface px-3 py-2 text-xs font-semibold text-accent transition-colors hover:bg-bg"
             >
               {copied ? "Copied" : "Copy"}
             </button>
@@ -86,8 +86,12 @@ export function ApiTokensSection({ tokens }: { tokens: ApiTokenSummary[] }) {
 
       {tokens.length > 0 && (
         <div className="divide-y divide-border rounded-lg border border-border">
-          {tokens.map((t) => (
-            <div key={t.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+          {tokens.map((t, i) => (
+            <div
+              key={t.id}
+              style={{ animationDelay: `${i * 35}ms` }}
+              className="animate-fade-in-up flex items-center justify-between gap-3 px-4 py-2.5"
+            >
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-text">{t.label}</p>
                 <p className="text-xs text-text-faint">
@@ -100,7 +104,7 @@ export function ApiTokensSection({ tokens }: { tokens: ApiTokenSummary[] }) {
                 <button
                   type="button"
                   onClick={() => revokeApiToken(t.id)}
-                  className="shrink-0 text-xs font-medium text-text-faint hover:text-negative"
+                  className="shrink-0 text-xs font-medium text-text-faint transition-colors hover:text-negative"
                 >
                   Revoke
                 </button>

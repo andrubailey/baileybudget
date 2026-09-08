@@ -1,22 +1,17 @@
 // A category's color used to depend on its rank by spend this period, so the
 // same category could shift color between "This month" and "Year to date."
 // Hashing the id into a fixed palette keeps one category one color everywhere.
-// Ten hues rotated at roughly constant muted chroma/lightness (matching the
-// accent's desaturated character) instead of a mixed-brightness categorical
-// kit — a real designed palette keeps saturation and value consistent and
-// varies hue, rather than throwing together whatever bright colors were on
-// hand.
+// Five quiet, closely-related tones rather than a ten-color wheel — the
+// name and icon are what actually identify a category; the dot only needs
+// to be different enough from its neighbors to scan, not to shout. A bit
+// more saturated than the first pass so the dot itself reads at a glance
+// (that's its whole job, at this size) instead of needing a second look.
 const PALETTE = [
-  "#6b7f3f",
-  "#a3492f",
-  "#3f6e7d",
-  "#8f6b3f",
-  "#6b5490",
-  "#4a7a5f",
-  "#9c6b1f",
-  "#5f6b8f",
-  "#8f4a6b",
-  "#7a8f4a",
+  "#2e8f63",
+  "#a17a2e",
+  "#2e6f8f",
+  "#9c2e63",
+  "#7a9c2e",
 ];
 
 export function getCategoryColor(categoryId: string): string {

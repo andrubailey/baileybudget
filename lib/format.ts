@@ -28,15 +28,15 @@ export function formatDate(iso: string): string {
 
 // Red under a third of the way to goal, amber in the middle third, green in the final third.
 export function progressColor(pct: number): string {
-  if (pct < 33) return "#a3492f";
-  if (pct < 66) return "#9c6b1f";
-  return "#4a7a3e";
+  if (pct < 33) return "var(--negative)";
+  if (pct < 66) return "var(--caution)";
+  return "var(--positive)";
 }
 
 // Inverse of progressColor: for "% of budget spent" style bars, where LOW is
 // good and going over is bad, not the "closer to goal is better" case above.
 export function spendColor(pct: number): string {
-  if (pct < 70) return "#4a7a3e";
-  if (pct < 100) return "#9c6b1f";
-  return "#a3492f";
+  if (pct < 70) return "var(--positive)";
+  if (pct < 100) return "var(--caution)";
+  return "var(--negative)";
 }

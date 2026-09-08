@@ -1,14 +1,14 @@
 "use client";
 
-import Link from "next/link";
-import { Fragment, useState, useTransition } from "react";
-import { upsertBudgetLine } from "@/app/actions";
+import { Fragment } from "react";
 import { getCategoryIcon } from "@/lib/category-icons";
-import { formatMoney } from "@/lib/format";
 import type { Period } from "@/lib/types";
 import type { BudgetGridRow } from "@/lib/queries";
-import { EmptyState } from "@/app/(app)/empty-state";
+import { GridCell } from "./grid-cell";
 
+// Full categories × months matrix — a lot to take in at once, so this only
+// renders inside the Budgets page's collapsed-by-default "past months"
+// section rather than being the page's default view.
 export function BudgetGrid({
   rows,
   periods,
@@ -16,6 +16,13 @@ export function BudgetGrid({
   rows: BudgetGridRow[];
   periods: Period[];
 }) {
+  const sorted = [...rows].sort(
+    (a, b) =>
+      (a.category.group_name ?? "").localeCompare(
+        b.category.group_name ?? "",
+      ) || a.category.name.localeCompare(b.category.name),
+  );
+
   return (
     <div className="overflow-x-auto rounded-xl border border-border bg-surface shadow-card">
       <table className="w-full text-left">
@@ -32,120 +39,49 @@ export function BudgetGrid({
                 {p.name}
               </th>
             ))}
-            <th className="sticky top-0 z-10 bg-bg px-4 py-2 text-xs font-medium whitespace-nowrap text-text-muted">
-              Total
-            </th>
           </tr>
         </thead>
         <tbody>
-          {[...rows]
-            .sort(
-              (a, b) =>
-                (a.category.group_name ?? "").localeCompare(
-                  b.category.group_name ?? "",
-                ) || a.category.name.localeCompare(b.category.name),
-            )
-            .map((row, i, sorted) => {
-              const total = periods.reduce(
-                (sum, p) => sum + (row.plannedByPeriod.get(p.id) ?? 0),
-                0,
-              );
-              const showGroupHeader =
-                row.category.group_name &&
-                sorted[i - 1]?.category.group_name !== row.category.group_name;
-              return (
-                <Fragment key={row.category.id}>
-                  {showGroupHeader && (
-                    <tr>
-                      <td
-                        colSpan={periods.length + 2}
-                        className="sticky left-0 z-10 bg-bg px-6 py-1.5 text-xs font-semibold uppercase tracking-wide text-text-faint"
-                      >
-                        {row.category.group_name}
-                      </td>
-                    </tr>
-                  )}
-                  <tr className="border-b border-border last:border-b-0">
-                    <td className="sticky left-0 z-10 bg-surface px-6 py-2">
-                      <div className="flex items-center gap-2 whitespace-nowrap text-sm font-medium text-text">
-                        <span>{getCategoryIcon(row.category.name)}</span>
-                        {row.category.name}
-                      </div>
-                    </td>
-                    {periods.map((p) => (
-                      <GridCell
-                        key={p.id}
-                        categoryId={row.category.id}
-                        periodId={p.id}
-                        initialValue={row.plannedByPeriod.get(p.id) ?? 0}
-                      />
-                    ))}
-                    <td className="tabular px-4 py-2 text-sm font-medium text-text-muted">
-                      {formatMoney(total)}
+          {sorted.map((row, i) => {
+            const showGroupHeader =
+              row.category.group_name &&
+              sorted[i - 1]?.category.group_name !== row.category.group_name;
+            return (
+              <Fragment key={row.category.id}>
+                {showGroupHeader && (
+                  <tr>
+                    <td
+                      colSpan={periods.length + 1}
+                      className="sticky left-0 z-10 bg-bg px-6 py-1.5 text-xs font-semibold uppercase tracking-wide text-text-faint"
+                    >
+                      {row.category.group_name}
                     </td>
                   </tr>
-                </Fragment>
-              );
-            })}
-          {rows.length === 0 && (
-            <tr>
-              <td colSpan={periods.length + 2} className="px-6 py-4">
-                <EmptyState
-                  message="No expense categories yet."
-                  action={
-                    <Link
-                      href="/transactions?view=categories"
-                      className="text-xs text-accent underline underline-offset-2"
-                    >
-                      Add one
-                    </Link>
-                  }
-                />
-              </td>
-            </tr>
-          )}
+                )}
+                <tr
+                  style={{ animationDelay: `${i * 25}ms` }}
+                  className="group animate-fade-in-up border-b border-border transition-colors last:border-b-0 hover:bg-bg"
+                >
+                  <td className="sticky left-0 z-10 bg-surface px-6 py-2 transition-colors group-hover:bg-bg">
+                    <div className="flex items-center gap-2 whitespace-nowrap text-sm font-medium text-text">
+                      <span>{getCategoryIcon(row.category.name, row.category.icon)}</span>
+                      {row.category.name}
+                    </div>
+                  </td>
+                  {periods.map((p) => (
+                    <GridCell
+                      key={p.id}
+                      categoryId={row.category.id}
+                      periodId={p.id}
+                      initialValue={row.plannedByPeriod.get(p.id) ?? 0}
+                    />
+                  ))}
+                </tr>
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>
-  );
-}
-
-function GridCell({
-  categoryId,
-  periodId,
-  initialValue,
-}: {
-  categoryId: string;
-  periodId: string;
-  initialValue: number;
-}) {
-  const [value, setValue] = useState(initialValue ? String(initialValue) : "");
-  const [, startTransition] = useTransition();
-  // Brief highlight after a blur-triggered save resolves — these cells save
-  // silently otherwise, with nothing to tell you the edit actually landed.
-  const [justSaved, setJustSaved] = useState(false);
-
-  function save() {
-    const amount = Number(value || 0);
-    startTransition(async () => {
-      await upsertBudgetLine(categoryId, periodId, amount);
-      setJustSaved(true);
-      setTimeout(() => setJustSaved(false), 1200);
-    });
-  }
-
-  return (
-    <td className="px-4 py-2">
-      <input
-        type="number"
-        step="0.01"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={save}
-        className={`tabular w-24 rounded-md border bg-bg px-2 py-1 text-sm text-text outline-none transition-colors focus:border-accent ${
-          justSaved ? "border-success" : "border-border"
-        }`}
-      />
-    </td>
   );
 }

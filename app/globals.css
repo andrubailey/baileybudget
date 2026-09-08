@@ -65,42 +65,42 @@
      for hairline card edges) is too pale to do. */
   --neutral-track: #dde1d8;
 
-  /* These five hues intentionally share the accent's muted, low-chroma
-     character (the accent itself is a desaturated olive, not a bright
-     saturated green) instead of the high-chroma, high-value hues a generic
-     status-color kit reaches for — that mismatched brightness against one
-     lonely bolted-on brand color was the whole tell. Positive in particular
-     shares a hue family with --accent on purpose: a designed product
-     shouldn't carry two unrelated greens (a brand green and a separate
-     "success" green) that just happen to both be present. Every -bg tint
-     below is that hue blended toward --bg (not an unrelated pastel picked
-     on its own), so each role reads as one coherent color at every tier. */
-  --positive: #4a7a3e;
-  --positive-strong: #33582b;
-  --positive-bg: #e6ebe0;
-  --positive-border: #c6d4bb;
+  /* Minimal palette: only two judgment colors exist (positive/negative),
+     one caution amber between them, and everything else that isn't a true
+     gain/loss stays neutral gray rather than getting its own hue. Fewer
+     colors, each one meaning something, reads as minimal; a hue for every
+     occasion doesn't. Nudged more vivid than the first pass, though — the
+     point of these three is to be spotted at a glance (over budget, a debt
+     balance, income landing), and a color you have to look twice at to
+     register isn't doing that job. Still nowhere near neon; just enough
+     saturation to read instantly instead of blending into the neutral UI. */
+  --positive: #1f9d5c;
+  --positive-strong: #146b3d;
+  --positive-bg: #dcede2;
+  --positive-border: #a8d9bb;
 
-  --caution: #9c6b1f;
-  --caution-strong: #6e4c15;
-  --caution-bg: #ede4d3;
-  --caution-border: #d7c29b;
+  --caution: #d68f0a;
+  --caution-strong: #8f5c08;
+  --caution-bg: #f5e6c7;
+  --caution-border: #e8c778;
 
-  --negative: #a3492f;
-  --negative-strong: #7a3520;
-  --negative-bg: #efe0da;
-  --negative-border: #d9b7a8;
+  --negative: #d1452a;
+  --negative-strong: #9c341f;
+  --negative-bg: #f5ddd5;
+  --negative-border: #e8b39f;
 
-  --projected: #6b5490;
-  --projected-strong: #4c3c68;
-  --projected-bg: #e6e1ec;
-  --projected-border: #c9bcd6;
+  /* Not a real gain or loss (a forecasted number, a bill that hasn't
+     posted, money moving between the household's own accounts) — these
+     used to each get their own hue. A minimal palette doesn't invent a
+     new color for every category of fact; it stays quiet (neutral) and
+     lets an icon or label carry the distinction instead. */
+  --projected: var(--text-muted);
+  --projected-strong: var(--text-2);
+  --projected-bg: var(--border);
+  --projected-border: var(--border);
 
-  /* Not one of the 5 states above, but a real recurring financial
-     fact this app renders constantly: money moving between the
-     household's own accounts. Neither a gain nor a loss, so it gets
-     its own hue rather than being forced into neutral gray or green. */
-  --transfer: #3f6e7d;
-  --transfer-bg: #dee6e5;
+  --transfer: var(--text-muted);
+  --transfer-bg: var(--border);
 
   /* Generic UI aliases — form validation, focus rings, anything that
      isn't stating a fact about money. Prefer the roles above for
@@ -117,15 +117,17 @@
   --hero-text-muted: rgba(255, 255, 255, 0.65);
   --hero-border: rgba(255, 255, 255, 0.12);
 
-  /* Colorful stat-tile palette for budget/category progress tiles and the
-     Money Flow chart — each tile pairs a background with its own text color
-     so tiles read well regardless of how dark/light the fill is. */
-  --tile-1-bg: #0b3d2e;
+  /* Stat-tile palette for budget/category progress tiles and the Money Flow
+     chart — a dark neutral, the one brand accent, and a light neutral,
+     instead of three unrelated saturated hues. One deliberate color moment
+     (tile-2, the accent) reads as confident; three competing hues reads as
+     decoration. */
+  --tile-1-bg: #16241f;
   --tile-1-text: #ffffff;
-  --tile-2-bg: #b6f227;
+  --tile-2-bg: var(--accent-bright);
   --tile-2-text: #1a2e05;
-  --tile-3-bg: #99f6e4;
-  --tile-3-text: #0f3d3a;
+  --tile-3-bg: var(--border);
+  --tile-3-text: var(--text);
 }
 
 /* Dark mode — follows the OS/browser preference (no in-app toggle yet).
@@ -377,37 +379,34 @@ body {
   animation: modal-panel-in 150ms ease-out;
 }
 
-/* Chat popup — grows in from the bubble that opened it (bottom-right
-   anchored) instead of the generic center-modal fade, so it reads as "this
-   panel came from that button" rather than appearing out of nowhere. */
-@keyframes chat-popup-in {
+/* Modal exit — the reverse, played while the panel is held mounted a beat
+   longer (see the "closing" state pattern used for this) so it actually has
+   something to animate instead of just vanishing. */
+@keyframes modal-backdrop-out {
   from {
-    opacity: 0;
-    transform: translateY(12px) scale(0.92);
+    opacity: 1;
   }
   to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
+    opacity: 0;
   }
 }
-.animate-chat-popup {
-  transform-origin: bottom right;
-  animation: chat-popup-in 200ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-@keyframes chat-popup-out {
+@keyframes modal-panel-out {
   from {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
   to {
     opacity: 0;
-    transform: translateY(12px) scale(0.92);
+    transform: translateY(4px) scale(0.98);
   }
 }
-.animate-chat-popup-out {
-  transform-origin: bottom right;
-  animation: chat-popup-out 150ms cubic-bezier(0.4, 0, 1, 1) forwards;
+.animate-modal-backdrop-out {
+  animation: modal-backdrop-out 120ms ease-in forwards;
 }
+.animate-modal-panel-out {
+  animation: modal-panel-out 120ms ease-in forwards;
+}
+
 .animate-toast-in {
   animation: toast-in 150ms ease-out;
 }
@@ -477,7 +476,10 @@ body {
   }
 }
 .animate-fade-in-up {
-  animation: fade-in-up 400ms ease-out backwards;
+  /* Short enough that page-to-page navigation (PageTransition remounts this
+     on every route change) reads as snappy, not sluggish, while still
+     giving a soft entrance instead of a hard cut. */
+  animation: fade-in-up 180ms ease-out backwards;
 }
 
 /* Confetti burst — see Celebration component. Each piece drifts/rotates by
@@ -577,8 +579,8 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .animate-modal-backdrop,
   .animate-modal-panel,
-  .animate-chat-popup,
-  .animate-chat-popup-out,
+  .animate-modal-backdrop-out,
+  .animate-modal-panel-out,
   .animate-toast-in,
   .animate-toast-out,
   .animate-bar-grow,

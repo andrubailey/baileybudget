@@ -3,7 +3,7 @@ import { getAccountsWithBalances } from "@/lib/queries";
 import { BANK_OPTIONS } from "@/lib/types";
 import { AccountList } from "./account-list";
 import { AddAccountForm } from "./add-account-form";
-import { QuickAddTransferButton } from "@/app/(app)/quick-add-transfer";
+import { AddTransferButton } from "./add-transfer-button";
 
 export default async function AccountsPage() {
   const [accounts, periods] = await Promise.all([
@@ -25,23 +25,13 @@ export default async function AccountsPage() {
       <div className="flex flex-wrap items-start gap-2">
         <AddAccountForm />
         {period && (
-          <QuickAddTransferButton
+          <AddTransferButton
             periodId={period.id}
             accounts={accounts.filter((a) => a.is_active)}
-            renderTrigger={(open) => (
-              <button
-                type="button"
-                onClick={open}
-                className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-text-muted transition-colors hover:bg-bg"
-              >
-                + Add transfer
-              </button>
-            )}
           />
         )}
       </div>
 
-      <p className="text-xs text-text-faint">Drag a card to reorder your accounts.</p>
       <AccountList accounts={accounts} bankOptions={BANK_OPTIONS} />
     </div>
   );

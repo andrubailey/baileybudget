@@ -49,6 +49,7 @@ export function NewTransactionButton({
   variant = "full",
   menuAlign = "left",
   menuPosition = "below",
+  initialContext,
 }: {
   collapsed?: boolean;
   // "icon" is a compact circular trigger for tight spaces (the mobile top
@@ -60,8 +61,15 @@ export function NewTransactionButton({
   // "above" for triggers anchored to the bottom of the screen, so the
   // picker doesn't try to open off the bottom edge of the viewport.
   menuPosition?: "above" | "below";
+  // Skips the client-side getQuickAddContext() round trip entirely — pass
+  // this when the page rendering this button already fetched periods/
+  // accounts/categories server-side (most page-level usages), so the button
+  // doesn't sit hidden for a beat after first paint waiting on its own fetch
+  // of data the page already has. Left unset for chrome (sidebar/mobile nav)
+  // that has no server-rendered data of its own to hand down.
+  initialContext?: Context;
 }) {
-  const [context, setContext] = useState<Context | null>(null);
+  const [context, setContext] = useState<Context | null>(initialContext ?? null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const openers = useRef<Record<"expense" | "income" | "transfer", () => void>>({
     expense: () => {},
@@ -70,10 +78,12 @@ export function NewTransactionButton({
   });
 
   useEffect(() => {
+    if (initialContext) return;
     getQuickAddContext().then(setContext);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only ever fetches once on mount when no initialContext was provided; initialContext itself isn't expected to change across renders
   }, []);
 
-  // Lets the global keyboard shortcuts (see CommandPalette — "n" opens the
+  // Lets the global keyboard shortcuts (see GlobalShortcuts — "n" opens the
   // picker, ⌘E/⌘I/⌘T jump straight to a specific type) trigger this from
   // anywhere in the app, without the two components needing a shared parent
   // to coordinate through.
@@ -111,7 +121,7 @@ export function NewTransactionButton({
         <button
           type="button"
           onClick={() => setPickerOpen((v) => !v)}
-          className="flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent/90"
+          className="flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-accent/90"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
             <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth={2} strokeLinecap="round" />
@@ -155,7 +165,7 @@ export function NewTransactionButton({
                   setPickerOpen(false);
                   openers.current[o.key]();
                 }}
-                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm font-medium text-text hover:bg-bg"
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm font-medium text-text transition-colors hover:bg-bg"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={o.color}>
                   {o.icon}

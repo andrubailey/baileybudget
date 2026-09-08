@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "@/app/actions";
-import { LogoMark } from "@/app/(app)/logo-mark";
 import { PresenceIndicator } from "@/app/(app)/presence-indicator";
 import { ProfileModal } from "@/app/(app)/profile-modal";
 import { getAvatarColors } from "@/lib/avatar-colors";
@@ -192,14 +191,11 @@ export function Sidebar({
       <div
         className={`flex h-[72px] shrink-0 items-center gap-2 px-5 ${collapsed ? "justify-center" : ""}`}
       >
-        <LogoMark size={32} />
-        <span
-          className={`overflow-hidden truncate text-lg font-bold tracking-tight text-hero-text transition-[max-width,opacity] duration-150 ${
-            collapsed ? "max-w-0 opacity-0" : "max-w-[160px] flex-1 opacity-100"
-          }`}
-        >
-          Bailey<span className="text-accent">Budget</span>
-        </span>
+        {!collapsed && (
+          <span className="flex-1 truncate text-lg font-bold tracking-tight text-hero-text">
+            Bailey <span className="text-accent">Budget</span>
+          </span>
+        )}
         <button
           type="button"
           onClick={toggle}

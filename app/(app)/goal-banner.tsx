@@ -63,7 +63,7 @@ export function GoalBanner({
         </p>
         <Link
           href="/goals"
-          className="mt-4 inline-flex items-center rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-hero-bg hover:bg-white/90"
+          className="mt-4 inline-flex items-center rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-hero-bg transition-colors hover:bg-white/90"
         >
           Create a goal
         </Link>

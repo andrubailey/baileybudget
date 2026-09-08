@@ -2,60 +2,47 @@ import { Sidebar } from "./sidebar";
 import { MobileNav } from "./mobile-nav";
 import { MobileTabBar } from "./mobile-tab-bar";
 import { ToastProvider } from "./toast";
-import { CommandPalette } from "./command-palette";
+import { GlobalShortcuts } from "./global-shortcuts";
 import { PullToRefresh } from "./pull-to-refresh";
 import { PageTransition } from "./page-transition";
 import { FinancesChat } from "./finances-chat";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentSession, getCurrentUserProfile } from "@/lib/profile";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
-  // getSession() reads the JWT straight from cookies with no network call,
-  // unlike getUser() which re-validates against the auth server every time.
-  // That revalidation already happened once in proxy.ts's middleware for
-  // every request that reaches this layout — redoing it here just to read
-  // an email for display was a second full auth round-trip on every single
-  // page load. Run it alongside the count query instead of blocking first.
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  // getCurrentSession() reads the JWT straight from cookies with no network
+  // call, unlike getUser() which re-validates against the auth server every
+  // time — that revalidation already happened once in proxy.ts's middleware
+  // for every request that reaches this layout. It's also cache()-wrapped,
+  // so the dashboard page below (which needs the same session for its own
+  // greeting) reuses this exact call instead of re-fetching it.
+  const [session, { count: pendingApprovalCount, error: pendingApprovalError }] =
+    await Promise.all([
+      getCurrentSession(),
+      // Best-effort: a nav badge count should never take down every page in
+      // the app if the query fails (e.g. a migration not yet run in this
+      // database).
+      supabase
+        .from("transactions")
+        .select("id", { count: "exact", head: true })
+        .eq("pending_approval", true)
+        .is("deleted_at", null),
+    ]);
   const user = session?.user ?? null;
-
-  const [
-    { count: pendingApprovalCount, error: pendingApprovalError },
-    { data: profile, error: profileError },
-  ] = await Promise.all([
-    // Best-effort: a nav badge count should never take down every page in
-    // the app if the query fails (e.g. a migration not yet run in this
-    // database).
-    supabase
-      .from("transactions")
-      .select("id", { count: "exact", head: true })
-      .eq("pending_approval", true)
-      .is("deleted_at", null),
-    // Same best-effort treatment — the profiles table migration is manual,
-    // so a household that hasn't run it yet should just see the
-    // email-derived fallback instead of a crashed sidebar.
-    user
-      ? supabase
-          .from("profiles")
-          .select("display_name, avatar_url")
-          .eq("id", user.id)
-          .maybeSingle()
-      : Promise.resolve({ data: null, error: null }),
-  ]);
+  // Same cache()-wrapped dedup as the session above — the dashboard page
+  // asks for this same household's profile row moments later in the same
+  // request.
+  const profile = user ? await getCurrentUserProfile(user.id) : null;
   if (pendingApprovalError) {
     console.error("pending_approval count query failed:", pendingApprovalError);
-  }
-  if (profileError) {
-    console.error("profile query failed:", profileError);
   }
 
   const navCounts = { "/transactions": pendingApprovalError ? 0 : (pendingApprovalCount ?? 0) };
 
   return (
     <ToastProvider>
-      <CommandPalette />
+      <GlobalShortcuts />
       <div className="flex min-h-full flex-1 flex-col lg:flex-row">
         <MobileNav counts={navCounts} />
         <Sidebar

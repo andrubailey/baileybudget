@@ -68,6 +68,10 @@ export function AddAccountForm() {
           ))}
         </select>
       </div>
+      <label className="flex items-center gap-2 self-end pb-2.5 text-sm text-text sm:col-span-1">
+        <input type="checkbox" name="is_business" className="h-4 w-4 accent-[var(--accent)]" />
+        Business account
+      </label>
       <div className="flex gap-2 sm:col-span-4">
         <button
           type="submit"
