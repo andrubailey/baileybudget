@@ -1,13 +1,14 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useRef, useState } from "react";
 import {
   removeAccountLogo,
   updateAccountDetails,
   uploadAccountLogo,
-  reorderAccounts,
 } from "@/app/actions";
-import { formatMoney, progressColor } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
+import { Money } from "@/app/(app)/money";
+import { SegmentedProgress } from "@/app/(app)/segmented-progress";
 import type { AccountWithBalance } from "@/lib/queries";
 import {
   ACCOUNT_TYPE_LABELS,
@@ -34,12 +35,9 @@ export function AccountList({
   accounts: AccountWithBalance[];
   bankOptions: readonly string[];
 }) {
-  const [order, setOrder] = useState(accounts);
-  // Server actions here (the edit modal's save, add, reorder) all revalidate
-  // and hand this component a fresh `accounts` prop — without this, `order`
-  // would stay frozen at whatever it was on mount and every save would show
-  // a success toast while the card kept displaying the old value until a
-  // manual page reload.
+  // Server actions here (the edit modal's save, add) all revalidate and hand
+  // this component a fresh `accounts` prop — this only exists to diff that
+  // against what was last shown, for the celebration check below.
   const [lastAccounts, setLastAccounts] = useState(accounts);
   const { celebrationKey, fire } = useCelebration();
   if (accounts !== lastAccounts) {
@@ -59,24 +57,17 @@ export function AccountList({
     });
     if (worthCelebrating) fire();
     setLastAccounts(accounts);
-    setOrder(accounts);
   }
-  const [draggedId, setDraggedId] = useState<string | null>(null);
   const [showDeactivated, setShowDeactivated] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [, startTransition] = useTransition();
   const showToast = useToast();
 
-  const deactivatedCount = order.filter((a) => !a.is_active).length;
-  const visible = showDeactivated ? order : order.filter((a) => a.is_active);
-  const editingAccount = order.find((a) => a.id === editingId) ?? null;
+  const deactivatedCount = accounts.filter((a) => !a.is_active).length;
+  const visible = showDeactivated ? accounts : accounts.filter((a) => a.is_active);
+  const editingAccount = accounts.find((a) => a.id === editingId) ?? null;
 
   // Business first, then Personal, then Debt — same split as the dashboard's
-  // Accounts card. Drag-to-reorder still writes into the one shared `order`
-  // array underneath; grouping only changes how it's rendered; is_debt/
-  // is_business decide a card's section regardless of where in `order` it
-  // sits, so dragging can reorder within a section but can't drag a card
-  // into a different one.
+  // Accounts card.
   const groups: {
     key: string;
     label: string;
@@ -95,29 +86,7 @@ export function AccountList({
     { key: "debt", label: "Debt", accounts: visible.filter((a) => a.is_debt) },
   ].filter((g) => g.accounts.length > 0);
 
-  function handleDragOver(e: React.DragEvent, overId: string) {
-    e.preventDefault();
-    if (!draggedId || draggedId === overId) return;
-
-    setOrder((current) => {
-      const fromIndex = current.findIndex((a) => a.id === draggedId);
-      const toIndex = current.findIndex((a) => a.id === overId);
-      if (fromIndex === -1 || toIndex === -1) return current;
-      const next = [...current];
-      const [moved] = next.splice(fromIndex, 1);
-      next.splice(toIndex, 0, moved);
-      return next;
-    });
-  }
-
-  function handleDrop() {
-    setDraggedId(null);
-    startTransition(() => {
-      reorderAccounts(order.map((a) => a.id));
-    });
-  }
-
-  if (order.length === 0) {
+  if (accounts.length === 0) {
     return <EmptyState message="No accounts yet — add your first one above." />;
   }
 
@@ -159,25 +128,33 @@ export function AccountList({
                 a.low_balance_alert !== null &&
                 a.balance < a.low_balance_alert;
               const loginUrl = a.login_url || defaultLoginUrl(a.bank);
+              const paidOff = a.is_debt && a.balance <= 0;
+              const metaParts = [
+                a.account_type ? ACCOUNT_TYPE_LABELS[a.account_type] : null,
+                a.is_business ? "Business" : null,
+                a.is_debt ? "Debt" : null,
+              ].filter((p): p is string => p !== null);
               return (
                 <div
                   key={a.id}
-                  draggable
-                  onDragStart={() => setDraggedId(a.id)}
-                  onDragOver={(e) => handleDragOver(e, a.id)}
-                  onDrop={handleDrop}
-                  onDragEnd={handleDrop}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setEditingId(a.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setEditingId(a.id);
+                    }
+                  }}
+                  aria-label={`Edit ${a.name}`}
                   style={{ animationDelay: `${i * 40}ms` }}
-                  className={`card-hover animate-fade-in-up cursor-grab rounded-xl border border-border bg-surface p-5 shadow-card sm:p-6 active:cursor-grabbing ${
-                    draggedId === a.id ? "opacity-50" : ""
+                  className={`card-hover animate-fade-in-up cursor-pointer rounded-xl border border-border bg-surface p-5 shadow-card sm:p-6 ${
+                    !a.is_active ? "opacity-70" : ""
                   }`}
                 >
-                  {/* Same icon-top-left, label-block-below layout as the
-                  Overview dashboard's metric cards — one neutral icon style
-                  for every account instead of a per-type color accent. */}
                   <div className="flex items-start justify-between">
                     {a.logo_url ? (
-                      <span className="inline-flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-white">
+                      <span className="inline-flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-white">
                         {/* eslint-disable-next-line @next/next/no-img-element -- user-uploaded storage URL, not a local/known-domain asset */}
                         <img
                           src={a.logo_url}
@@ -188,10 +165,10 @@ export function AccountList({
                     ) : a.bank ? (
                       <BankLogo bank={a.bank} size="lg" />
                     ) : (
-                      <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-bg text-text-muted">
+                      <span className="flex size-14 shrink-0 items-center justify-center rounded-md bg-bg text-text-muted">
                         <svg
-                          width="16"
-                          height="16"
+                          width="20"
+                          height="20"
                           viewBox="0 0 24 24"
                           fill="none"
                         >
@@ -204,69 +181,37 @@ export function AccountList({
                         </svg>
                       </span>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => setEditingId(a.id)}
-                      aria-label={`Edit ${a.name}`}
-                      className="flex size-10 shrink-0 items-center justify-center rounded-lg text-text-faint transition-colors hover:bg-bg hover:text-text"
-                    >
-                      <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                      >
-                        <path
-                          d="M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5M18.4 3.6a2 2 0 1 1 2.8 2.8L12 15.6l-4 1 1-4 9.4-8.4Z"
-                          stroke="currentColor"
-                          strokeWidth={1.6}
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-
-                  <p className="mt-3 truncate font-medium text-text">
-                    {a.name}
-                  </p>
-
-                  {(a.account_type ||
-                    a.is_debt ||
-                    a.is_business ||
-                    !a.is_active) && (
-                    <div className="mt-1.5 flex flex-wrap gap-1.5">
-                      {a.account_type && (
-                        <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] font-semibold text-text-faint">
-                          {ACCOUNT_TYPE_LABELS[a.account_type]}
-                        </span>
-                      )}
-                      {a.is_business && (
-                        <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] font-semibold text-text-faint">
-                          Business
-                        </span>
-                      )}
-                      {a.is_debt && (
-                        <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] font-semibold text-text-faint">
-                          Debt
-                        </span>
-                      )}
-                      {!a.is_active && (
-                        <span className="rounded-full bg-bg px-1.5 py-0.5 text-[10px] font-semibold text-text-faint">
-                          Deactivated
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  <p className="tabular mt-2.5 text-2xl font-semibold text-text">
-                    {formatMoney(a.balance)}
-                    {a.is_debt && (
-                      <span className="ml-1 text-sm font-normal text-text-faint">
-                        owed
+                    {!a.is_active && (
+                      <span className="rounded-full bg-bg px-1.5 py-0.5 text-[10px] font-semibold text-text-faint">
+                        Deactivated
                       </span>
                     )}
-                  </p>
+                  </div>
+
+                  <div className="mt-3">
+                    <p className="truncate font-semibold text-text">
+                      {a.name}
+                    </p>
+                    {metaParts.length > 0 && (
+                      <p className="mt-0.5 truncate text-xs text-text-faint">
+                        {metaParts.join(" · ")}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="mt-2.5 flex items-baseline gap-1.5">
+                    <Money
+                      amount={a.balance}
+                      variant="balance"
+                      tone={a.is_debt && !paidOff ? "negative" : undefined}
+                      className="text-[28px] leading-[34px] font-bold tracking-[-0.005em] text-text"
+                    />
+                    {a.is_debt && (
+                      <span className="text-sm font-normal text-text-faint">
+                        {paidOff ? "paid off" : "owed"}
+                      </span>
+                    )}
+                  </div>
 
                   {belowAlert && (
                     <StatusPill variant="danger" className="mt-1.5">
@@ -280,6 +225,7 @@ export function AccountList({
                       href={loginUrl}
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
                       className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline"
                     >
                       Log in to {a.bank ?? "bank"} ↗
@@ -288,39 +234,39 @@ export function AccountList({
 
                   {progress !== null && (
                     <div className="mt-4">
-                      <div className="tabular flex justify-between text-xs text-text-faint">
-                        <span>
-                          {formatMoney(a.balance)} / {formatMoney(a.goal!)}
+                      <div className="flex items-baseline justify-between text-xs text-text-faint">
+                        <span className="tabular">
+                          <Money amount={a.balance} /> of{" "}
+                          <Money amount={a.goal!} />
                         </span>
-                        <span>{progress.toFixed(0)}%</span>
+                        <span className="tabular font-semibold text-text">
+                          {progress.toFixed(0)}%
+                        </span>
                       </div>
-                      <div className="mt-1 h-1.5 w-full rounded-full bg-bg">
-                        <div
-                          className="animate-bar-grow-x h-1.5 rounded-full transition-colors duration-300"
-                          style={{
-                            width: `${progress}%`,
-                            backgroundColor: progressColor(progress),
-                          }}
-                        />
-                      </div>
+                      <SegmentedProgress
+                        pct={progress}
+                        overBudget={false}
+                        className="mt-1.5 w-full"
+                      />
                     </div>
                   )}
 
                   {payoffProgress !== null && (
                     <div className="mt-4">
-                      <div className="tabular flex justify-between text-xs text-text-faint">
-                        <span>
-                          {formatMoney(a.balance)} owed /{" "}
-                          {formatMoney(a.starting_balance)} starting
+                      <div className="flex items-baseline justify-between text-xs text-text-faint">
+                        <span className="tabular">
+                          <Money amount={a.balance} /> owed of{" "}
+                          <Money amount={a.starting_balance} /> starting
                         </span>
-                        <span>{payoffProgress.toFixed(0)}% paid off</span>
+                        <span className="tabular font-semibold text-positive">
+                          {payoffProgress.toFixed(0)}%
+                        </span>
                       </div>
-                      <div className="mt-1 h-1.5 w-full rounded-full bg-bg">
-                        <div
-                          className="animate-bar-grow-x h-1.5 rounded-full bg-success"
-                          style={{ width: `${payoffProgress}%` }}
-                        />
-                      </div>
+                      <SegmentedProgress
+                        pct={payoffProgress}
+                        overBudget={false}
+                        className="mt-1.5 w-full"
+                      />
                     </div>
                   )}
                 </div>
@@ -416,25 +362,26 @@ function AccountEditModal({
   }
 
   async function handleSubmit(formData: FormData) {
+    const name = String(formData.get("name") ?? "").trim() || a.name;
     const goalRaw = String(formData.get("goal") ?? "").trim();
     const bank = String(formData.get("bank") ?? "").trim() || null;
     const account_type =
       String(formData.get("account_type") ?? "").trim() || null;
     const login_url = String(formData.get("login_url") ?? "").trim() || null;
-    const lowBalanceRaw = String(
-      formData.get("low_balance_alert") ?? "",
-    ).trim();
     const is_debt = formData.get("is_debt") === "on";
     const is_active = formData.get("is_active") === "on";
     const is_business = formData.get("is_business") === "on";
 
     await updateAccountDetails(a.id, {
+      name,
       goal: goalRaw ? Number(goalRaw) : null,
       bank,
       account_type,
       login_url,
-      low_balance_alert:
-        is_debt || !lowBalanceRaw ? null : Number(lowBalanceRaw),
+      // No longer editable from this form — pass the account's existing
+      // value straight through instead of dropping it every time something
+      // else on the card is saved.
+      low_balance_alert: is_debt ? null : a.low_balance_alert,
       is_debt,
       is_active,
       is_business,
@@ -527,6 +474,17 @@ function AccountEditModal({
             </div>
           </div>
 
+          <div className="space-y-1.5 sm:col-span-2">
+            <label className="text-sm font-medium text-text">Name</label>
+            <input
+              type="text"
+              name="name"
+              required
+              defaultValue={a.name}
+              className={fieldClass}
+            />
+          </div>
+
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-text">Goal</label>
             <input
@@ -585,22 +543,6 @@ function AccountEditModal({
               className={fieldClass}
             />
           </div>
-
-          {!isDebt && (
-            <div className="space-y-1.5 sm:col-span-2">
-              <label className="text-sm font-medium text-text">
-                Low balance alert
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                name="low_balance_alert"
-                defaultValue={a.low_balance_alert ?? ""}
-                placeholder="Alert me below this amount"
-                className={fieldClass}
-              />
-            </div>
-          )}
 
           <label className="flex items-center gap-2 text-sm text-text sm:col-span-2">
             <input

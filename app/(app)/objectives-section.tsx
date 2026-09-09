@@ -16,6 +16,7 @@ import { EmptyState } from "@/app/(app)/empty-state";
 import { Celebration, useCelebration } from "@/app/(app)/celebration";
 import { FIELD_CLASS as fieldClass } from "@/lib/ui";
 import { timeElapsedPct } from "@/lib/objective-progress";
+import { SegmentedProgress } from "@/app/(app)/segmented-progress";
 
 const STATUS_STYLES: Record<string, string> = {
   "Not Started": "bg-bg text-text-faint",
@@ -381,18 +382,7 @@ export function ObjectivesSection({
 
                     {pct !== null && (
                       <div className="mt-3 flex items-center gap-2">
-                        <div className="h-1.5 min-w-0 flex-1 rounded-full bg-bg">
-                          <div
-                            className={`animate-bar-grow-x h-1.5 rounded-full ${pct >= 100 ? "animate-pulse-glow" : ""}`}
-                            style={{
-                              width: `${pct}%`,
-                              backgroundColor:
-                                o.status === "Achieved"
-                                  ? "var(--positive)"
-                                  : "var(--accent)",
-                            }}
-                          />
-                        </div>
+                        <SegmentedProgress pct={pct} overBudget={false} className="w-full" />
                         <span className="tabular shrink-0 text-xs text-text-faint">
                           {accountPct !== null
                             ? `${formatMoney(linkedAccount!.balance)} / ${formatMoney(linkedAccount!.goal!)}`

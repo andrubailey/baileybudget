@@ -11,6 +11,7 @@ export function GridCell({
   periodId,
   initialValue,
   bare = false,
+  cellClassName = "px-4 py-3",
 }: {
   categoryId: string;
   periodId: string;
@@ -18,6 +19,9 @@ export function GridCell({
   // Renders just the <input> with no <td> wrapper, for use outside a table
   // (the mobile card layout puts this in a flex row instead).
   bare?: boolean;
+  // Override the wrapping <td>'s padding — callers with a roomier column
+  // layout than the default table can widen the gap around the input.
+  cellClassName?: string;
 }) {
   const [value, setValue] = useState(initialValue ? String(initialValue) : "");
   // "Copy budget from last month" (or any other bulk write) revalidates and
@@ -74,5 +78,5 @@ export function GridCell({
 
   if (bare) return input;
 
-  return <td className="px-4 py-2">{input}</td>;
+  return <td className={cellClassName}>{input}</td>;
 }

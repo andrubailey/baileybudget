@@ -3,6 +3,7 @@ import { formatMoney } from "@/lib/format";
 import { timeElapsedPct } from "@/lib/objective-progress";
 import type { AccountWithBalance } from "@/lib/queries";
 import type { Objective } from "@/lib/types";
+import { SegmentedProgress } from "@/app/(app)/segmented-progress";
 
 // Full-width CTA at the bottom of the dashboard — surfaces whichever open
 // goal is soonest due (or just-in-progress, if none has a deadline) so the
@@ -80,12 +81,13 @@ export function GoalBanner({
               {featured.name}
             </p>
             <div className="mt-2 flex items-center gap-2">
-              <div className="h-1.5 min-w-0 flex-1 rounded-full bg-white/25">
-                <div
-                  className="animate-bar-grow-x h-1.5 rounded-full bg-white"
-                  style={{ width: `${pct ?? 0}%` }}
-                />
-              </div>
+              <SegmentedProgress
+                pct={pct ?? 0}
+                overBudget={false}
+                color="white"
+                trackClassName="bg-white/25"
+                className="min-w-0 flex-1"
+              />
               <span className="tabular shrink-0 text-xs text-hero-text-muted">
                 {pct !== null ? `${Math.round(pct)}%` : "—"}
               </span>

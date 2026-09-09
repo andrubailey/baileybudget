@@ -28,7 +28,7 @@ export function BudgetGrid({
       <table className="w-full text-left">
         <thead>
           <tr className="border-b border-border bg-bg">
-            <th className="sticky top-0 left-0 z-20 bg-bg px-6 py-2 text-xs font-medium text-text-muted">
+            <th className="sticky top-0 left-0 z-20 bg-bg px-4 py-2 text-xs font-medium text-text-muted">
               Category
             </th>
             {periods.map((p) => (
@@ -52,14 +52,14 @@ export function BudgetGrid({
                   <tr>
                     <td
                       colSpan={periods.length + 1}
-                      className="sticky left-0 z-10 bg-bg px-6 py-1.5 text-xs font-semibold uppercase tracking-wide text-text-faint"
+                      className="sticky left-0 z-10 bg-bg px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-text-faint"
                     >
                       {row.category.group_name}
                     </td>
                   </tr>
                 )}
-                <tr className="group border-b border-border transition-colors last:border-b-0 hover:bg-bg">
-                  <td className="sticky left-0 z-10 bg-surface px-6 py-2 transition-colors group-hover:bg-bg">
+                <tr className="group h-14 border-b border-border transition-colors last:border-b-0 hover:bg-bg even:bg-bg/40">
+                  <td className="sticky left-0 z-10 bg-surface px-4 py-3 transition-colors group-hover:bg-bg">
                     <div className="flex items-center gap-2 whitespace-nowrap text-sm font-medium text-text">
                       <span>{getCategoryIcon(row.category.name, row.category.icon)}</span>
                       {row.category.name}

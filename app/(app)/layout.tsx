@@ -44,7 +44,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <ToastProvider>
       <GlobalShortcuts />
       <div className="flex min-h-full flex-1 flex-col lg:flex-row">
-        <MobileNav counts={navCounts} />
+        <MobileNav />
         <Sidebar
           counts={navCounts}
           userEmail={user?.email ?? null}
@@ -61,7 +61,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </main>
         </div>
         <FinancesChat />
-        <MobileTabBar counts={navCounts} />
+        <MobileTabBar />
       </div>
     </ToastProvider>
   );

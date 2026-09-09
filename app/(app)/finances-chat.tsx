@@ -23,12 +23,18 @@ const MODE_KEY = "finances-chat-mode";
 const DEFAULT_WIDTH = 384;
 const MIN_WIDTH = 300;
 const MAX_WIDTH = 640;
+// Fixed panel height for both the popup and the mobile sheet's content
+// area — a single constant instead of a value that jumps between a bare-bar
+// size and a full conversation size. Everything (welcome message, live
+// results, chat history) scrolls inside this one steady frame, so opening
+// the panel never snaps or resizes out from under you.
+const PANEL_HEIGHT = "min(520px, 70vh)";
 
 const DOCK_ICON_PATH = "M4 4h16v16H4V4Zm11.5 0v16";
 
 const WELCOME: DisplayMessage = {
   role: "assistant",
-  text: 'Tell me what happened and I\'ll log it — one at a time or a whole batch at once. e.g. "Publix $64.20 today, Chick-fil-A $8.75 yesterday, paycheck $2100 on Friday, and transfer $200 from Checking to Savings."',
+  text: "Search for a page or transaction, or tell me what happened and I'll log it.",
 };
 
 const CHAT_ICON_PATH =
@@ -61,38 +67,6 @@ function getSpeechRecognition(): (new () => SpeechRecognitionLike) | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
-function ChatMessages({
-  messages,
-  loading,
-  listening,
-  scrollRef,
-}: {
-  messages: DisplayMessage[];
-  loading: boolean;
-  listening: boolean;
-  scrollRef: React.RefObject<HTMLDivElement | null>;
-}) {
-  return (
-    <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
-      {messages.map((m, i) => (
-        <div
-          key={i}
-          className={`max-w-[90%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap ${
-            m.role === "user" ? "ml-auto bg-accent text-white" : "bg-bg text-text"
-          }`}
-        >
-          {m.text}
-        </div>
-      ))}
-      {loading && (
-        <div className="max-w-[90%] rounded-lg bg-bg px-3 py-2 text-sm text-text-muted">
-          {listening ? "Listening…" : "Logging…"}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // The small "press Enter to go" affordance on the right of every row —
 // mirrors the browser's own ⌘K tab switcher (icon left, label, a hint +
 // arrow chip right) instead of a bare text row.
@@ -112,17 +86,18 @@ function GoArrow() {
   );
 }
 
-// Renders inline where ChatMessages normally goes, swapped in whenever the
-// "Search" toggle is active — a live, keyboard-navigable list of matching
-// pages and transactions instead of the conversation thread, so the one
-// panel serves both purposes without a second modal.
-function SearchResults({
+// Renders inline inside the same scrollable feed as the chat transcript,
+// right below the most recent message — a live, keyboard-navigable list of
+// matching pages and transactions for whatever's currently typed. There's
+// no separate "Search mode" screen it swaps into; this block simply appears
+// while there's a draft and disappears once it's cleared or sent, the same
+// way search results in a messaging app's search field would.
+function InlineResults({
   matches,
   pageMatchCount,
   activeIndex,
   setActiveIndex,
   searching,
-  trimmed,
   onSelect,
 }: {
   matches: Match[];
@@ -130,19 +105,12 @@ function SearchResults({
   activeIndex: number;
   setActiveIndex: (i: number) => void;
   searching: boolean;
-  trimmed: string;
   onSelect: (match: Match) => void;
 }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 py-2">
-      {matches.length === 0 && !searching && (
-        <p className="px-3 py-4 text-center text-sm text-text-faint">
-          {trimmed ? "No matches." : "Type to search pages and transactions."}
-        </p>
-      )}
-
+    <div className="flex flex-col gap-0.5 border-t border-border px-2 pt-2">
       {pageMatchCount > 0 && (
-        <p className="px-3 pt-1.5 pb-0.5 text-[11px] font-semibold tracking-wide text-text-faint uppercase">
+        <p className="px-3 pt-1 pb-0.5 text-[11px] font-semibold tracking-wide text-text-faint uppercase">
           Pages
         </p>
       )}
@@ -229,159 +197,162 @@ function SearchResults({
       {searching && (
         <p className="px-3 py-2 text-center text-xs text-text-faint">Searching transactions…</p>
       )}
+      {!searching && matches.length === 0 && (
+        <p className="px-3 py-2.5 text-center text-xs text-text-faint">
+          No matching pages or transactions — press Enter to ask the assistant instead.
+        </p>
+      )}
     </div>
   );
 }
 
-function ChatInputForm({
+// The scrollable feed shared by every layout (popup/sidebar/mobile) — past
+// chat messages on top, and (while there's a live draft) the matching
+// pages/transactions for it appended right after, in the same scroll
+// region. This is the "back and forth right in the search bar": one
+// continuous surface instead of a chat screen and a search screen that
+// swap places.
+function Feed({
+  messages,
+  loading,
+  listening,
+  scrollRef,
+  trimmedInput,
+  matches,
+  pageMatchCount,
+  activeIndex,
+  setActiveIndex,
+  searching,
+  onSelectMatch,
+}: {
+  messages: DisplayMessage[];
+  loading: boolean;
+  listening: boolean;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+  trimmedInput: string;
+  matches: Match[];
+  pageMatchCount: number;
+  activeIndex: number;
+  setActiveIndex: (i: number) => void;
+  searching: boolean;
+  onSelectMatch: (match: Match) => void;
+}) {
+  return (
+    <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+      <div className="space-y-3 px-4 py-4">
+        {messages.map((m, i) => (
+          <div
+            key={i}
+            className={`max-w-[90%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap ${
+              m.role === "user" ? "ml-auto bg-accent text-white" : "bg-bg text-text"
+            }`}
+          >
+            {m.text}
+          </div>
+        ))}
+        {loading && (
+          <div className="max-w-[90%] rounded-lg bg-bg px-3 py-2 text-sm text-text-muted">
+            {listening ? "Listening…" : "Working on it…"}
+          </div>
+        )}
+      </div>
+      {trimmedInput.length > 0 && (
+        <InlineResults
+          matches={matches}
+          pageMatchCount={pageMatchCount}
+          activeIndex={activeIndex}
+          setActiveIndex={setActiveIndex}
+          searching={searching}
+          onSelect={onSelectMatch}
+        />
+      )}
+    </div>
+  );
+}
+
+// The one input bar, pinned at the bottom of the panel under the feed —
+// always the same shape (textarea + mic + send), no toggle to pick a mode.
+// Enter does whichever thing makes sense (jump to a highlighted result, or
+// ask the assistant if there isn't one); the send button always asks the
+// assistant, for on the rare case there's a result you want to ignore.
+function InputBar({
   input,
   setInput,
   loading,
   listening,
   speechSupported,
-  queryKind,
-  onSetQueryKind,
   onSend,
   onToggleVoice,
-  onSearchKeyDown,
+  onKeyDown,
   inputRef,
-  position = "bottom",
 }: {
   input: string;
   setInput: (v: string) => void;
   loading: boolean;
   listening: boolean;
   speechSupported: boolean;
-  queryKind: "ai" | "search";
-  onSetQueryKind: (k: "ai" | "search") => void;
   onSend: (e: React.FormEvent) => void;
   onToggleVoice: () => void;
-  onSearchKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => boolean;
+  onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   inputRef?: (el: HTMLTextAreaElement | null) => void;
-  // "top" — a Spotlight/⌘K-style search bar leading the panel (used for
-  // Search, the default mode). "bottom" — the usual chat-input position,
-  // anchored near the newest message (used once "Ask AI" is picked).
-  position?: "top" | "bottom";
 }) {
-  // Shown once there's a draft to disambiguate (typed text) or once "Ask AI"
-  // has already been picked — the latter keeps the toggle around after
-  // sending a message clears the input, so switching back to Search doesn't
-  // require closing and reopening the whole panel.
-  const showQueryKindToggle = input.trim().length > 0 || queryKind === "ai";
   return (
     <form
       onSubmit={onSend}
-      className={`flex shrink-0 flex-col gap-2 p-3 ${
-        position === "top" ? "border-b border-border" : "border-t border-border"
-      }`}
+      className="flex shrink-0 items-end gap-2 border-t border-border p-3"
     >
-      {showQueryKindToggle && (
-        <div className="flex gap-1.5">
-          <button
-            type="button"
-            onClick={() => onSetQueryKind("ai")}
-            className={`rounded-full px-2.5 py-1 text-xs font-semibold transition-colors ${
-              queryKind === "ai" ? "bg-accent text-white" : "bg-bg text-text-muted hover:text-text"
-            }`}
-          >
-            ✨ Ask AI
-          </button>
-          <button
-            type="button"
-            onClick={() => onSetQueryKind("search")}
-            className={`rounded-full px-2.5 py-1 text-xs font-semibold transition-colors ${
-              queryKind === "search"
-                ? "bg-accent text-white"
-                : "bg-bg text-text-muted hover:text-text"
-            }`}
-          >
-            🔍 Search
-          </button>
-        </div>
-      )}
-      <div className="relative">
-        {position === "top" && queryKind === "search" && (
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-text-faint"
-          >
+      <textarea
+        ref={inputRef}
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={onKeyDown}
+        rows={1}
+        placeholder="Search, or tell me what happened…"
+        className="w-full flex-1 resize-none rounded-lg border border-border bg-bg px-3 py-2 text-base text-text outline-none focus:border-accent sm:text-sm"
+      />
+      {speechSupported && (
+        <button
+          type="button"
+          onClick={onToggleVoice}
+          aria-label={listening ? "Stop voice input" : "Log by voice"}
+          title={listening ? "Stop voice input" : "Log by voice"}
+          className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${
+            listening
+              ? "bg-negative text-white"
+              : "border border-border text-text-muted hover:bg-bg"
+          }`}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
             <path
-              d="m21 21-4.34-4.34M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"
+              d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0M12 19v2"
               stroke="currentColor"
               strokeWidth={1.8}
               strokeLinecap="round"
               strokeLinejoin="round"
             />
           </svg>
-        )}
-        <textarea
-          ref={inputRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (queryKind === "search" && onSearchKeyDown(e)) return;
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              onSend(e);
-            }
-          }}
-          rows={position === "top" && queryKind === "search" ? 1 : 2}
-          placeholder={
-            queryKind === "search" ? "Search pages or transactions…" : "Log a batch of transactions…"
-          }
-          className={`w-full resize-none rounded-lg border border-border bg-bg py-2 text-base text-text outline-none focus:border-accent sm:text-sm ${
-            position === "top" && queryKind === "search" ? "pr-3 pl-9" : "px-3"
-          }`}
-        />
-      </div>
-      {queryKind === "ai" && (
-        <div className="flex justify-end gap-2">
-          {speechSupported && (
-            <button
-              type="button"
-              onClick={onToggleVoice}
-              aria-label={listening ? "Stop voice input" : "Log by voice"}
-              title={listening ? "Stop voice input" : "Log by voice"}
-              className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${
-                listening
-                  ? "bg-negative text-white"
-                  : "border border-border text-text-muted hover:bg-bg"
-              }`}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0M12 19v2"
-                  stroke="currentColor"
-                  strokeWidth={1.8}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
-          )}
-          <button
-            type="submit"
-            disabled={loading || !input.trim()}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-          >
-            Send
-          </button>
-        </div>
+        </button>
       )}
+      <button
+        type="submit"
+        disabled={loading || !input.trim()}
+        title="Ask the assistant"
+        className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+      >
+        Send
+      </button>
     </form>
   );
 }
 
-// The household's one place to dump a batch of income/expenses/transfers in
-// plain language (typed, pasted, or spoken) instead of filling out the
-// transaction form once per line item. Defaults to a floating chat bubble on
-// desktop — a small anchored popup instead of permanently eating screen
-// width — with an option inside it to switch to the old always-visible
-// right-docked sidebar instead, for whoever prefers that. On mobile (where
-// there's no room for either) the same chat opens as a full-screen sheet.
+// The household's one place to search pages/transactions and to dump a
+// batch of income/expenses/transfers in plain language (typed, pasted, or
+// spoken) instead of filling out the transaction form once per line item.
+// Defaults to a floating chat bubble on desktop — a small anchored popup
+// instead of permanently eating screen width — with an option inside it to
+// switch to the old always-visible right-docked sidebar instead, for
+// whoever prefers that. On mobile (where there's no room for either) the
+// same panel opens as a full-screen sheet.
 export function FinancesChat() {
   const router = useRouter();
   // Starts in the default state (matching the server-rendered HTML) and
@@ -401,11 +372,6 @@ export function FinancesChat() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [listening, setListening] = useState(false);
-  // Whether the current draft is meant to log/ask the AI assistant or to
-  // search pages/transactions — the toggle that appears once typing starts.
-  // Starts as "search" — ⌘K should open a plain search bar, not the AI chat,
-  // until the person explicitly picks "Ask AI" below.
-  const [queryKind, setQueryKind] = useState<"ai" | "search">("search");
   const [txnResults, setTxnResults] = useState<TransactionSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -418,46 +384,33 @@ export function FinancesChat() {
   const speechSupported = getSpeechRecognition() !== null;
 
   const trimmedInput = input.trim();
-  // The desktop popup starts as just a bare search bar (Spotlight-style) and
-  // grows to reveal results once there's something to show them for —
-  // either a query typed, or the AI conversation (which always needs the
-  // full height once picked). Height, not max-height, is what's animated:
-  // a max-height transition on a flex-col with min-h-0 children still lets
-  // the browser's default intrinsic sizing jump instantly, whereas a fixed
-  // height on both ends is what actually tweens smoothly.
-  const searchExpanded = queryKind === "ai" || trimmedInput.length > 0;
   // Every link's label vacuously matches an empty query — without the length
   // guard, opening ⌘K on a blank input dumped the entire sidebar nav as
-  // "results" instead of the empty, type-to-search state (Spotlight/Arc's
-  // ⌘T both start blank and only populate once you type).
+  // results instead of just showing the welcome message.
   const pageMatches =
-    queryKind === "search" && trimmedInput.length > 0
+    trimmedInput.length > 0
       ? ALL_LINKS.filter((link) => link.label.toLowerCase().includes(trimmedInput.toLowerCase()))
       : [];
-  const matches: Match[] =
-    queryKind === "search"
-      ? [
-          ...pageMatches.map((link) => ({
-            type: "page" as const,
-            href: link.href,
-            label: link.label,
-            icon: link.icon,
-          })),
-          ...txnResults.map((result) => ({
-            type: "transaction" as const,
-            href: `/transactions?period=${result.period_id}&highlight=${result.id}`,
-            result,
-          })),
-        ]
-      : [];
+  const matches: Match[] = [
+    ...pageMatches.map((link) => ({
+      type: "page" as const,
+      href: link.href,
+      label: link.label,
+      icon: link.icon,
+    })),
+    ...txnResults.map((result) => ({
+      type: "transaction" as const,
+      href: `/transactions?period=${result.period_id}&highlight=${result.id}`,
+      result,
+    })),
+  ];
 
-  // Reset the active selection whenever the draft or mode changes, adjusted
-  // during render (React's recommended pattern for deriving state off
-  // another value) rather than in an effect.
-  const [lastSearchKey, setLastSearchKey] = useState(`${queryKind}:${trimmedInput}`);
-  const searchKey = `${queryKind}:${trimmedInput}`;
-  if (searchKey !== lastSearchKey) {
-    setLastSearchKey(searchKey);
+  // Reset the active selection whenever the draft changes, adjusted during
+  // render (React's recommended pattern for deriving state off another
+  // value) rather than in an effect.
+  const [lastTrimmedInput, setLastTrimmedInput] = useState(trimmedInput);
+  if (trimmedInput !== lastTrimmedInput) {
+    setLastTrimmedInput(trimmedInput);
     setActiveIndex(0);
   }
 
@@ -465,7 +418,7 @@ export function FinancesChat() {
   // sequence number discards any response that isn't from the latest
   // keystroke.
   useEffect(() => {
-    if (queryKind !== "search" || trimmedInput.length < 2) {
+    if (trimmedInput.length < 2) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- clearing stale results when the debounced search below no longer applies, not deriving render output
       setTxnResults([]);
       setSearching(false);
@@ -481,35 +434,59 @@ export function FinancesChat() {
       }
     }, 250);
     return () => clearTimeout(timer);
-  }, [queryKind, trimmedInput]);
+  }, [trimmedInput]);
 
   function go(match: Match) {
     router.push(match.href);
     setInput("");
     setTxnResults([]);
-    setQueryKind("ai");
-    if (mode === "popup" && popupOpen) closePopup();
-    setMobileOpen(false);
+    if (mode === "popup" && popupOpen) {
+      closePopup();
+    } else if (mobileOpen) {
+      setMobileOpen(false);
+      resetConversation();
+    }
   }
 
-  function handleSearchKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>): boolean {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setActiveIndex((i) => Math.min(i + 1, matches.length - 1));
-      return true;
-    }
-    if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setActiveIndex((i) => Math.max(i - 1, 0));
-      return true;
+  // Called wherever the panel actually closes/hides (popup close, mobile
+  // sheet close, sidebar collapse) — the conversation and draft don't carry
+  // over to the next time it's opened, so every open starts clean rather
+  // than picking up a stale thread from whenever it was last used.
+  function resetConversation() {
+    setMessages([WELCOME]);
+    setInput("");
+    setTxnResults([]);
+    setSearching(false);
+    setActiveIndex(0);
+    apiState.current = [];
+  }
+
+  // Enter is the one "do the obvious thing" key: jump to whatever result is
+  // highlighted if there is one, otherwise ask the assistant. Arrow keys
+  // move the highlight when there's a list to move it through. There's no
+  // mode to switch between first — both live in the same textarea at once.
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (matches.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setActiveIndex((i) => Math.min(i + 1, matches.length - 1));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setActiveIndex((i) => Math.max(i - 1, 0));
+        return;
+      }
     }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       const target = matches[activeIndex];
-      if (target) go(target);
-      return true;
+      if (target) {
+        go(target);
+        return;
+      }
+      handleSend(e);
     }
-    return false;
   }
 
   useEffect(() => {
@@ -538,16 +515,25 @@ export function FinancesChat() {
     }
   }, []);
 
+  function toggle() {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
+      } catch {
+        // ignore
+      }
+      // Collapsing the sidebar hides the panel just like closing the popup
+      // does, so it gets the same fresh start next time it's opened.
+      if (next) resetConversation();
+      return next;
+    });
+  }
+
   // ⌘K / "/" (see GlobalShortcuts) opens this same panel and focuses it —
   // it doubles as the app's search, so there's no separate palette to open.
-  // Each fresh open lands on Search first (not the AI chat) — the toggle
-  // that appears once typing starts is what actually picks "Ask AI" — unless
-  // there's already an AI conversation in progress (more than the initial
-  // welcome message), in which case reopening continues it instead of
-  // bouncing back to search.
   useEffect(() => {
     function handleOpenChat() {
-      if (messages.length <= 1) setQueryKind("search");
       // flushSync forces the panel/sheet's DOM to actually commit before
       // this function continues — a plain setState + requestAnimationFrame
       // raced React's own commit here, so the textarea sometimes wasn't in
@@ -564,7 +550,8 @@ export function FinancesChat() {
     }
     window.addEventListener("budgetapp:open-chat", handleOpenChat);
     return () => window.removeEventListener("budgetapp:open-chat", handleOpenChat);
-  }, [mode, collapsed, messages.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- toggle is a plain function recreated every render (not memoized, to avoid fighting the React Compiler's own memoization); depending on it would just re-subscribe this listener every render for no benefit
+  }, [mode, collapsed]);
 
   function setModeAndPersist(next: "popup" | "sidebar") {
     setMode(next);
@@ -585,12 +572,14 @@ export function FinancesChat() {
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (reducedMotion) {
       setPopupOpen(false);
+      resetConversation();
       return;
     }
     setPopupClosing(true);
     setTimeout(() => {
       setPopupOpen(false);
       setPopupClosing(false);
+      resetConversation();
     }, 150);
   }
 
@@ -643,23 +632,12 @@ export function FinancesChat() {
     };
   }, [mobileOpen]);
 
-  function toggle() {
-    setCollapsed((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
-      } catch {
-        // ignore
-      }
-      return next;
-    });
-  }
-
   async function sendMessage(text: string) {
     if (!text || loading) return;
 
     setMessages((m) => [...m, { role: "user", text }]);
     setInput("");
+    setTxnResults([]);
     setLoading(true);
 
     try {
@@ -736,20 +714,22 @@ export function FinancesChat() {
       {/* Desktop, popup mode (default): opens as a centered modal — like any
           other command palette — instead of a bubble anchored bottom-right.
           There's no floating trigger button; it only appears via ⌘K, "/", or
-          the sidebar search field's ghost ⌘K badge, and always lands on
-          Search first. The chat conversation itself only shows once "Ask AI"
-          is picked in the input form below. */}
+          the sidebar search field's ghost ⌘K badge. Fixed height (see
+          PANEL_HEIGHT), truly centered on the page rather than pinned near
+          the top — safe to do now that the height is constant, since a
+          centered panel that also resized itself would drift up and down
+          every time its content changed. */}
       {mode === "popup" && (popupOpen || popupClosing) && (
         <div
-          className={`fixed inset-0 z-50 hidden items-start justify-center bg-black/40 p-4 pt-[12vh] lg:flex ${
+          className={`fixed inset-0 z-50 hidden items-center justify-center bg-black/40 p-4 lg:flex ${
             popupClosing ? "animate-modal-backdrop-out" : "animate-modal-backdrop"
           }`}
           onClick={closePopup}
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            style={{ height: searchExpanded ? "min(560px, 70vh)" : "128px" }}
-            className={`flex w-full max-w-lg flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-modal transition-[height] duration-300 ease-out ${
+            style={{ height: PANEL_HEIGHT }}
+            className={`flex w-full max-w-lg flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-modal ${
               popupClosing ? "animate-modal-panel-out" : "animate-modal-panel"
             }`}
           >
@@ -805,65 +785,32 @@ export function FinancesChat() {
               </div>
             </div>
 
-            {queryKind === "search" && (
-              <ChatInputForm
-                input={input}
-                setInput={setInput}
-                loading={loading}
-                listening={listening}
-                speechSupported={speechSupported}
-                queryKind={queryKind}
-                onSetQueryKind={setQueryKind}
-                onSend={handleSend}
-                onToggleVoice={toggleVoice}
-                onSearchKeyDown={handleSearchKeyDown}
-                position="top"
-                inputRef={(el) => {
-                  inputRef.current = el;
-                }}
-              />
-            )}
-            {queryKind === "search" ? (
-              <div
-                className={`flex min-h-0 flex-1 flex-col transition-opacity duration-200 ${
-                  searchExpanded ? "opacity-100" : "opacity-0"
-                }`}
-              >
-                <SearchResults
-                  matches={matches}
-                  pageMatchCount={pageMatches.length}
-                  activeIndex={activeIndex}
-                  setActiveIndex={setActiveIndex}
-                  searching={searching}
-                  trimmed={trimmedInput}
-                  onSelect={go}
-                />
-              </div>
-            ) : (
-              <>
-                <ChatMessages
-                  messages={messages}
-                  loading={loading}
-                  listening={listening}
-                  scrollRef={scrollRef}
-                />
-                <ChatInputForm
-                  input={input}
-                  setInput={setInput}
-                  loading={loading}
-                  listening={listening}
-                  speechSupported={speechSupported}
-                  queryKind={queryKind}
-                  onSetQueryKind={setQueryKind}
-                  onSend={handleSend}
-                  onToggleVoice={toggleVoice}
-                  onSearchKeyDown={handleSearchKeyDown}
-                  inputRef={(el) => {
-                    inputRef.current = el;
-                  }}
-                />
-              </>
-            )}
+            <Feed
+              messages={messages}
+              loading={loading}
+              listening={listening}
+              scrollRef={scrollRef}
+              trimmedInput={trimmedInput}
+              matches={matches}
+              pageMatchCount={pageMatches.length}
+              activeIndex={activeIndex}
+              setActiveIndex={setActiveIndex}
+              searching={searching}
+              onSelectMatch={go}
+            />
+            <InputBar
+              input={input}
+              setInput={setInput}
+              loading={loading}
+              listening={listening}
+              speechSupported={speechSupported}
+              onSend={handleSend}
+              onToggleVoice={toggleVoice}
+              onKeyDown={handleKeyDown}
+              inputRef={(el) => {
+                inputRef.current = el;
+              }}
+            />
           </div>
         </div>
       )}
@@ -975,71 +922,43 @@ export function FinancesChat() {
                     stroke="currentColor"
                     strokeWidth={1.8}
                     strokeLinecap="round"
-                    strokeLinejoin="round"
                   />
                 </svg>
               </button>
             </div>
           </div>
 
-          {queryKind === "search" && (
-            <ChatInputForm
-              input={input}
-              setInput={setInput}
-              loading={loading}
-              listening={listening}
-              speechSupported={speechSupported}
-              queryKind={queryKind}
-              onSetQueryKind={setQueryKind}
-              onSend={handleSend}
-              onToggleVoice={toggleVoice}
-              onSearchKeyDown={handleSearchKeyDown}
-              position="top"
-              inputRef={(el) => {
-                inputRef.current = el;
-              }}
-            />
-          )}
-          {queryKind === "search" ? (
-            <SearchResults
-              matches={matches}
-              pageMatchCount={pageMatches.length}
-              activeIndex={activeIndex}
-              setActiveIndex={setActiveIndex}
-              searching={searching}
-              trimmed={trimmedInput}
-              onSelect={go}
-            />
-          ) : (
-            <>
-              <ChatMessages
-                messages={messages}
-                loading={loading}
-                listening={listening}
-                scrollRef={scrollRef}
-              />
-              <ChatInputForm
-                input={input}
-                setInput={setInput}
-                loading={loading}
-                listening={listening}
-                speechSupported={speechSupported}
-                queryKind={queryKind}
-                onSetQueryKind={setQueryKind}
-                onSend={handleSend}
-                onToggleVoice={toggleVoice}
-                onSearchKeyDown={handleSearchKeyDown}
-                inputRef={(el) => {
-                  inputRef.current = el;
-                }}
-              />
-            </>
-          )}
+          <Feed
+            messages={messages}
+            loading={loading}
+            listening={listening}
+            scrollRef={scrollRef}
+            trimmedInput={trimmedInput}
+            matches={matches}
+            pageMatchCount={pageMatches.length}
+            activeIndex={activeIndex}
+            setActiveIndex={setActiveIndex}
+            searching={searching}
+            onSelectMatch={go}
+          />
+          <InputBar
+            input={input}
+            setInput={setInput}
+            loading={loading}
+            listening={listening}
+            speechSupported={speechSupported}
+            onSend={handleSend}
+            onToggleVoice={toggleVoice}
+            onKeyDown={handleKeyDown}
+            inputRef={(el) => {
+              inputRef.current = el;
+            }}
+          />
         </div>
       ))}
 
       {/* Mobile: no room for a permanent column, so a floating button opens
-          the same chat as a full-screen sheet instead. Sits just above the
+          the same panel as a full-screen sheet instead. Sits just above the
           bottom tab bar. */}
       <button
         type="button"
@@ -1065,7 +984,10 @@ export function FinancesChat() {
             <p className="text-base font-semibold text-text">Finances chat</p>
             <button
               type="button"
-              onClick={() => setMobileOpen(false)}
+              onClick={() => {
+                setMobileOpen(false);
+                resetConversation();
+              }}
               aria-label="Close finances chat"
               className="flex size-11 items-center justify-center rounded-lg text-text-faint transition-colors hover:bg-bg hover:text-text"
             >
@@ -1080,59 +1002,32 @@ export function FinancesChat() {
             </button>
           </div>
 
-          {queryKind === "search" && (
-            <ChatInputForm
-              input={input}
-              setInput={setInput}
-              loading={loading}
-              listening={listening}
-              speechSupported={speechSupported}
-              queryKind={queryKind}
-              onSetQueryKind={setQueryKind}
-              onSend={handleSend}
-              onToggleVoice={toggleVoice}
-              onSearchKeyDown={handleSearchKeyDown}
-              position="top"
-              inputRef={(el) => {
-                inputRef.current = el;
-              }}
-            />
-          )}
-          {queryKind === "search" ? (
-            <SearchResults
-              matches={matches}
-              pageMatchCount={pageMatches.length}
-              activeIndex={activeIndex}
-              setActiveIndex={setActiveIndex}
-              searching={searching}
-              trimmed={trimmedInput}
-              onSelect={go}
-            />
-          ) : (
-            <>
-              <ChatMessages
-                messages={messages}
-                loading={loading}
-                listening={listening}
-                scrollRef={mobileScrollRef}
-              />
-              <ChatInputForm
-                input={input}
-                setInput={setInput}
-                loading={loading}
-                listening={listening}
-                speechSupported={speechSupported}
-                queryKind={queryKind}
-                onSetQueryKind={setQueryKind}
-                onSend={handleSend}
-                onToggleVoice={toggleVoice}
-                onSearchKeyDown={handleSearchKeyDown}
-                inputRef={(el) => {
-                  inputRef.current = el;
-                }}
-              />
-            </>
-          )}
+          <Feed
+            messages={messages}
+            loading={loading}
+            listening={listening}
+            scrollRef={mobileScrollRef}
+            trimmedInput={trimmedInput}
+            matches={matches}
+            pageMatchCount={pageMatches.length}
+            activeIndex={activeIndex}
+            setActiveIndex={setActiveIndex}
+            searching={searching}
+            onSelectMatch={go}
+          />
+          <InputBar
+            input={input}
+            setInput={setInput}
+            loading={loading}
+            listening={listening}
+            speechSupported={speechSupported}
+            onSend={handleSend}
+            onToggleVoice={toggleVoice}
+            onKeyDown={handleKeyDown}
+            inputRef={(el) => {
+              inputRef.current = el;
+            }}
+          />
         </div>
       )}
     </>

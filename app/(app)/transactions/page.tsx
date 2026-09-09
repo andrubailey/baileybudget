@@ -5,10 +5,10 @@ import {
   getAccountsWithBalances,
   getSplitsByTransaction,
   generateRecurringForPeriod,
+  type SplitDetail,
 } from "@/lib/queries";
-import { TransactionForm } from "./transaction-form";
 import { TransactionsTable } from "./transactions-table";
-import type { Account, Category, Period } from "@/lib/types";
+import type { Period, Transaction } from "@/lib/types";
 
 export default async function TransactionsPage({
   searchParams,
@@ -28,14 +28,20 @@ export default async function TransactionsPage({
     q: initialSearch,
     highlight: highlightId,
   } = await searchParams;
-  // periods and accounts/categories are independent — fetch together
-  // instead of waiting on periods first.
-  const [periods, accounts, categories] = await Promise.all([
-    getPeriods(),
+
+  // accounts/categories don't depend on which period is selected, so they
+  // run alongside the whole period → recurring-generation → transactions →
+  // splits chain instead of it waiting on them first (or them waiting on
+  // it) — these are two genuinely independent pieces of work that were
+  // previously serialized just because they lived in the same component
+  // tree, and that alone was adding a full extra round-trip's worth of
+  // latency to the page every single load.
+  const [periodData, accounts, categories] = await Promise.all([
+    loadPeriodData(requestedPeriod),
     getAccountsWithBalances(),
     getCategories(),
   ]);
-  const period = pickPeriod(periods, requestedPeriod);
+  const { period, periods, transactions, splitsByTransaction } = periodData;
 
   return (
     <div className="space-y-6">
@@ -53,40 +59,41 @@ export default async function TransactionsPage({
           reloading the page.
         </p>
       ) : (
-        <AllTransactionsView
-          period={period}
-          periods={periods}
+        <TransactionsTable
+          transactions={transactions}
           accounts={accounts}
           categories={categories}
+          splitsByTransaction={splitsByTransaction}
           initialCategoryFilter={initialCategoryFilter}
           initialAccountFilter={initialAccountFilter}
           initialSearch={initialSearch}
           highlightId={highlightId}
+          periods={periods}
+          selectedPeriodId={period.id}
         />
       )}
     </div>
   );
 }
 
-async function AllTransactionsView({
-  period,
-  periods,
-  accounts,
-  categories,
-  initialCategoryFilter,
-  initialAccountFilter,
-  initialSearch,
-  highlightId,
-}: {
-  period: Period;
+// The genuinely sequential part of the page — picking a period has to
+// happen before generating that period's recurring bills, which has to
+// happen before reading its transactions (so newly-generated bills are
+// included), which has to happen before reading their splits (so their ids
+// are known). Isolated into its own function so the caller can run it
+// alongside the unrelated accounts/categories fetches instead of after them.
+async function loadPeriodData(requestedPeriod: string | undefined): Promise<{
+  period: Period | null;
   periods: Period[];
-  accounts: Account[];
-  categories: Category[];
-  initialCategoryFilter?: string;
-  initialAccountFilter?: string;
-  initialSearch?: string;
-  highlightId?: string;
-}) {
+  transactions: Transaction[];
+  splitsByTransaction: Map<string, SplitDetail[]>;
+}> {
+  const periods = await getPeriods();
+  const period = pickPeriod(periods, requestedPeriod);
+  if (!period) {
+    return { period: null, periods, transactions: [], splitsByTransaction: new Map() };
+  }
+
   // Best-effort: post any due recurring bills for this period before
   // loading the list, so the "Make this recurring" checkbox is a
   // complete replacement for the old manual "Generate for period" button.
@@ -97,26 +104,5 @@ async function AllTransactionsView({
     transactions.filter((t) => t.category_id === null).map((t) => t.id),
   );
 
-  return (
-    <div className="space-y-6">
-      <TransactionsTable
-        transactions={transactions}
-        accounts={accounts}
-        categories={categories}
-        splitsByTransaction={splitsByTransaction}
-        initialCategoryFilter={initialCategoryFilter}
-        initialAccountFilter={initialAccountFilter}
-        initialSearch={initialSearch}
-        highlightId={highlightId}
-        periods={periods}
-        selectedPeriodId={period.id}
-      />
-
-      <TransactionForm
-        periodId={period.id}
-        accounts={accounts.filter((a) => a.is_active)}
-        categories={categories}
-      />
-    </div>
-  );
+  return { period, periods, transactions, splitsByTransaction };
 }

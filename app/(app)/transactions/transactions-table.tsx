@@ -9,7 +9,7 @@ import {
   toggleTransactionCleared,
   toggleTransactionPendingApproval,
 } from "@/app/actions";
-import { formatMoney, formatDate } from "@/lib/format";
+import { formatMoney, formatDate, transferDisplayDescription } from "@/lib/format";
 import type { Account, Category, Period, Transaction } from "@/lib/types";
 import type { SplitDetail } from "@/lib/queries";
 import { BankLogo } from "@/app/(app)/accounts/bank-logo";
@@ -401,32 +401,53 @@ export function TransactionsTable({
     return Array.from(byEmail.values());
   }, [transactions]);
 
-  const filtered = effectiveTransactions.filter((t) => {
-    if (kindFilter && t.kind !== kindFilter) return false;
-    if (
-      accountFilter &&
-      t.account_id !== accountFilter &&
-      t.to_account_id !== accountFilter
-    ) {
-      return false;
-    }
-    if (categoryFilter && t.category_id !== categoryFilter) return false;
-    if (amountMin && t.amount < Number(amountMin)) return false;
-    if (amountMax && t.amount > Number(amountMax)) return false;
-    if (search) {
-      const q = search.toLowerCase();
-      const haystack = [
-        t.description,
-        t.notes ?? "",
-        t.category_id ? (categoryById.get(t.category_id) ?? "") : "",
-        t.account_id ? (accountById.get(t.account_id) ?? "") : "",
-      ]
-        .join(" ")
-        .toLowerCase();
-      if (!haystack.includes(q)) return false;
-    }
-    return true;
-  });
+  // Was a plain `.filter()` in the render body — a new array on every
+  // render regardless of whether any of these actually changed, which also
+  // silently defeated `sortedFiltered`'s own memoization below (its deps
+  // include this array, so a fresh reference every render meant it recomputed
+  // every time too). Between them, the full list was being filtered *and*
+  // sorted on every re-render of this component — a checkbox toggle, a
+  // hover, opening the detail modal — not just when data or filters changed.
+  const filtered = useMemo(
+    () =>
+      effectiveTransactions.filter((t) => {
+        if (kindFilter && t.kind !== kindFilter) return false;
+        if (
+          accountFilter &&
+          t.account_id !== accountFilter &&
+          t.to_account_id !== accountFilter
+        ) {
+          return false;
+        }
+        if (categoryFilter && t.category_id !== categoryFilter) return false;
+        if (amountMin && t.amount < Number(amountMin)) return false;
+        if (amountMax && t.amount > Number(amountMax)) return false;
+        if (search) {
+          const q = search.toLowerCase();
+          const haystack = [
+            t.description,
+            t.notes ?? "",
+            t.category_id ? (categoryById.get(t.category_id) ?? "") : "",
+            t.account_id ? (accountById.get(t.account_id) ?? "") : "",
+          ]
+            .join(" ")
+            .toLowerCase();
+          if (!haystack.includes(q)) return false;
+        }
+        return true;
+      }),
+    [
+      effectiveTransactions,
+      kindFilter,
+      accountFilter,
+      categoryFilter,
+      amountMin,
+      amountMax,
+      search,
+      categoryById,
+      accountById,
+    ],
+  );
 
   function sortValue(t: Transaction, col: ColumnKey): string | number {
     switch (col) {
@@ -464,6 +485,7 @@ export function TransactionsTable({
   async function handleDelete(t: Transaction) {
     setDeletingIds((current) => new Set(current).add(t.id));
     await deleteTransaction(t.id);
+    showToast("Transaction deleted");
     setUndoRow({ id: t.id, description: t.description });
     setTimeout(() => {
       setUndoRow((current) => (current?.id === t.id ? null : current));
@@ -473,6 +495,7 @@ export function TransactionsTable({
   async function handleUndo() {
     if (!undoRow) return;
     await restoreTransaction(undoRow.id);
+    showToast("Transaction restored");
     setDeletingIds((current) => {
       const next = new Set(current);
       next.delete(undoRow.id);
@@ -720,6 +743,11 @@ export function TransactionsTable({
           <MobileTransactionCard
             key={t.id}
             transaction={t}
+            displayDescription={transferDisplayDescription(
+              t.description,
+              t.kind,
+              t.to_account_id ? accountBankById.get(t.to_account_id) : null,
+            )}
             accountName={
               t.account_id ? (accountById.get(t.account_id) ?? "—") : "—"
             }
@@ -888,7 +916,13 @@ export function TransactionsTable({
             </tr>
           </thead>
           <tbody>
-            {sortedFiltered.map((t) => (
+            {sortedFiltered.map((t) => {
+                const displayDescription = transferDisplayDescription(
+                  t.description,
+                  t.kind,
+                  t.to_account_id ? accountBankById.get(t.to_account_id) : null,
+                );
+                return (
                 <Fragment key={t.id}>
                   <tr
                     ref={(el) => {
@@ -926,15 +960,15 @@ export function TransactionsTable({
                             <span
                               className="flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
                               style={{
-                                backgroundColor: getLetterColors(t.description).bg,
-                                color: getLetterColors(t.description).text,
+                                backgroundColor: getLetterColors(displayDescription).bg,
+                                color: getLetterColors(displayDescription).text,
                               }}
                             >
-                              {t.description.trim()[0]?.toUpperCase() ?? "?"}
+                              {displayDescription.trim()[0]?.toUpperCase() ?? "?"}
                             </span>
                             <div className="flex min-w-0 items-center gap-1.5">
                               <span className="truncate text-sm font-medium text-text">
-                                {t.description}
+                                {displayDescription}
                               </span>
                               {t.recurring_transaction_id && (
                                 <span
@@ -1055,7 +1089,8 @@ export function TransactionsTable({
                     </td>
                   </tr>
                 </Fragment>
-              ))}
+                );
+              })}
             {filtered.length === 0 && (
               <tr>
                 <td colSpan={9} className="px-6 py-4">
@@ -1107,6 +1142,7 @@ export function TransactionsTable({
 // a cramped inline edit form just to clear or remove a row.
 function MobileTransactionCard({
   transaction: t,
+  displayDescription,
   accountName,
   categoryName,
   categoryIcon,
@@ -1114,6 +1150,7 @@ function MobileTransactionCard({
   onToggleCleared,
 }: {
   transaction: Transaction;
+  displayDescription: string;
   accountName: string;
   categoryName: string | null;
   categoryIcon?: string | null;
@@ -1195,15 +1232,15 @@ function MobileTransactionCard({
         <span
           className="flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
           style={{
-            backgroundColor: getLetterColors(t.description).bg,
-            color: getLetterColors(t.description).text,
+            backgroundColor: getLetterColors(displayDescription).bg,
+            color: getLetterColors(displayDescription).text,
           }}
         >
-          {t.description.trim()[0]?.toUpperCase() ?? "?"}
+          {displayDescription.trim()[0]?.toUpperCase() ?? "?"}
         </span>
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-1.5 truncate text-sm font-medium text-text">
-            <span className="truncate">{t.description}</span>
+            <span className="truncate">{displayDescription}</span>
             {t.pending_approval && (
               <span className="shrink-0 rounded-full bg-caution-bg px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap text-caution-strong">
                 Needs approval

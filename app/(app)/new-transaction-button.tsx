@@ -55,8 +55,11 @@ export function NewTransactionButton({
   // "icon" is a compact circular trigger for tight spaces (the mobile top
   // bar); "inline" is a content-width labeled button for sitting alongside
   // other controls in a header row, instead of the "full" variant's
-  // full-width labeled button used in the sidebar.
-  variant?: "full" | "icon" | "inline";
+  // full-width labeled button used in the sidebar. "hidden" renders no
+  // trigger UI at all — just keeps the ⌥E/⌥I/⌥T listener and the modals
+  // themselves mounted, for chrome that wants the shortcuts live without a
+  // second visible "New transaction" button next to one that's already there.
+  variant?: "full" | "icon" | "inline" | "hidden";
   menuAlign?: "left" | "right";
   // "above" for triggers anchored to the bottom of the screen, so the
   // picker doesn't try to open off the bottom edge of the viewport.
@@ -84,7 +87,7 @@ export function NewTransactionButton({
   }, []);
 
   // Lets the global keyboard shortcuts (see GlobalShortcuts — "n" opens the
-  // picker, ⌘E/⌘I/⌘T jump straight to a specific type) trigger this from
+  // picker, ⌥E/⌥I/⌥T jump straight to a specific type) trigger this from
   // anywhere in the app, without the two components needing a shared parent
   // to coordinate through.
   useEffect(() => {
@@ -106,7 +109,7 @@ export function NewTransactionButton({
 
   return (
     <div className="relative">
-      {variant === "icon" ? (
+      {variant === "hidden" ? null : variant === "icon" ? (
         <button
           type="button"
           onClick={() => setPickerOpen((v) => !v)}
@@ -153,9 +156,17 @@ export function NewTransactionButton({
         <>
           <div className="fixed inset-0 z-40" onClick={() => setPickerOpen(false)} />
           <div
-            className={`animate-modal-panel absolute z-50 flex w-48 flex-col gap-0.5 overflow-hidden rounded-lg border border-border bg-surface py-1 shadow-modal ${
-              menuAlign === "right" ? "right-0" : "left-0"
-            } ${menuPosition === "above" ? "bottom-full mb-2" : "top-full mt-2"}`}
+            className={
+              variant === "hidden"
+                ? // No trigger button to anchor a corner dropdown to (this
+                  // instance only exists to keep the shortcut listener and
+                  // modals alive) — the "n" shortcut still needs somewhere
+                  // sensible to show the picker, so it centers instead.
+                  "animate-modal-panel fixed inset-0 z-50 m-auto flex h-fit w-48 flex-col gap-0.5 overflow-hidden self-center justify-self-center rounded-lg border border-border bg-surface py-1 shadow-modal"
+                : `animate-modal-panel absolute z-50 flex w-48 flex-col gap-0.5 overflow-hidden rounded-lg border border-border bg-surface py-1 shadow-modal ${
+                    menuAlign === "right" ? "right-0" : "left-0"
+                  } ${menuPosition === "above" ? "bottom-full mb-2" : "top-full mt-2"}`
+            }
           >
             {OPTIONS.map((o) => (
               <button
@@ -172,7 +183,7 @@ export function NewTransactionButton({
                 </svg>
                 <span className="flex-1">{o.label}</span>
                 <kbd className="rounded border border-border px-1 text-[10px] text-text-faint">
-                  ⌘{o.shortcut}
+                  ⌥{o.shortcut}
                 </kbd>
               </button>
             ))}

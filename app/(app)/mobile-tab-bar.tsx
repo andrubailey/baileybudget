@@ -2,21 +2,19 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { MOBILE_TAB_LINKS } from "./sidebar";
+import { MOBILE_LINKS } from "./sidebar";
 
-// Native-app-style bottom tab bar for mobile — replaces the hamburger menu
-// as the primary way to move between pages, since a thumb-reachable row of
-// icons at the bottom is faster than opening a drawer for the 5 pages used
-// most. Everything else lives one tap away in the mobile "More" menu.
-export function MobileTabBar({ counts }: { counts?: Record<string, number> }) {
+// Native-app-style bottom tab bar for mobile — just the three things mobile
+// is actually for (log something, check the budget, check balances), not a
+// subset of the desktop sidebar's full page list. Everything else stays
+// desktop-only; see MOBILE_LINKS in sidebar.tsx.
+export function MobileTabBar() {
   const pathname = usePathname();
-  const activeIndex = MOBILE_TAB_LINKS.findIndex((link) =>
-    link.href === "/" ? pathname === "/" : pathname.startsWith(link.href),
-  );
+  const activeIndex = MOBILE_LINKS.findIndex((link) => pathname.startsWith(link.href));
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-hero-border bg-hero-bg lg:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-3 border-t border-hero-border bg-hero-bg lg:hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       {/* Slides between tabs instead of the active state just swapping
@@ -25,30 +23,22 @@ export function MobileTabBar({ counts }: { counts?: Record<string, number> }) {
         <div
           aria-hidden="true"
           className="absolute top-0 h-0.5 bg-accent-bright transition-[left] duration-200 ease-out"
-          style={{ left: `${activeIndex * 20}%`, width: "20%" }}
+          style={{ left: `${activeIndex * (100 / 3)}%`, width: `${100 / 3}%` }}
         />
       )}
-      {MOBILE_TAB_LINKS.map((link) => {
-        const active = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
-        const count = counts?.[link.href] ?? 0;
+      {MOBILE_LINKS.map((link) => {
+        const active = pathname.startsWith(link.href);
         return (
           <Link
             key={link.href}
             href={link.href}
-            className={`relative flex flex-col items-center justify-center gap-1 py-2.5 text-[11px] font-medium transition-colors ${
+            className={`relative flex flex-col items-center justify-center gap-1 py-3 text-[11px] font-medium transition-colors ${
               active ? "text-accent-bright" : "text-hero-text-muted hover:text-hero-text"
             }`}
           >
-            <span className="relative">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className="shrink-0">
-                {link.icon}
-              </svg>
-              {count > 0 && (
-                <span className="absolute -top-1 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-bright px-1 text-[10px] font-semibold text-hero-bg">
-                  {count}
-                </span>
-              )}
-            </span>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className="shrink-0">
+              {link.icon}
+            </svg>
             <span className="truncate">{link.label}</span>
           </Link>
         );

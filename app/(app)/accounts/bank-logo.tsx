@@ -5,10 +5,16 @@ const BANK_LOGOS: Record<string, string> = {
   Amex: "/logos/amex.svg",
 };
 
+// Fixed square boxes (not just a fixed height) — the source logos are all
+// different aspect ratios (Chase's is wide, Amex's is closer to square), so
+// leaving width to `w-auto` made every account's logo a different shape and
+// size next to the others. `object-contain` inside a square box keeps each
+// logo's own proportions intact while giving every account the same
+// footprint.
 const SIZE_CLASSES = {
-  sm: "h-5",
-  md: "h-9",
-  lg: "h-14",
+  sm: "size-5",
+  md: "size-9",
+  lg: "size-14",
 } as const;
 
 export function BankLogo({
@@ -30,10 +36,10 @@ export function BankLogo({
 
   return (
     <span
-      className={`inline-flex items-center rounded-md border border-border bg-white p-1 ${SIZE_CLASSES[size]}`}
+      className={`inline-flex shrink-0 items-center justify-center rounded-md border border-border bg-white p-1 ${SIZE_CLASSES[size]}`}
     >
       {/* eslint-disable-next-line @next/next/no-img-element -- small static local logo, no need for next/image */}
-      <img src={src} alt={bank} className="h-full w-auto rounded-sm object-contain" />
+      <img src={src} alt={bank} className="size-full rounded-sm object-contain" />
     </span>
   );
 }

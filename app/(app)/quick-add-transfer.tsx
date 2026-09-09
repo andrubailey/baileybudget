@@ -84,19 +84,16 @@ export function QuickAddTransferButton({
             <form action={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <input type="hidden" name="period_id" value={periodId} />
 
-              <div className="space-y-1.5 sm:col-span-2">
-                <label className="text-sm font-medium text-text">Description</label>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-text">Amount</label>
                 <input
-                  name="description"
-                  placeholder="Transfer to savings"
+                  type="number"
+                  step="0.01"
+                  name="amount"
+                  required
                   autoFocus
                   className={fieldClass}
                 />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-text">Amount</label>
-                <input type="number" step="0.01" name="amount" required className={fieldClass} />
               </div>
 
               <div className="space-y-1.5">
@@ -132,6 +129,17 @@ export function QuickAddTransferButton({
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="text-sm font-medium text-text">Notes (optional)</label>
+                <textarea
+                  name="notes"
+                  rows={2}
+                  maxLength={500}
+                  placeholder="Add a note…"
+                  className={fieldClass}
+                />
               </div>
 
               <div className="flex items-center gap-3 sm:col-span-2">

@@ -90,9 +90,9 @@ export function TransactionDetailModal({
     if (!form || !form.reportValidity()) return;
     const formData = new FormData(form);
     formData.set("kind", effectiveKind);
-    updateTransaction(t.id, formData).catch(() =>
-      showToast("Couldn't save your changes"),
-    );
+    updateTransaction(t.id, formData)
+      .then(() => showToast("Transaction saved"))
+      .catch(() => showToast("Couldn't save your changes"));
   }
 
   return (

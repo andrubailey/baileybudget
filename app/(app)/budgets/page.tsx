@@ -13,7 +13,7 @@ export default async function BudgetsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl leading-tight font-semibold tracking-tight text-text sm:text-display">Budgets</h1>
+        <h1 className="text-2xl leading-tight font-semibold tracking-tight text-text sm:text-display">Budget</h1>
         <p className="mt-1 text-sm text-text-muted">
           {currentPeriod
             ? `Planned amounts for ${currentPeriod.name}. Click a number to edit it.`

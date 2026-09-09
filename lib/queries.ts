@@ -456,10 +456,20 @@ async function getRolloverAmounts(
 // look like zero even in a month where the household diligently transferred
 // money into a savings account. Nets transfers between two savings accounts
 // to zero, and skips deposits from unsurfaced starting balances.
+export type SavingsTransferTotal = {
+  net: number;
+  // Gross totals, not net — a $5,000 withdrawal from one savings account
+  // and an unrelated $75 deposit into another both stay visible here, since
+  // collapsing straight to net (75 - 5000 = -4,925) hid the actual $5,000
+  // withdrawal behind an unrelated small deposit elsewhere.
+  deposited: number;
+  withdrawn: number;
+};
+
 export async function getSavingsTransferTotal(
   start: string,
   end: string,
-): Promise<number> {
+): Promise<SavingsTransferTotal> {
   const supabase = await createClient();
   const [accounts, { data: transactions }] = await Promise.all([
     getAllAccountsRaw(),
@@ -476,12 +486,13 @@ export async function getSavingsTransferTotal(
     accounts.filter((a) => a.account_type === "savings").map((a) => a.id),
   );
 
-  let net = 0;
+  let deposited = 0;
+  let withdrawn = 0;
   for (const t of transactions ?? []) {
-    if (t.to_account_id && savingsIds.has(t.to_account_id)) net += t.amount;
-    if (t.account_id && savingsIds.has(t.account_id)) net -= t.amount;
+    if (t.to_account_id && savingsIds.has(t.to_account_id)) deposited += t.amount;
+    if (t.account_id && savingsIds.has(t.account_id)) withdrawn += t.amount;
   }
-  return net;
+  return { net: deposited - withdrawn, deposited, withdrawn };
 }
 
 export async function getPeriodSummaryForRange(

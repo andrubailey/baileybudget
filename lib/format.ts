@@ -40,3 +40,19 @@ export function spendColor(pct: number): string {
   if (pct < 100) return "var(--caution)";
   return "var(--negative)";
 }
+
+// A transfer's stored description is usually generic ("Transfer") since the
+// account names already say where the money went — but a transfer landing
+// on a credit card is really a bill payment, and reads better labeled as
+// one. Display-only: the stored description (still editable in the detail
+// modal) is untouched, this just swaps what lists show for it.
+export function transferDisplayDescription(
+  description: string,
+  kind: "income" | "expense" | "transfer",
+  toAccountBank: string | null | undefined,
+): string {
+  if (kind === "transfer" && toAccountBank === "Amex") {
+    return "American Express Payment";
+  }
+  return description;
+}

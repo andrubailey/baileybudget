@@ -85,17 +85,6 @@ export async function updateAccountLoginUrl(id: string, login_url: string | null
   revalidatePath("/");
 }
 
-export async function reorderAccounts(orderedIds: string[]) {
-  const supabase = await createClient();
-  await Promise.all(
-    orderedIds.map((id, index) =>
-      supabase.from("accounts").update({ sort_order: index }).eq("id", id),
-    ),
-  );
-  revalidatePath("/accounts");
-  revalidatePath("/");
-}
-
 export async function updateAccountBank(id: string, bank: string | null) {
   const supabase = await createClient();
   await supabase.from("accounts").update({ bank }).eq("id", id);
@@ -140,6 +129,7 @@ export async function updateAccountLowBalanceAlert(
 export async function updateAccountDetails(
   id: string,
   data: {
+    name: string;
     goal: number | null;
     bank: string | null;
     account_type: string | null;
@@ -154,6 +144,7 @@ export async function updateAccountDetails(
   await supabase
     .from("accounts")
     .update({
+      name: data.name,
       goal: data.goal,
       bank: data.bank,
       account_type: data.account_type,
@@ -611,12 +602,12 @@ export async function createTransfer(
 ): Promise<{ ok: boolean; error?: string }> {
   const supabase = await createClient();
 
-  const description = String(formData.get("description") ?? "").trim() || "Transfer";
   const amount = Number(formData.get("amount") ?? 0);
   const txn_date = String(formData.get("txn_date") ?? "");
   const from_account_id = String(formData.get("from_account_id") ?? "") || null;
   const to_account_id = String(formData.get("to_account_id") ?? "") || null;
   const period_id = String(formData.get("period_id") ?? "");
+  const notes = String(formData.get("notes") ?? "").trim() || null;
 
   if (
     !amount ||
@@ -633,6 +624,20 @@ export async function createTransfer(
     data: { user },
   } = await supabase.auth.getUser();
 
+  // Description is always derived from the two accounts rather than typed —
+  // "From Checking to Savings" says everything a transfer's description
+  // needs to, and generating it server-side (instead of trusting whatever
+  // account names the client sent) keeps it accurate even if the names
+  // change later.
+  const { data: transferAccounts } = await supabase
+    .from("accounts")
+    .select("id, name")
+    .in("id", [from_account_id, to_account_id]);
+  const fromName =
+    transferAccounts?.find((a) => a.id === from_account_id)?.name ?? "account";
+  const toName = transferAccounts?.find((a) => a.id === to_account_id)?.name ?? "account";
+  const description = `From ${fromName} to ${toName}`;
+
   const { error } = await supabase.from("transactions").insert({
     kind: "transfer",
     description,
@@ -642,6 +647,7 @@ export async function createTransfer(
     to_account_id,
     category_id: null,
     period_id,
+    notes,
     created_by: user?.id ?? null,
     created_by_email: user?.email ?? null,
   });

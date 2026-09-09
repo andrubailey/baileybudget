@@ -432,20 +432,6 @@ export function QuickAddButton({
                 />
               </div>
 
-              {kind === "expense" && (
-                <div className="flex items-center gap-2 sm:col-span-2">
-                  <input
-                    type="checkbox"
-                    id="pending-approval-toggle"
-                    name="pending_approval"
-                    className="h-4 w-4 accent-[var(--accent)]"
-                  />
-                  <label htmlFor="pending-approval-toggle" className="text-sm text-text-muted">
-                    Ask before buying — flag for the other person to see
-                  </label>
-                </div>
-              )}
-
               {!split && (
                 <div className="flex items-center gap-2 sm:col-span-2">
                   <input

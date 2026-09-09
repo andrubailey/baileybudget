@@ -189,7 +189,7 @@ export function BudgetsView({
                   )}
                   <div
                     style={{ animationDelay: `${i * 35}ms` }}
-                    className={`animate-fade-in-up flex items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3 shadow-card transition-opacity duration-150 ${
+                    className={`animate-fade-in-up flex items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3.5 shadow-card transition-opacity duration-150 ${
                       togglingId === row.category.id ? "opacity-40" : ""
                     }`}
                   >
@@ -246,10 +246,10 @@ export function BudgetsView({
                   <th className="px-6 py-2 text-xs font-medium text-text-muted">
                     Category
                   </th>
-                  <th className="w-32 px-4 py-2 text-xs font-medium whitespace-nowrap text-text-muted">
+                  <th className="w-40 px-6 py-2 text-xs font-medium whitespace-nowrap text-text-muted">
                     {currentPeriod.name}
                   </th>
-                  <th className="w-24 px-4 py-2" />
+                  <th className="w-28 px-6 py-2" />
                 </tr>
               </thead>
               <tbody>
@@ -270,11 +270,11 @@ export function BudgetsView({
                         </tr>
                       )}
                       <tr
-                        className={`border-b border-border transition-[opacity,background-color] duration-150 last:border-b-0 hover:bg-bg ${
+                        className={`h-14 border-b border-border transition-[opacity,background-color] duration-300 last:border-b-0 hover:bg-bg even:bg-bg/40 ${
                           togglingId === row.category.id ? "opacity-40" : ""
                         }`}
                       >
-                        <td className="px-6 py-2">
+                        <td className="px-6 py-3">
                           <div className="flex items-center gap-2 text-sm font-medium text-text">
                             <CategoryIconPicker
                               categoryId={row.category.id}
@@ -288,8 +288,9 @@ export function BudgetsView({
                           categoryId={row.category.id}
                           periodId={currentPeriod.id}
                           initialValue={row.plannedByPeriod.get(currentPeriod.id) ?? 0}
+                          cellClassName="px-6 py-3"
                         />
-                        <td className="px-4 py-2 text-right">
+                        <td className="px-6 py-3 text-right">
                           <button
                             type="button"
                             onClick={() =>
@@ -330,7 +331,7 @@ export function BudgetsView({
                   <div
                     key={row.category.id}
                     style={{ animationDelay: `${i * 35}ms` }}
-                    className={`animate-fade-in-up flex items-center justify-between gap-3 px-4 py-2 transition-opacity duration-150 ${
+                    className={`animate-fade-in-up flex items-center justify-between gap-3 px-4 py-3 transition-[opacity,background-color] duration-300 hover:bg-bg ${
                       togglingId === row.category.id ? "opacity-40" : ""
                     }`}
                   >

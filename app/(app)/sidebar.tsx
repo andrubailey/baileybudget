@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "@/app/actions";
 import { PresenceIndicator } from "@/app/(app)/presence-indicator";
 import { ProfileModal } from "@/app/(app)/profile-modal";
+import { NewTransactionButton } from "@/app/(app)/new-transaction-button";
 import { getAvatarColors } from "@/lib/avatar-colors";
 
 function initialsFor(name: string) {
@@ -52,7 +53,7 @@ const PRIMARY_LINKS = [
   },
   {
     href: "/budgets",
-    label: "Budgets",
+    label: "Budget",
     icon: (
       <path
         d="M4 4h16v16H4V4Zm0 6h16M9 4v16"
@@ -121,13 +122,51 @@ const DIGIT_CODES = [
   "Digit7",
 ];
 
-// The mobile bottom tab bar only has room for 5 icons — the pages used
-// often enough to deserve a permanent, always-visible slot. Everything
-// else (Reports, Settings) moves into the mobile "More" menu.
-export const MOBILE_TAB_LINKS = PRIMARY_LINKS.slice(0, 5);
-export const MOBILE_MORE_LINKS = PRIMARY_LINKS.slice(5);
-
-const COLLAPSE_KEY = "sidebar-collapsed";
+// Mobile gets its own, much smaller set of destinations — not a subset of
+// PRIMARY_LINKS. The idea is a phone is for quick capture and a glance at
+// where things stand, not full account/transaction/budget management, so
+// the bottom tab bar only has these three: log something, check the
+// budget, check balances. Everything else (Transactions, Goals, Reports,
+// Settings) stays desktop-only — reachable by URL/search if truly needed,
+// but not part of the mobile chrome.
+export const MOBILE_LINKS = [
+  {
+    href: "/add",
+    label: "Add",
+    icon: (
+      <path
+        d="M12 5v14M5 12h14"
+        stroke="currentColor"
+        strokeWidth={1.8}
+        strokeLinecap="round"
+      />
+    ),
+  },
+  {
+    href: "/budget",
+    label: "Budget",
+    icon: (
+      <path
+        d="M4 4h16v16H4V4Zm0 6h16M9 4v16"
+        stroke="currentColor"
+        strokeWidth={1.6}
+        strokeLinejoin="round"
+      />
+    ),
+  },
+  {
+    href: "/balances",
+    label: "Balances",
+    icon: (
+      <path
+        d="M3 10h18M6 6h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z"
+        stroke="currentColor"
+        strokeWidth={1.6}
+        strokeLinejoin="round"
+      />
+    ),
+  },
+];
 
 export function Sidebar({
   counts,
@@ -142,9 +181,6 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  // Starts expanded (matching the server-rendered HTML) and reads the saved
-  // preference after mount, to avoid a hydration mismatch.
-  const [collapsed, setCollapsed] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   // Defaults to the ⌘ glyph (matches the server-rendered HTML) and switches
   // to "Ctrl K" after mount on non-Mac platforms, to avoid a hydration
@@ -188,119 +224,62 @@ export function Sidebar({
   const [pill, setPill] = useState<{ top: number; height: number } | null>(null);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(COLLAPSE_KEY) === "1";
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing with localStorage, an external system, after mount
-      setCollapsed(saved);
-    } catch {
-      // ignore — localStorage unavailable
-    }
-  }, []);
-
-  useEffect(() => {
     const activeLink = PRIMARY_LINKS.find((link) =>
       link.href === "/" ? pathname === "/" : pathname.startsWith(link.href),
     );
     const el = activeLink ? linkRefs.current.get(activeLink.href) : undefined;
     setPill(el ? { top: el.offsetTop, height: el.offsetHeight } : null);
-  }, [pathname, collapsed]);
-
-  function toggle() {
-    setCollapsed((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
-      } catch {
-        // ignore
-      }
-      return next;
-    });
-  }
+  }, [pathname]);
 
   const avatar = userEmail
     ? getAvatarColors(userEmail)
     : { bg: "var(--accent-soft)", text: "var(--accent)" };
 
   return (
-    <aside
-      className={`sticky top-0 hidden h-screen shrink-0 flex-col bg-hero-bg transition-[width] duration-150 lg:flex ${
-        collapsed ? "w-[72px]" : "w-64"
-      }`}
-    >
-      <div
-        className={`flex h-[72px] shrink-0 items-center gap-2 px-5 ${collapsed ? "justify-center" : ""}`}
-      >
-        {!collapsed && (
-          <span className="flex-1 truncate text-lg font-bold tracking-tight text-hero-text">
-            Bailey <span className="text-accent">Budget</span>
-          </span>
-        )}
+    <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col bg-hero-bg lg:flex">
+      <div className="flex h-[72px] shrink-0 items-center gap-2 px-5">
+        <span className="flex-1 truncate text-lg font-bold tracking-tight text-hero-text">
+          Bailey <span className="text-accent">Budget</span>
+        </span>
+      </div>
+
+      <div className="px-5 pb-2">
+        <PresenceIndicator />
+      </div>
+
+      <div className="px-5 pb-3">
+        {/* Not a real search field — clicking (or focusing) it just opens
+            the ⌘K palette, the same as pressing the shortcut, instead of
+            running its own separate quick-filter. One search experience
+            instead of two competing ones. */}
         <button
           type="button"
-          onClick={toggle}
-          title={collapsed ? "Expand" : "Collapse"}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="flex size-7 shrink-0 items-center justify-center rounded-md text-hero-text-muted transition-colors hover:bg-hero-bg-2 hover:text-hero-text"
+          onClick={() => window.dispatchEvent(new CustomEvent("budgetapp:open-chat"))}
+          className="relative block w-full rounded-lg text-left focus-visible:ring-2 focus-visible:ring-accent-bright/60 focus-visible:outline-none"
         >
           <svg
             width="16"
             height="16"
             viewBox="0 0 24 24"
             fill="none"
-            className={`shrink-0 transition-transform ${collapsed ? "rotate-180" : ""}`}
+            className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-hero-text-muted"
           >
             <path
-              d="M15 5 8 12l7 7"
+              d="M21 21l-4.35-4.35M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"
               stroke="currentColor"
-              strokeWidth={1.8}
+              strokeWidth={1.6}
               strokeLinecap="round"
               strokeLinejoin="round"
             />
           </svg>
+          <span className="block w-full truncate rounded-lg bg-hero-bg-2 py-2 pr-12 pl-9 text-sm text-hero-text-muted">
+            Search...
+          </span>
+          <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded border border-hero-border px-1.5 py-0.5 text-[10px] font-medium text-hero-text-muted">
+            {isMac ? "⌘K" : "Ctrl K"}
+          </span>
         </button>
       </div>
-
-      {!collapsed && (
-        <div className="px-5 pb-2">
-          <PresenceIndicator />
-        </div>
-      )}
-
-      {!collapsed && (
-        <div className="px-5 pb-3">
-          {/* Not a real search field — clicking (or focusing) it just opens
-              the ⌘K palette, the same as pressing the shortcut, instead of
-              running its own separate quick-filter. One search experience
-              instead of two competing ones. */}
-          <button
-            type="button"
-            onClick={() => window.dispatchEvent(new CustomEvent("budgetapp:open-chat"))}
-            className="relative block w-full rounded-lg text-left focus-visible:ring-2 focus-visible:ring-accent-bright/60 focus-visible:outline-none"
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-hero-text-muted"
-            >
-              <path
-                d="M21 21l-4.35-4.35M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"
-                stroke="currentColor"
-                strokeWidth={1.6}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <span className="block w-full truncate rounded-lg bg-hero-bg-2 py-2 pr-12 pl-9 text-sm text-hero-text-muted">
-              Search...
-            </span>
-            <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded border border-hero-border px-1.5 py-0.5 text-[10px] font-medium text-hero-text-muted">
-              {isMac ? "⌘K" : "Ctrl K"}
-            </span>
-          </button>
-        </div>
-      )}
 
       <nav className="relative flex flex-1 flex-col gap-1 overflow-y-auto px-4 py-2">
         {pill && (
@@ -315,13 +294,10 @@ export function Sidebar({
             key={group.label ?? groupIndex}
             className={`flex flex-col gap-1.5 ${groupIndex > 0 ? "mt-4" : ""}`}
           >
-            {group.label && !collapsed && (
+            {group.label && (
               <p className="px-3 pb-1 text-[11px] font-semibold tracking-wide text-hero-text-muted uppercase">
                 {group.label}
               </p>
-            )}
-            {group.label && collapsed && (
-              <div className="mx-3 mb-2 border-t border-hero-border" />
             )}
             {group.links.map((link) => {
               const active =
@@ -347,7 +323,7 @@ export function Sidebar({
                     active
                       ? "text-hero-text"
                       : "text-hero-text-muted hover:bg-hero-bg-2/60 hover:text-hero-text"
-                  } ${collapsed ? "justify-center" : ""}`}
+                  }`}
                 >
                   <svg
                     width="20"
@@ -358,16 +334,8 @@ export function Sidebar({
                   >
                     {link.icon}
                   </svg>
-                  <span
-                    className={`overflow-hidden whitespace-nowrap transition-[max-width,opacity] duration-150 ${
-                      collapsed
-                        ? "max-w-0 opacity-0"
-                        : "max-w-[160px] opacity-100"
-                    }`}
-                  >
-                    {link.label}
-                  </span>
-                  {!collapsed && count > 0 && (
+                  <span className="truncate">{link.label}</span>
+                  {count > 0 && (
                     <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-accent-bright px-1.5 text-xs font-semibold text-hero-bg">
                       {count}
                     </span>
@@ -379,17 +347,19 @@ export function Sidebar({
         ))}
       </nav>
 
+      {/* Keeps ⌥E/⌥I/⌥T (and "n") reachable from every page — the sidebar
+          is the one thing mounted everywhere, unlike the mobile nav's own
+          copy of this, which only exists while its drawer is open. Renders
+          nothing visible; it's the shortcut listener + the modals only. */}
+      <NewTransactionButton variant="hidden" />
+
       <div className="shrink-0 px-4 py-4">
         {userEmail && (
           <>
             <button
               type="button"
               onClick={() => setProfileOpen(true)}
-              title={collapsed ? "Profile settings" : undefined}
-              aria-label={collapsed ? "Profile settings" : undefined}
-              className={`mb-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-hero-bg-2/60 ${
-                collapsed ? "justify-center" : ""
-              }`}
+              className="mb-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-hero-bg-2/60"
             >
               {avatarUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element -- arbitrary user-supplied URL, not a local/known-domain asset
@@ -406,16 +376,14 @@ export function Sidebar({
                   {initialsFor(displayName || userEmail)}
                 </span>
               )}
-              {!collapsed && (
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-hero-text">
-                    {displayName || userEmail.split("@")[0]}
-                  </p>
-                  <p className="truncate text-xs text-hero-text-muted">
-                    {userEmail}
-                  </p>
-                </div>
-              )}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-hero-text">
+                  {displayName || userEmail.split("@")[0]}
+                </p>
+                <p className="truncate text-xs text-hero-text-muted">
+                  {userEmail}
+                </p>
+              </div>
             </button>
 
             {profileOpen && (
@@ -432,11 +400,7 @@ export function Sidebar({
         <form action={signOut}>
           <button
             type="submit"
-            title={collapsed ? "Sign out" : undefined}
-            aria-label={collapsed ? "Sign out" : undefined}
-            className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-hero-text-muted transition-colors hover:bg-hero-bg-2/60 hover:text-hero-text ${
-              collapsed ? "justify-center" : ""
-            }`}
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-hero-text-muted transition-colors hover:bg-hero-bg-2/60 hover:text-hero-text"
           >
             <svg
               width="20"
@@ -453,7 +417,7 @@ export function Sidebar({
                 strokeLinejoin="round"
               />
             </svg>
-            {!collapsed && <span>Sign out</span>}
+            <span>Sign out</span>
           </button>
         </form>
       </div>
