@@ -4,14 +4,10 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   bulkDeleteTransactions,
   bulkUpdateTransactions,
-  claimTransaction,
-  createRecurringFromTransaction,
   deleteTransaction,
   restoreTransaction,
-  toggleRecurringActive,
   toggleTransactionCleared,
   toggleTransactionPendingApproval,
-  updateTransaction,
 } from "@/app/actions";
 import { formatMoney, formatDate } from "@/lib/format";
 import type { Account, Category, Period, Transaction } from "@/lib/types";
@@ -20,11 +16,10 @@ import { BankLogo } from "@/app/(app)/accounts/bank-logo";
 import { getLetterColors } from "@/lib/letter-colors";
 import { getCategoryIcon } from "@/lib/category-icons";
 import { EmptyState } from "@/app/(app)/empty-state";
-import { COMPACT_FIELD_CLASS as fieldClass } from "@/lib/ui";
 import { Money } from "@/app/(app)/money";
 import { useToast } from "@/app/(app)/toast";
-import { CategorySelect } from "@/app/(app)/category-select";
 import { PeriodSwitcher } from "@/app/(app)/period-switcher";
+import { TransactionDetailModal } from "@/app/(app)/transaction-detail-modal";
 
 // The ✓ and action columns stay pinned first/last — reordering a checkbox
 // away from the row's edge, or the row's action buttons into the middle,
@@ -391,6 +386,20 @@ export function TransactionsTable({
       ),
     [transactions, clearedOverrides],
   );
+
+  // Every distinct person who's logged a transaction in this list — backs
+  // the detail modal's "Created by" dropdown so reassigning attribution
+  // means picking from who's actually used this household's data, not
+  // typing an email by hand.
+  const knownCreators = useMemo(() => {
+    const byEmail = new Map<string, { id: string | null; email: string }>();
+    for (const t of transactions) {
+      if (t.created_by_email) {
+        byEmail.set(t.created_by_email, { id: t.created_by, email: t.created_by_email });
+      }
+    }
+    return Array.from(byEmail.values());
+  }, [transactions]);
 
   const filtered = effectiveTransactions.filter((t) => {
     if (kindFilter && t.kind !== kindFilter) return false;
@@ -771,7 +780,11 @@ export function TransactionsTable({
                   } ${draggedColumn === col ? "opacity-40" : ""}`}
                   title={SORTABLE_COLUMNS.has(col) ? "Click to sort, drag to reorder" : "Drag to reorder"}
                 >
-                  <span className="relative flex items-center gap-1">
+                  <span
+                    className={`relative flex items-center gap-1 ${
+                      col === "amount" ? "justify-end" : ""
+                    }`}
+                  >
                     {SORTABLE_COLUMNS.has(col) ? (
                       <button
                         type="button"
@@ -1069,6 +1082,7 @@ export function TransactionsTable({
               transaction={detailTransaction}
               accounts={accounts}
               categories={categories}
+              knownCreators={knownCreators}
               accountName={
                 detailTransaction.account_id
                   ? (accountById.get(detailTransaction.account_id) ?? "—")
@@ -1077,11 +1091,6 @@ export function TransactionsTable({
               toAccountName={
                 detailTransaction.to_account_id
                   ? (accountById.get(detailTransaction.to_account_id) ?? "—")
-                  : null
-              }
-              categoryName={
-                detailTransaction.category_id
-                  ? (categoryById.get(detailTransaction.category_id) ?? null)
                   : null
               }
               closing={detailClosing}
@@ -1230,288 +1239,3 @@ function MobileTransactionCard({
   );
 }
 
-// Replaces the old inline "Edit" row — clicking any transaction opens this
-// instead, showing its full details and (for income/expense) an editable
-// form. Transfers show read-only details, matching the old Edit button's
-// behavior of not offering an edit path for them at all.
-function TransactionDetailModal({
-  transaction: t,
-  accounts,
-  categories,
-  accountName,
-  toAccountName,
-  categoryName,
-  closing,
-  onClose,
-}: {
-  transaction: Transaction;
-  accounts: Account[];
-  categories: Category[];
-  accountName: string;
-  toAccountName: string | null;
-  categoryName: string | null;
-  closing: boolean;
-  onClose: () => void;
-}) {
-  const [claiming, setClaiming] = useState(false);
-  const [recurringBusy, setRecurringBusy] = useState(false);
-  const [isRecurring, setIsRecurring] = useState(!!t.recurring_transaction_id);
-  const showToast = useToast();
-
-  async function handleClaim() {
-    setClaiming(true);
-    const result = await claimTransaction(t.id);
-    setClaiming(false);
-    if (!result.ok) {
-      showToast(result.error ? `Couldn't claim: ${result.error}` : "Couldn't claim transaction");
-      return;
-    }
-    showToast("Transaction claimed");
-  }
-
-  async function handleMakeRecurring() {
-    setRecurringBusy(true);
-    const result = await createRecurringFromTransaction(t.id);
-    setRecurringBusy(false);
-    if (!result.ok) {
-      showToast(result.error ? `Couldn't set up: ${result.error}` : "Couldn't set up recurring bill");
-      return;
-    }
-    setIsRecurring(true);
-    showToast("Set up as recurring");
-  }
-
-  async function handleStopRecurring() {
-    if (!t.recurring_transaction_id) return;
-    setRecurringBusy(true);
-    await toggleRecurringActive(t.recurring_transaction_id, false);
-    setRecurringBusy(false);
-    setIsRecurring(false);
-    showToast("Recurring bill stopped");
-  }
-
-  const [accountId, setAccountId] = useState(t.account_id ?? "");
-  // Debt accounts store the opposite of what you'd expect (a charge is
-  // "income", a payment is "expense"), so the initial display kind is
-  // un-flipped from the stored value here and re-flipped back on submit.
-  const initialIsDebtAccount =
-    accounts.find((a) => a.id === t.account_id)?.is_debt ?? false;
-  const [kind, setKind] = useState<"income" | "expense">(
-    initialIsDebtAccount
-      ? t.kind === "income"
-        ? "expense"
-        : "income"
-      : t.kind === "income"
-        ? "income"
-        : "expense",
-  );
-  const isDebtAccount =
-    accounts.find((a) => a.id === accountId)?.is_debt ?? false;
-  const effectiveKind = isDebtAccount
-    ? kind === "expense"
-      ? "income"
-      : "expense"
-    : kind;
-  const [categoryId, setCategoryId] = useState(t.category_id ?? "");
-  const formRef = useRef<HTMLFormElement>(null);
-
-  // Closing the modal — click outside, the ✕ button, or the Done button —
-  // plays the exit animation immediately instead of waiting on the network,
-  // which is what made every open/close feel like it stuttered. The save
-  // (skipped for the transfer read-only view, or if a required field was
-  // cleared) runs in the background afterward and doesn't touch the modal's
-  // open/close state.
-  function handleClose() {
-    onClose();
-    if (t.kind === "transfer") return;
-    const form = formRef.current;
-    if (!form || !form.reportValidity()) return;
-    const formData = new FormData(form);
-    formData.set("kind", effectiveKind);
-    updateTransaction(t.id, formData).catch(() =>
-      showToast("Couldn't save your changes"),
-    );
-  }
-
-  return (
-    <div
-      className={`fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4 ${
-        closing ? "animate-modal-backdrop-out" : "animate-modal-backdrop"
-      }`}
-      onClick={handleClose}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className={`w-full max-w-lg overflow-hidden rounded-xl border border-border bg-surface shadow-modal ${
-          closing ? "animate-modal-panel-out" : "animate-modal-panel"
-        }`}
-      >
-        <div className="flex items-center justify-between border-b border-border px-5 py-4">
-          <h2 className="text-lg font-semibold text-text">Transaction details</h2>
-          <button
-            type="button"
-            onClick={handleClose}
-            aria-label="Close"
-            className="-mr-1.5 flex size-9 shrink-0 items-center justify-center rounded-lg text-text-faint transition-colors hover:bg-bg hover:text-text"
-          >
-            ✕
-          </button>
-        </div>
-
-        <div className="flex items-center justify-between gap-3 border-b border-border bg-bg px-5 py-2.5 text-xs">
-          <span className="text-text-faint">
-            Logged by{" "}
-            <span className="font-medium text-text-muted">
-              {t.created_by_email ?? "someone before attribution was tracked"}
-            </span>
-          </span>
-          <button
-            type="button"
-            onClick={handleClaim}
-            disabled={claiming}
-            className="shrink-0 font-medium text-accent hover:underline disabled:opacity-50"
-          >
-            {claiming ? "Claiming…" : "Claim as mine"}
-          </button>
-        </div>
-
-        {t.kind === "transfer" ? (
-          <div className="space-y-3 p-5 text-sm">
-            <div className="flex justify-between">
-              <span className="text-text-muted">Amount</span>
-              <span className="font-medium text-text">{formatMoney(t.amount)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-text-muted">From</span>
-              <span className="font-medium text-text">{accountName}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-text-muted">To</span>
-              <span className="font-medium text-text">{toAccountName ?? "—"}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-text-muted">Date</span>
-              <span className="font-medium text-text">{formatDate(t.txn_date)}</span>
-            </div>
-            {t.notes && (
-              <div className="flex justify-between gap-4">
-                <span className="shrink-0 text-text-muted">Notes</span>
-                <span className="text-right font-medium text-text">{t.notes}</span>
-              </div>
-            )}
-          </div>
-        ) : (
-          <form
-            ref={formRef}
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleClose();
-            }}
-            className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2"
-          >
-            <select
-              value={kind}
-              onChange={(e) => setKind(e.target.value as "income" | "expense")}
-              className={fieldClass}
-            >
-              <option value="expense">
-                {isDebtAccount ? "Charge" : "Expense"}
-              </option>
-              <option value="income">
-                {isDebtAccount ? "Payment" : "Income"}
-              </option>
-            </select>
-            <input
-              type="number"
-              step="0.01"
-              name="amount"
-              required
-              defaultValue={t.amount}
-              className={fieldClass}
-            />
-            <input
-              name="description"
-              required
-              defaultValue={t.description}
-              placeholder="Description"
-              className={`${fieldClass} sm:col-span-2`}
-            />
-            <input
-              type="date"
-              name="txn_date"
-              required
-              defaultValue={t.txn_date}
-              className={fieldClass}
-            />
-            <select
-              name="account_id"
-              value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
-              className={fieldClass}
-            >
-              <option value="">—</option>
-              {accounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
-            <div className="sm:col-span-2">
-              <CategorySelect
-                categories={categories}
-                kind={kind}
-                value={categoryId}
-                onChange={setCategoryId}
-                className={fieldClass}
-              />
-            </div>
-            <input
-              name="notes"
-              defaultValue={t.notes ?? ""}
-              placeholder="Notes"
-              maxLength={140}
-              className={`${fieldClass} sm:col-span-2`}
-            />
-            {categoryName && (
-              <p className="text-xs text-text-faint sm:col-span-2">
-                Currently: {categoryName}
-              </p>
-            )}
-            <div className="flex items-center justify-between gap-2 sm:col-span-2">
-              {isRecurring ? (
-                <button
-                  type="button"
-                  onClick={handleStopRecurring}
-                  disabled={recurringBusy}
-                  className="text-xs font-medium text-negative hover:underline disabled:opacity-50"
-                >
-                  {recurringBusy ? "Stopping…" : "Stop this recurring bill"}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleMakeRecurring}
-                  disabled={recurringBusy}
-                  className="text-xs font-medium text-accent hover:underline disabled:opacity-50"
-                >
-                  {recurringBusy ? "Setting up…" : "Make recurring"}
-                </button>
-              )}
-            </div>
-            <div className="flex items-center gap-2 sm:col-span-2">
-              <button
-                type="submit"
-                className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90"
-              >
-                Done
-              </button>
-              <span className="text-xs text-text-faint">
-                Changes save automatically when you close this
-              </span>
-            </div>
-          </form>
-        )}
-      </div>
-    </div>
-  );
-}

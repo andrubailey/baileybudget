@@ -239,7 +239,7 @@ export function BudgetsView({
             })}
           </div>
 
-          <div className="hidden max-w-lg overflow-hidden rounded-xl border border-border bg-surface shadow-card sm:block">
+          <div className="animate-fade-in-up hidden max-w-lg overflow-hidden rounded-xl border border-border bg-surface shadow-card sm:block">
             <table className="w-full table-fixed text-left">
               <thead>
                 <tr className="border-b border-border bg-bg">
@@ -270,8 +270,7 @@ export function BudgetsView({
                         </tr>
                       )}
                       <tr
-                        style={{ animationDelay: `${i * 35}ms` }}
-                        className={`animate-fade-in-up border-b border-border transition-[opacity,background-color] duration-150 last:border-b-0 hover:bg-bg ${
+                        className={`border-b border-border transition-[opacity,background-color] duration-150 last:border-b-0 hover:bg-bg ${
                           togglingId === row.category.id ? "opacity-40" : ""
                         }`}
                       >

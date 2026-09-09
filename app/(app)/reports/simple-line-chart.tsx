@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 // cramming them onto one set of axes would distort both. Fills its
 // container's width (measured the same way Sparkline does) instead of a
 // fixed pixel size, and shares the same hover crosshair + tooltip pattern
-// as the Total Balance card's Sparkline for a consistent feel across every
+// as the Net Worth card's Sparkline for a consistent feel across every
 // chart on this page.
 const HEIGHT = 100;
 const LEFT_PAD = 8;

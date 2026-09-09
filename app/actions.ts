@@ -764,13 +764,15 @@ export async function restoreTransaction(id: string) {
   revalidatePath("/");
 }
 
-// One-off cleanup: attributes every existing transaction to whoever is
-// currently signed in, regardless of who originally logged it.
-// Scoped to one transaction at a time — attributing a single transaction to
-// yourself from its detail modal, instead of the old bulk "mark everything
-// as mine" button that overwrote attribution history across every
-// transaction (including your partner's) in one irreversible click.
-export async function claimTransaction(id: string): Promise<{ ok: boolean; error?: string }> {
+// Backs the "Created by" dropdown in the transaction detail modal — reassign
+// attribution to whichever household member actually logged it, instead of
+// only being able to "claim" it as whoever's currently signed in. Scoped to
+// one transaction at a time, same as before.
+export async function updateTransactionCreator(
+  id: string,
+  created_by: string | null,
+  created_by_email: string | null,
+): Promise<{ ok: boolean; error?: string }> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -779,7 +781,7 @@ export async function claimTransaction(id: string): Promise<{ ok: boolean; error
 
   const { error } = await supabase
     .from("transactions")
-    .update({ created_by: user.id, created_by_email: user.email ?? null })
+    .update({ created_by, created_by_email })
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
 

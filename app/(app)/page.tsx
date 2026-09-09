@@ -16,14 +16,14 @@ import {
 } from "@/lib/queries";
 import { AnimatedMoney } from "@/app/(app)/animated-number";
 import { GreetingHeader } from "@/app/(app)/greeting-header";
-import { formatMoney, formatDate, firstNameFromEmail } from "@/lib/format";
+import { formatMoney, firstNameFromEmail } from "@/lib/format";
 import { BudgetCategoriesCard } from "@/app/(app)/budget-categories";
 import { GoalBanner } from "@/app/(app)/goal-banner";
 import { NewTransactionButton } from "@/app/(app)/new-transaction-button";
 import { BankLogo } from "@/app/(app)/accounts/bank-logo";
 import { EmptyState } from "@/app/(app)/empty-state";
-import { getLetterColors } from "@/lib/letter-colors";
 import { Sparkline } from "@/app/(app)/sparkline";
+import { RecentTransactionsList } from "@/app/(app)/recent-transactions-list";
 
 type Trend = { pct: number; good: boolean } | null;
 
@@ -108,7 +108,20 @@ export default async function DashboardPage({
   const activeAccounts = accounts.filter((a) => a.is_active);
 
   const recentTransactions = transactions.slice(0, 7);
-  const accountNameById = new Map(accounts.map((a) => [a.id, a.name]));
+  // Business/Personal grouping mirrors the Accounts card just below it — a
+  // transaction inherits its own account's flag rather than showing which
+  // account it's from as text.
+  const accountBusinessById = new Map(accounts.map((a) => [a.id, a.is_business]));
+  const recentBusiness = recentTransactions.filter(
+    (t) => t.account_id && accountBusinessById.get(t.account_id),
+  );
+  const recentPersonal = recentTransactions.filter(
+    (t) => !t.account_id || !accountBusinessById.get(t.account_id),
+  );
+  const recentGroups = [
+    { key: "business", label: "Business", transactions: recentBusiness },
+    { key: "personal", label: "Personal", transactions: recentPersonal },
+  ].filter((g) => g.transactions.length > 0);
 
   // Planned amounts live on a single period (budget_lines), so they're only
   // directly editable here when the visible range is exactly one existing
@@ -118,24 +131,24 @@ export default async function DashboardPage({
       (p) => p.start_date === range.start && p.end_date === range.end,
     ) ?? null;
 
-  // Total balance = net worth across every active account right now, not
-  // budget remaining — compared against last month's end-of-period net worth
-  // snapshot (transfers cancel out there, so it's the same total-across-
-  // accounts figure) to show whether that total is trending up or down. A
-  // debt account's `balance` is money owed, a liability — it subtracts here
+  // Net worth = every active account's balance summed together, not budget
+  // remaining — compared against last month's end-of-period snapshot
+  // (transfers cancel out there, so it's the same total-across-accounts
+  // figure) to show whether that total is trending up or down. A debt
+  // account's `balance` is money owed, a liability — it subtracts here
   // instead of adding, or a credit card balance would inflate this figure
   // instead of reducing it.
-  const totalBalance = activeAccounts.reduce(
+  const netWorth = activeAccounts.reduce(
     (sum, a) => sum + (a.is_debt ? -a.balance : a.balance),
     0,
   );
-  const previousTotalBalance = previousPeriod
+  const previousNetWorth = previousPeriod
     ? (netWorthHistory.find((p) => p.periodId === previousPeriod.id)
         ?.netWorth ?? null)
     : null;
-  const balanceTrend =
-    previousTotalBalance !== null
-      ? trend(totalBalance, previousTotalBalance)
+  const netWorthTrend =
+    previousNetWorth !== null
+      ? trend(netWorth, previousNetWorth)
       : null;
   const incomeTrend = trend(summary.income, previousSummary.income);
   const expenseTrend = trend(summary.expense, previousSummary.expense, {
@@ -143,35 +156,12 @@ export default async function DashboardPage({
   });
 
 
-  // Savings rate = the share of income actually kept, for this range vs. the
-  // same-length prior range. "Kept" includes money moved into (or pulled
-  // out of) a savings-type account — income-minus-expense alone is blind to
-  // that: pulling $5,000 from savings doesn't show up as an expense (it's a
-  // transfer between your own accounts), so a household could deplete its
-  // savings entirely in a month and still see a healthy-looking rate. Net
-  // savings-transfer activity is added in so a withdrawal actually drags
-  // this down (and can push it negative, correctly, if you drew down more
-  // than you earned).
-  const netSaved = summary.income - summary.expense + savingsTransfers;
-  const previousNetSaved =
-    previousSummary.income - previousSummary.expense + previousSavingsTransfers;
-  const savingsRate = summary.income > 0 ? (netSaved / summary.income) * 100 : 0;
-  const previousSavingsRate =
-    previousSummary.income > 0
-      ? (previousNetSaved / previousSummary.income) * 100
-      : 0;
-  // Savings rate is already a percentage, so a "% change" trend (like the
-  // dollar metrics use) would show a percent-of-a-percent — a rate moving
-  // from 20% to 25% is a +5 point swing, not "+25%" (which is what the
-  // generic `trend()` helper computed here before). Percentage-point
-  // difference is what actually reads correctly for a rate.
-  const savingsRateTrend =
-    previousSummary.income > 0
-      ? {
-          pct: savingsRate - previousSavingsRate,
-          good: savingsRate - previousSavingsRate > 0,
-        }
-      : null;
+  // Amount actually moved into savings this range vs. the same-length prior
+  // range — the literal dollar total of transfers into savings-type
+  // accounts (getSavingsTransferTotal), not a rate. Net, so a month with
+  // more withdrawn than deposited correctly shows negative rather than
+  // silently flooring at zero.
+  const savedTrend = trend(savingsTransfers, previousSavingsTransfers);
 
   return (
     <div className="min-w-0 space-y-6">
@@ -217,25 +207,25 @@ export default async function DashboardPage({
           drops to full width below everything else instead. */}
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_260px] xl:items-start">
         <div className="min-w-0 space-y-6">
-          {/* Five-column grid so Total Balance can span 2 columns — the largest,
+          {/* Five-column grid so Net Worth can span 2 columns — the largest,
           most important card — while the other three take 1 each. Deferred
           to 2xl (not xl) since the finances chat column now eats real
           content width on every page — at xl the cards were cramped enough
           to visually collide once that column is docked. */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-5">
         <MetricCard
-          label="Total Balance"
+          label="Net Worth"
           index={0}
           className="2xl:col-span-2"
           value={
             <AnimatedMoney
-              value={totalBalance}
+              value={netWorth}
               className={`tabular text-[34px] leading-[40px] font-bold tracking-[-0.005em] ${
-                totalBalance >= 0 ? "text-text" : "text-danger"
+                netWorth >= 0 ? "text-text" : "text-danger"
               }`}
             />
           }
-          trendValue={balanceTrend}
+          trendValue={netWorthTrend}
           graph={
             balanceHistory.length > 1 && (
               <Sparkline
@@ -298,7 +288,7 @@ export default async function DashboardPage({
         />
 
         <MetricCard
-          label="Savings Rate"
+          label="Saved This Month"
           index={3}
           iconBg="var(--projected-bg)"
           iconColor="var(--projected-strong)"
@@ -312,15 +302,18 @@ export default async function DashboardPage({
             />
           }
           value={
-            <p className="tabular text-[34px] leading-[40px] font-bold tracking-[-0.005em] text-text">
-              {Math.round(savingsRate)}%
-            </p>
+            <AnimatedMoney
+              value={savingsTransfers}
+              className={`tabular text-[34px] leading-[40px] font-bold tracking-[-0.005em] ${
+                savingsTransfers >= 0 ? "text-text" : "text-danger"
+              }`}
+            />
           }
-          trendValue={savingsRateTrend}
+          trendValue={savedTrend}
           badge={
             savingsTransfers < 0 ? (
               <span className="tabular rounded-full bg-negative-bg px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap text-negative-strong">
-                -{formatMoney(Math.abs(savingsTransfers))} withdrawn
+                withdrawn
               </span>
             ) : null
           }
@@ -329,7 +322,7 @@ export default async function DashboardPage({
 
       {/* Budget categories + recent transactions, side by side — at 2xl this
           lines up with the metric row above it on the same 5-column grid:
-          Budget Categories spans 3 (under Total Balance + Monthly Income),
+          Budget Categories spans 3 (under Net Worth + Monthly Income),
           Recent Transactions spans 2 (under Monthly Expenses + Savings
           Rate). Below 2xl there's no metric row to align to, so it's just
           an even lg:grid-cols-2 split. */}
@@ -359,63 +352,15 @@ export default async function DashboardPage({
             </Link>
           </div>
 
-          <div className="divide-y divide-border">
-            {recentTransactions.map((t, i) => {
-              const avatar = getLetterColors(t.description);
-              const fromAccount = t.account_id
-                ? (accountNameById.get(t.account_id) ?? null)
-                : null;
-              const toAccount = t.to_account_id
-                ? (accountNameById.get(t.to_account_id) ?? null)
-                : null;
-              const accountLabel =
-                t.kind === "transfer"
-                  ? [fromAccount, toAccount].filter(Boolean).join(" → ")
-                  : fromAccount;
-              return (
-                <div
-                  key={t.id}
-                  style={{ animationDelay: `${i * 35}ms` }}
-                  className="animate-fade-in-up flex items-center gap-3 py-3 first:pt-0 last:pb-0"
-                >
-                  <span
-                    className="flex size-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
-                    style={{ backgroundColor: avatar.bg, color: avatar.text }}
-                  >
-                    {t.description.trim()[0]?.toUpperCase() ?? "?"}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-text">
-                      {t.description}
-                    </p>
-                    <p className="truncate text-xs text-text-faint">
-                      {formatDate(t.txn_date)}
-                    </p>
-                  </div>
-                  {accountLabel && (
-                    <span className="hidden max-w-28 shrink-0 truncate text-xs text-text-faint sm:block">
-                      {accountLabel}
-                    </span>
-                  )}
-                  <span
-                    className={`tabular ml-4 shrink-0 text-sm font-medium ${
-                      t.kind === "income" ? "text-success" : "text-text"
-                    }`}
-                  >
-                    {t.kind === "income"
-                      ? "+"
-                      : t.kind === "expense"
-                        ? "-"
-                        : ""}
-                    {formatMoney(t.amount)}
-                  </span>
-                </div>
-              );
-            })}
-            {recentTransactions.length === 0 && (
-              <EmptyState message="No transactions logged for this range yet." />
-            )}
-          </div>
+          {recentTransactions.length === 0 ? (
+            <EmptyState message="No transactions logged for this range yet." />
+          ) : (
+            <RecentTransactionsList
+              groups={recentGroups}
+              accounts={accounts}
+              categories={categories}
+            />
+          )}
         </div>
       </div>
 
@@ -437,6 +382,26 @@ export default async function DashboardPage({
 // information the flat list never surfaced. One quiet line per account
 // (name + balance) instead of a stacked mini-card, so the list stays a fast
 // checklist rather than a scroll of repeated bars and big numbers.
+// Preferred display order for the Personal group — checking first as the
+// day-to-day account, then the two savings goals in the order they matter
+// most, ending with the tax set-aside. Anything not in this list (a new
+// personal account added later) just falls after these, alphabetically.
+const PERSONAL_ACCOUNT_ORDER = [
+  "Personal Checking",
+  "Car Maintenance Fund",
+  "Emergency Fund",
+  "Tax Savings",
+];
+
+function byPersonalOrder(a: AccountWithBalance, b: AccountWithBalance) {
+  const ai = PERSONAL_ACCOUNT_ORDER.indexOf(a.name);
+  const bi = PERSONAL_ACCOUNT_ORDER.indexOf(b.name);
+  if (ai !== -1 && bi !== -1) return ai - bi;
+  if (ai !== -1) return -1;
+  if (bi !== -1) return 1;
+  return a.name.localeCompare(b.name);
+}
+
 function AccountsGlanceCard({ accounts }: { accounts: AccountWithBalance[] }) {
   if (accounts.length === 0) return null;
 
@@ -458,7 +423,7 @@ function AccountsGlanceCard({ accounts }: { accounts: AccountWithBalance[] }) {
       label: "Personal",
       accounts: accounts
         .filter((a) => !a.is_debt && !a.is_business)
-        .sort((a, b) => a.name.localeCompare(b.name)),
+        .sort(byPersonalOrder),
     },
   ].filter((g) => g.accounts.length > 0);
 
@@ -580,7 +545,7 @@ function MetricCard({
 
   // Icon cards (Income/Expenses/Savings Rate) use the reference layout: icon
   // pinned top-left, then the label/value/trend block anchored to the
-  // bottom of the card. Total Balance has no icon and keeps its own
+  // bottom of the card. Net Worth has no icon and keeps its own
   // top-down layout instead, since its graph needs the middle space.
   if (icon) {
     return (

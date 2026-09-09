@@ -24,7 +24,7 @@ export function BudgetGrid({
   );
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-border bg-surface shadow-card">
+    <div className="animate-fade-in-up overflow-x-auto rounded-xl border border-border bg-surface shadow-card">
       <table className="w-full text-left">
         <thead>
           <tr className="border-b border-border bg-bg">
@@ -58,10 +58,7 @@ export function BudgetGrid({
                     </td>
                   </tr>
                 )}
-                <tr
-                  style={{ animationDelay: `${i * 25}ms` }}
-                  className="group animate-fade-in-up border-b border-border transition-colors last:border-b-0 hover:bg-bg"
-                >
+                <tr className="group border-b border-border transition-colors last:border-b-0 hover:bg-bg">
                   <td className="sticky left-0 z-10 bg-surface px-6 py-2 transition-colors group-hover:bg-bg">
                     <div className="flex items-center gap-2 whitespace-nowrap text-sm font-medium text-text">
                       <span>{getCategoryIcon(row.category.name, row.category.icon)}</span>

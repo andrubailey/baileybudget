@@ -32,6 +32,7 @@ export async function WeeklyRecapPanel({ compact = false }: { compact?: boolean 
 
   const expenseChange = summary.expense - previousSummary.expense;
   const cardPad = compact ? "p-4" : "p-5 sm:p-6";
+  const statPad = compact ? "p-2.5" : "p-5 sm:p-6";
 
   return (
     <div className={compact ? "space-y-4" : "space-y-6"}>
@@ -46,10 +47,10 @@ export async function WeeklyRecapPanel({ compact = false }: { compact?: boolean 
         )}
       </div>
 
-      <div className={`grid grid-cols-1 gap-4 sm:gap-6 ${compact ? "" : "sm:grid-cols-3"}`}>
-        <StatCard label="Income" value={summary.income} pad={cardPad} index={0} />
-        <StatCard label="Expenses" value={summary.expense} pad={cardPad} index={1} />
-        <StatCard label="Net" value={summary.net} emphasize pad={cardPad} index={2} />
+      <div className={`grid grid-cols-3 ${compact ? "gap-2" : "gap-4 sm:gap-6"}`}>
+        <StatCard label="Income" value={summary.income} pad={statPad} index={0} compact={compact} />
+        <StatCard label="Expenses" value={summary.expense} pad={statPad} index={1} compact={compact} />
+        <StatCard label="Net" value={summary.net} emphasize pad={statPad} index={2} compact={compact} />
       </div>
 
       <div className={`rounded-xl border border-border bg-surface shadow-card ${cardPad}`}>
@@ -110,20 +111,28 @@ function StatCard({
   emphasize,
   pad,
   index = 0,
+  compact = false,
 }: {
   label: string;
   value: number;
   emphasize?: boolean;
   pad: string;
   index?: number;
+  compact?: boolean;
 }) {
   return (
     <div
       style={{ animationDelay: `${index * 60}ms` }}
-      className={`card-hover animate-fade-in-up flex flex-col gap-1.5 rounded-xl border border-border bg-surface shadow-card ${pad}`}
+      className={`card-hover animate-fade-in-up flex min-w-0 flex-col gap-1.5 rounded-xl border border-border bg-surface shadow-card ${pad}`}
     >
-      <p className="text-sm font-medium text-text-muted">{label}</p>
-      <p className={`tabular text-2xl font-semibold ${emphasize ? "text-accent" : "text-text"}`}>
+      <p className={`truncate font-medium text-text-muted ${compact ? "text-xs" : "text-sm"}`}>
+        {label}
+      </p>
+      <p
+        className={`tabular truncate font-semibold ${compact ? "text-base" : "text-2xl"} ${
+          emphasize ? "text-accent" : "text-text"
+        }`}
+      >
         {formatMoney(value)}
       </p>
     </div>

@@ -106,6 +106,21 @@ export const NAV_GROUPS: {
   links: typeof PRIMARY_LINKS;
 }[] = [{ label: null, links: PRIMARY_LINKS }];
 
+// Option/Alt+1 through Option/Alt+7 jump straight to the Nth item in
+// PRIMARY_LINKS from anywhere in the app. Matched by e.code (the physical
+// key), not e.key — on a Mac, Option+1 types "¡" rather than "1", so keying
+// off the printed character would silently break the shortcut on that
+// platform, which is exactly where Option-as-modifier is most natural.
+const DIGIT_CODES = [
+  "Digit1",
+  "Digit2",
+  "Digit3",
+  "Digit4",
+  "Digit5",
+  "Digit6",
+  "Digit7",
+];
+
 // The mobile bottom tab bar only has room for 5 icons — the pages used
 // often enough to deserve a permanent, always-visible slot. Everything
 // else (Reports, Settings) moves into the mobile "More" menu.
@@ -130,7 +145,6 @@ export function Sidebar({
   // Starts expanded (matching the server-rendered HTML) and reads the saved
   // preference after mount, to avoid a hydration mismatch.
   const [collapsed, setCollapsed] = useState(false);
-  const [search, setSearch] = useState("");
   const [profileOpen, setProfileOpen] = useState(false);
   // Defaults to the ⌘ glyph (matches the server-rendered HTML) and switches
   // to "Ctrl K" after mount on non-Mac platforms, to avoid a hydration
@@ -141,6 +155,31 @@ export function Sidebar({
     // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing with navigator, an external system, after mount
     setIsMac(/mac/i.test(navigator.platform || navigator.userAgent));
   }, []);
+
+  // Global Option/Alt+1-7 page-jump shortcut — lives here (rather than in a
+  // page component) because the sidebar is the one thing mounted on every
+  // page, mobile included (it's just CSS-hidden below lg, not unmounted).
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      const index = DIGIT_CODES.indexOf(e.code);
+      if (index === -1 || index >= PRIMARY_LINKS.length) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      e.preventDefault();
+      router.push(PRIMARY_LINKS[index].href);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [router]);
 
   // Active-link highlight slides between items instead of just swapping
   // background instantly — measured off the actual rendered link elements
@@ -229,56 +268,37 @@ export function Sidebar({
 
       {!collapsed && (
         <div className="px-5 pb-3">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              router.push(
-                search
-                  ? `/transactions?q=${encodeURIComponent(search)}`
-                  : "/transactions",
-              );
-            }}
+          {/* Not a real search field — clicking (or focusing) it just opens
+              the ⌘K palette, the same as pressing the shortcut, instead of
+              running its own separate quick-filter. One search experience
+              instead of two competing ones. */}
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent("budgetapp:open-chat"))}
+            className="relative block w-full rounded-lg text-left focus-visible:ring-2 focus-visible:ring-accent-bright/60 focus-visible:outline-none"
           >
-            <label className="relative block">
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-hero-text-muted"
-              >
-                <path
-                  d="M21 21l-4.35-4.35M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"
-                  stroke="currentColor"
-                  strokeWidth={1.6}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              <input
-                type="search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search..."
-                className="w-full rounded-lg bg-hero-bg-2 py-2 pr-12 pl-9 text-sm text-hero-text placeholder:text-hero-text-muted outline-none focus:ring-2 focus:ring-accent-bright/60"
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-hero-text-muted"
+            >
+              <path
+                d="M21 21l-4.35-4.35M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"
+                stroke="currentColor"
+                strokeWidth={1.6}
+                strokeLinecap="round"
+                strokeLinejoin="round"
               />
-              {/* Ghost hint pointing at the real, comprehensive search — this
-                  box is just a quick "jump to filtered list" shortcut, the
-                  ⌘K palette is what actually searches every transaction. */}
-              <button
-                type="button"
-                tabIndex={-1}
-                onClick={() =>
-                  window.dispatchEvent(
-                    new KeyboardEvent("keydown", { key: "k", metaKey: isMac, ctrlKey: !isMac }),
-                  )
-                }
-                className="pointer-events-auto absolute top-1/2 right-2 -translate-y-1/2 rounded border border-hero-border px-1.5 py-0.5 text-[10px] font-medium text-hero-text-muted"
-              >
-                {isMac ? "⌘K" : "Ctrl K"}
-              </button>
-            </label>
-          </form>
+            </svg>
+            <span className="block w-full truncate rounded-lg bg-hero-bg-2 py-2 pr-12 pl-9 text-sm text-hero-text-muted">
+              Search...
+            </span>
+            <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded border border-hero-border px-1.5 py-0.5 text-[10px] font-medium text-hero-text-muted">
+              {isMac ? "⌘K" : "Ctrl K"}
+            </span>
+          </button>
         </div>
       )}
 
@@ -309,6 +329,11 @@ export function Sidebar({
                   ? pathname === "/"
                   : pathname.startsWith(link.href);
               const count = counts?.[link.href] ?? 0;
+              const shortcutIndex = PRIMARY_LINKS.indexOf(link);
+              const shortcutHint =
+                shortcutIndex !== -1 && shortcutIndex < DIGIT_CODES.length
+                  ? ` (⌥${shortcutIndex + 1})`
+                  : "";
               return (
                 <Link
                   key={link.href}
@@ -317,7 +342,7 @@ export function Sidebar({
                     else linkRefs.current.delete(link.href);
                   }}
                   href={link.href}
-                  title={collapsed ? link.label : undefined}
+                  title={`${link.label}${shortcutHint}`}
                   className={`relative z-10 flex items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] font-medium transition-colors ${
                     active
                       ? "text-hero-text"

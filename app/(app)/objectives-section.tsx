@@ -16,7 +16,6 @@ import { EmptyState } from "@/app/(app)/empty-state";
 import { Celebration, useCelebration } from "@/app/(app)/celebration";
 import { FIELD_CLASS as fieldClass } from "@/lib/ui";
 import { timeElapsedPct } from "@/lib/objective-progress";
-import { GoalsTimeline } from "@/app/(app)/goals/goals-timeline";
 
 const STATUS_STYLES: Record<string, string> = {
   "Not Started": "bg-bg text-text-faint",
@@ -270,7 +269,6 @@ export function ObjectivesSection({
   accounts: AccountWithBalance[];
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [view, setView] = useState<"timeline" | "list">("list");
   const showToast = useToast();
   const { celebrationKey, fire } = useCelebration();
 
@@ -283,33 +281,11 @@ export function ObjectivesSection({
   return (
     <div>
       <Celebration celebrationKey={celebrationKey} />
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-4">
         <AddObjectiveForm
           accounts={accounts}
           onCreated={(name) => showToast(`${name} added`)}
         />
-        <div className="flex items-center rounded-lg border border-border p-0.5 text-sm font-medium">
-          <button
-            type="button"
-            onClick={() => setView("timeline")}
-            className={`rounded-md px-3 py-1.5 transition-colors ${
-              view === "timeline"
-                ? "bg-bg text-text"
-                : "text-text-faint hover:text-text"
-            }`}
-          >
-            Timeline
-          </button>
-          <button
-            type="button"
-            onClick={() => setView("list")}
-            className={`rounded-md px-3 py-1.5 transition-colors ${
-              view === "list" ? "bg-bg text-text" : "text-text-faint hover:text-text"
-            }`}
-          >
-            List
-          </button>
-        </div>
       </div>
 
       {objectives.length === 0 ? (
@@ -318,14 +294,6 @@ export function ObjectivesSection({
           action={
             <p className="text-xs text-text-faint">Add your first one above.</p>
           }
-        />
-      ) : view === "timeline" ? (
-        <GoalsTimeline
-          objectives={objectives}
-          onSelect={(id) => {
-            setView("list");
-            setEditingId(id);
-          }}
         />
       ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

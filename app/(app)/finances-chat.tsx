@@ -263,7 +263,11 @@ function ChatInputForm({
   // anchored near the newest message (used once "Ask AI" is picked).
   position?: "top" | "bottom";
 }) {
-  const isSearching = input.trim().length > 0;
+  // Shown once there's a draft to disambiguate (typed text) or once "Ask AI"
+  // has already been picked — the latter keeps the toggle around after
+  // sending a message clears the input, so switching back to Search doesn't
+  // require closing and reopening the whole panel.
+  const showQueryKindToggle = input.trim().length > 0 || queryKind === "ai";
   return (
     <form
       onSubmit={onSend}
@@ -271,7 +275,7 @@ function ChatInputForm({
         position === "top" ? "border-b border-border" : "border-t border-border"
       }`}
     >
-      {isSearching && (
+      {showQueryKindToggle && (
         <div className="flex gap-1.5">
           <button
             type="button"

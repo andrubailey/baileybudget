@@ -36,7 +36,7 @@ export function Money({
   className = "",
 }: {
   amount: number;
-  // "balance" — a headline figure (Total Balance, an account balance, a
+  // "balance" — a headline figure (Net Worth, an account balance, a
   // report total): cents shrink and fade. "amount" — a line-item figure in
   // a list/table row: cents stay full-weight since the whole number is
   // already small.

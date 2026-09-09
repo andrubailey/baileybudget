@@ -117,7 +117,7 @@ export function MonthlyTrendChart({
     }
   });
 
-  // Same crosshair + floating tooltip pattern as the Total Balance card's
+  // Same crosshair + floating tooltip pattern as the Net Worth card's
   // Sparkline — hovering anywhere over the chart snaps to the nearest
   // month's bars instead of relying on the browser's native (slow,
   // inconsistent) title tooltip.

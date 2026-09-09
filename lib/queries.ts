@@ -226,21 +226,51 @@ export type PeriodSummary = {
   savingsRate: number | null;
 };
 
+// A debt account stores a charge as kind='income' (owe more) and a payment
+// as kind='expense' (owe less) — inverted from every other account, needed
+// so account-balance math (getAccountsWithBalances) works. Every place that
+// aggregates "real" household income/expense has to undo that inversion, or
+// a credit-card charge reads as income, and paying the card off double-
+// counts as a second expense on top of the one already counted when it was
+// charged. Reclassifies a transaction's kind for aggregation purposes; null
+// means "don't count this at all" (a transfer, or a debt-account payment —
+// the latter is money moving to pay down spending already counted, the
+// same treatment a transfer between two of your own accounts gets).
+const getDebtAccountIds = cache(async (): Promise<Set<string>> => {
+  const accounts = await getAllAccountsRaw();
+  return new Set(accounts.filter((a) => a.is_debt).map((a) => a.id));
+});
+
+function reclassifyKind(
+  kind: string,
+  account_id: string | null,
+  debtAccountIds: Set<string>,
+): "income" | "expense" | null {
+  if (kind !== "income" && kind !== "expense") return null;
+  const isDebt = account_id ? debtAccountIds.has(account_id) : false;
+  if (!isDebt) return kind as "income" | "expense";
+  return kind === "income" ? "expense" : null;
+}
+
 export async function getPeriodSummary(
   periodId: string,
 ): Promise<PeriodSummary> {
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("transactions")
-    .select("kind, amount")
-    .eq("period_id", periodId)
-    .is("deleted_at", null);
+  const [{ data }, debtAccountIds] = await Promise.all([
+    supabase
+      .from("transactions")
+      .select("kind, amount, account_id")
+      .eq("period_id", periodId)
+      .is("deleted_at", null),
+    getDebtAccountIds(),
+  ]);
 
   let income = 0;
   let expense = 0;
   for (const t of data ?? []) {
-    if (t.kind === "income") income += t.amount;
-    else if (t.kind === "expense") expense += t.amount;
+    const kind = reclassifyKind(t.kind, t.account_id, debtAccountIds);
+    if (kind === "income") income += t.amount;
+    else if (kind === "expense") expense += t.amount;
   }
 
   const net = income - expense;
@@ -275,17 +305,19 @@ export async function getCategoryProgress(
     { data: categories },
     { data: budgetLines },
     { data: transactions },
+    debtAccountIds,
   ] = await Promise.all([
     supabase.from("periods").select("*").eq("id", periodId).single(),
     supabase.from("categories").select("*").eq("kind", "expense").order("name"),
     supabase.from("budget_lines").select("*").eq("period_id", periodId),
     supabase
       .from("transactions")
-      .select("id, category_id, amount, description, txn_date")
+      .select("id, category_id, amount, description, txn_date, account_id, kind")
       .eq("period_id", periodId)
-      .eq("kind", "expense")
+      .in("kind", ["income", "expense"])
       .is("deleted_at", null)
       .order("txn_date", { ascending: false }),
+    getDebtAccountIds(),
   ]);
 
   const plannedByCategory = new Map<string, number>();
@@ -301,8 +333,12 @@ export async function getCategoryProgress(
   const splitTransactionIds: string[] = [];
   for (const t of (transactions ?? []) as Pick<
     Transaction,
-    "id" | "category_id" | "amount" | "description" | "txn_date"
+    "id" | "category_id" | "amount" | "description" | "txn_date" | "account_id" | "kind"
   >[]) {
+    // A debt-account payment isn't new spending (it's paying down a charge
+    // already counted here when it happened), so it's excluded rather than
+    // added as a second expense.
+    if (reclassifyKind(t.kind, t.account_id, debtAccountIds) !== "expense") continue;
     if (!t.category_id) {
       splitTransactionIds.push(t.id);
       continue;
@@ -339,7 +375,11 @@ export async function getCategoryProgress(
       planned,
       actual,
       remaining: planned - actual,
-      overBudget: actual > planned && planned > 0,
+      // Also flags spending with no plan behind it at all (planned = 0) —
+      // unbudgeted spend is exactly as "over" as blowing past a real plan,
+      // not exempt from the warning just because there was nothing to
+      // compare it to.
+      overBudget: actual > planned,
       transactions: transactionsByCategory.get(c.id) ?? [],
     };
   });
@@ -366,7 +406,7 @@ async function getRolloverAmounts(
   if (!prevPeriod) return result;
 
   const categoryIds = rolloverCategories.map((c) => c.id);
-  const [{ data: prevBudgetLines }, { data: prevTransactions }] =
+  const [{ data: prevBudgetLines }, { data: prevTransactions }, debtAccountIds] =
     await Promise.all([
       supabase
         .from("budget_lines")
@@ -375,10 +415,11 @@ async function getRolloverAmounts(
         .in("category_id", categoryIds),
       supabase
         .from("transactions")
-        .select("id, category_id, amount")
+        .select("id, category_id, amount, account_id, kind")
         .eq("period_id", prevPeriod.id)
-        .eq("kind", "expense")
+        .in("kind", ["income", "expense"])
         .is("deleted_at", null),
+      getDebtAccountIds(),
     ]);
 
   const prevPlanned = new Map<string, number>();
@@ -388,6 +429,7 @@ async function getRolloverAmounts(
   const prevActual = new Map<string, number>();
   const splitIds: string[] = [];
   for (const t of prevTransactions ?? []) {
+    if (reclassifyKind(t.kind, t.account_id, debtAccountIds) !== "expense") continue;
     if (!t.category_id) {
       splitIds.push(t.id);
       continue;
@@ -447,18 +489,22 @@ export async function getPeriodSummaryForRange(
   end: string,
 ): Promise<PeriodSummary> {
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("transactions")
-    .select("kind, amount")
-    .gte("txn_date", start)
-    .lte("txn_date", end)
-    .is("deleted_at", null);
+  const [{ data }, debtAccountIds] = await Promise.all([
+    supabase
+      .from("transactions")
+      .select("kind, amount, account_id")
+      .gte("txn_date", start)
+      .lte("txn_date", end)
+      .is("deleted_at", null),
+    getDebtAccountIds(),
+  ]);
 
   let income = 0;
   let expense = 0;
   for (const t of data ?? []) {
-    if (t.kind === "income") income += t.amount;
-    else if (t.kind === "expense") expense += t.amount;
+    const kind = reclassifyKind(t.kind, t.account_id, debtAccountIds);
+    if (kind === "income") income += t.amount;
+    else if (kind === "expense") expense += t.amount;
   }
 
   const net = income - expense;
@@ -483,6 +529,7 @@ export async function getCategoryProgressForRange(
     { data: categories },
     { data: overlappingPeriods },
     { data: transactions },
+    debtAccountIds,
   ] = await Promise.all([
     supabase.from("categories").select("*").eq("kind", "expense").order("name"),
     supabase
@@ -492,12 +539,13 @@ export async function getCategoryProgressForRange(
       .gte("end_date", start),
     supabase
       .from("transactions")
-      .select("id, category_id, amount, description, txn_date")
-      .eq("kind", "expense")
+      .select("id, category_id, amount, description, txn_date, account_id, kind")
+      .in("kind", ["income", "expense"])
       .gte("txn_date", start)
       .lte("txn_date", end)
       .is("deleted_at", null)
       .order("txn_date", { ascending: false }),
+    getDebtAccountIds(),
   ]);
 
   const periodIds = (overlappingPeriods ?? []).map((p) => p.id);
@@ -521,8 +569,9 @@ export async function getCategoryProgressForRange(
   const splitTransactionIds: string[] = [];
   for (const t of (transactions ?? []) as Pick<
     Transaction,
-    "id" | "category_id" | "amount" | "description" | "txn_date"
+    "id" | "category_id" | "amount" | "description" | "txn_date" | "account_id" | "kind"
   >[]) {
+    if (reclassifyKind(t.kind, t.account_id, debtAccountIds) !== "expense") continue;
     if (!t.category_id) {
       splitTransactionIds.push(t.id);
       continue;
@@ -550,7 +599,11 @@ export async function getCategoryProgressForRange(
       planned,
       actual,
       remaining: planned - actual,
-      overBudget: actual > planned && planned > 0,
+      // Also flags spending with no plan behind it at all (planned = 0) —
+      // unbudgeted spend is exactly as "over" as blowing past a real plan,
+      // not exempt from the warning just because there was nothing to
+      // compare it to.
+      overBudget: actual > planned,
       transactions: transactionsByCategory.get(c.id) ?? [],
     };
   });
@@ -594,20 +647,25 @@ export async function getMonthlyTotals(
   end: string,
 ): Promise<MonthlyTotal[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("transactions")
-    .select("kind, amount, txn_date")
-    .gte("txn_date", start)
-    .lte("txn_date", end)
-    .is("deleted_at", null)
-    .in("kind", ["income", "expense"]);
+  const [{ data, error }, debtAccountIds] = await Promise.all([
+    supabase
+      .from("transactions")
+      .select("kind, amount, txn_date, account_id")
+      .gte("txn_date", start)
+      .lte("txn_date", end)
+      .is("deleted_at", null)
+      .in("kind", ["income", "expense"]),
+    getDebtAccountIds(),
+  ]);
   if (error) throw error;
 
   const byMonth = new Map<string, { income: number; expense: number }>();
   for (const t of data ?? []) {
+    const kind = reclassifyKind(t.kind, t.account_id, debtAccountIds);
+    if (!kind) continue;
     const month = t.txn_date.slice(0, 7);
     const bucket = byMonth.get(month) ?? { income: 0, expense: 0 };
-    if (t.kind === "income") bucket.income += t.amount;
+    if (kind === "income") bucket.income += t.amount;
     else bucket.expense += t.amount;
     byMonth.set(month, bucket);
   }
@@ -636,17 +694,21 @@ export async function getRecurringVsOtherByMonth(
   end: string,
 ): Promise<Map<string, RecurringVsOther>> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("transactions")
-    .select("amount, txn_date, recurring_transaction_id")
-    .eq("kind", "expense")
-    .gte("txn_date", start)
-    .lte("txn_date", end)
-    .is("deleted_at", null);
+  const [{ data, error }, debtAccountIds] = await Promise.all([
+    supabase
+      .from("transactions")
+      .select("amount, txn_date, recurring_transaction_id, account_id, kind")
+      .in("kind", ["income", "expense"])
+      .gte("txn_date", start)
+      .lte("txn_date", end)
+      .is("deleted_at", null),
+    getDebtAccountIds(),
+  ]);
   if (error) throw error;
 
   const byMonth = new Map<string, RecurringVsOther>();
   for (const t of data ?? []) {
+    if (reclassifyKind(t.kind, t.account_id, debtAccountIds) !== "expense") continue;
     const month = t.txn_date.slice(0, 7);
     const bucket = byMonth.get(month) ?? { recurring: 0, other: 0 };
     if (t.recurring_transaction_id) bucket.recurring += t.amount;
@@ -778,22 +840,24 @@ export async function getTopCategoryByMonth(
   end: string,
 ): Promise<Map<string, TopCategoryByMonth>> {
   const supabase = await createClient();
-  const [{ data: rows, error }, categories] = await Promise.all([
+  const [{ data: rows, error }, categories, debtAccountIds] = await Promise.all([
     supabase
       .from("transactions")
-      .select("amount, txn_date, category_id")
-      .eq("kind", "expense")
+      .select("amount, txn_date, category_id, account_id, kind")
+      .in("kind", ["income", "expense"])
       .not("category_id", "is", null)
       .gte("txn_date", start)
       .lte("txn_date", end)
       .is("deleted_at", null),
     getAllCategoriesRaw(),
+    getDebtAccountIds(),
   ]);
   if (error) throw error;
 
   const nameById = new Map(categories.map((c) => [c.id, c.name]));
   const byMonthCategory = new Map<string, Map<string, number>>();
   for (const t of rows ?? []) {
+    if (reclassifyKind(t.kind, t.account_id, debtAccountIds) !== "expense") continue;
     const month = t.txn_date.slice(0, 7);
     const byCategory = byMonthCategory.get(month) ?? new Map<string, number>();
     byCategory.set(
@@ -1090,7 +1154,7 @@ export async function getNetWorthHistory(): Promise<NetWorthPoint[]> {
     fetchAllTransactionRows(),
   ]);
 
-  // Active-only, matching how the dashboard's "Total Balance" figure this
+  // Active-only, matching how the dashboard's "Net Worth" figure this
   // feeds a trend comparison for is computed — otherwise a deactivated
   // account's starting balance and history keep permanently inflating (or
   // deflating) every past period's net worth even though that account no
@@ -1160,7 +1224,7 @@ export async function getBalanceHistory(days: number): Promise<BalancePoint[]> {
     fetchAllTransactionRows(),
   ]);
 
-  // Match the "Total Balance" figure this graphs — activeAccounts only, so
+  // Match the "Net Worth" figure this graphs — activeAccounts only, so
   // a deactivated/closed account (and its transaction history) doesn't keep
   // dragging the line even though it's excluded from the headline number.
   const activeAccountIds = new Set(
@@ -1416,20 +1480,25 @@ export async function getMonthlyFlow(limit = 12): Promise<MonthlyFlowPoint[]> {
   // getPeriodSummary() call (its own transactions query) per period — same
   // class of fix as getNetWorthHistory/getDebtBalanceHistory's single-fetch
   // approach.
-  const { data: rows } = periodIds.length
-    ? await supabase
-        .from("transactions")
-        .select("period_id, kind, amount")
-        .in("period_id", periodIds)
-        .is("deleted_at", null)
-    : { data: [] };
+  const [{ data: rows }, debtAccountIds] = await Promise.all([
+    periodIds.length
+      ? supabase
+          .from("transactions")
+          .select("period_id, kind, amount, account_id")
+          .in("period_id", periodIds)
+          .is("deleted_at", null)
+      : Promise.resolve({ data: [] }),
+    getDebtAccountIds(),
+  ]);
 
   const byPeriod = new Map<string, { income: number; expense: number }>();
   for (const t of rows ?? []) {
     if (!t.period_id) continue;
+    const kind = reclassifyKind(t.kind, t.account_id, debtAccountIds);
+    if (!kind) continue;
     const entry = byPeriod.get(t.period_id) ?? { income: 0, expense: 0 };
-    if (t.kind === "income") entry.income += t.amount;
-    else if (t.kind === "expense") entry.expense += t.amount;
+    if (kind === "income") entry.income += t.amount;
+    else entry.expense += t.amount;
     byPeriod.set(t.period_id, entry);
   }
 
