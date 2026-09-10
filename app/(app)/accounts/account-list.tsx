@@ -6,7 +6,7 @@ import {
   updateAccountDetails,
   uploadAccountLogo,
 } from "@/app/actions";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, progressColor } from "@/lib/format";
 import { Money } from "@/app/(app)/money";
 import { SegmentedProgress } from "@/app/(app)/segmented-progress";
 import type { AccountWithBalance } from "@/lib/queries";
@@ -22,7 +22,6 @@ import { StatusPill } from "@/app/(app)/status-pill";
 import { EmptyState } from "@/app/(app)/empty-state";
 import { Celebration, useCelebration } from "@/app/(app)/celebration";
 import { FIELD_CLASS as fieldClass } from "@/lib/ui";
-import { ReconcileButton } from "./reconcile-button";
 
 function defaultLoginUrl(bank: string | null): string | null {
   if (!bank) return null;
@@ -221,8 +220,8 @@ export function AccountList({
                     </StatusPill>
                   )}
 
-                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-                    {loginUrl && (
+                  {loginUrl && (
+                    <div className="mt-1">
                       <a
                         href={loginUrl}
                         target="_blank"
@@ -232,9 +231,8 @@ export function AccountList({
                       >
                         Log in to {a.bank ?? "bank"} ↗
                       </a>
-                    )}
-                    {a.is_active && <ReconcileButton account={a} />}
-                  </div>
+                    </div>
+                  )}
 
                   {progress !== null && (
                     <div className="mt-4">
@@ -243,13 +241,17 @@ export function AccountList({
                           <Money amount={a.balance} /> of{" "}
                           <Money amount={a.goal!} />
                         </span>
-                        <span className="tabular font-semibold text-text">
+                        <span
+                          className="tabular font-semibold"
+                          style={{ color: progressColor(progress) }}
+                        >
                           {progress.toFixed(0)}%
                         </span>
                       </div>
                       <SegmentedProgress
                         pct={progress}
                         overBudget={false}
+                        color={progressColor(progress)}
                         className="mt-1.5 w-full"
                       />
                     </div>
@@ -262,13 +264,17 @@ export function AccountList({
                           <Money amount={a.balance} /> owed of{" "}
                           <Money amount={a.starting_balance} /> starting
                         </span>
-                        <span className="tabular font-semibold text-positive">
+                        <span
+                          className="tabular font-semibold"
+                          style={{ color: progressColor(payoffProgress) }}
+                        >
                           {payoffProgress.toFixed(0)}%
                         </span>
                       </div>
                       <SegmentedProgress
                         pct={payoffProgress}
                         overBudget={false}
+                        color={progressColor(payoffProgress)}
                         className="mt-1.5 w-full"
                       />
                     </div>

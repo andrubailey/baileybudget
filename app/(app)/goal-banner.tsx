@@ -1,14 +1,16 @@
 import Link from "next/link";
-import { formatMoney } from "@/lib/format";
+import { formatDate, formatMoney } from "@/lib/format";
 import { timeElapsedPct } from "@/lib/objective-progress";
 import type { AccountWithBalance } from "@/lib/queries";
 import type { Objective } from "@/lib/types";
 import { SegmentedProgress } from "@/app/(app)/segmented-progress";
 
-// Full-width CTA at the bottom of the dashboard — surfaces whichever open
-// goal is soonest due (or just-in-progress, if none has a deadline) so the
-// dashboard nudges toward the Goals page instead of only ever pointing away
-// from it via the sidebar link.
+// Goals card in the dashboard's right rail, under the Accounts card —
+// surfaces whichever open goal is soonest due (or just-in-progress, if none
+// has a deadline) so the dashboard nudges toward the Goals page instead of
+// only ever pointing away from it via the sidebar link. The rail is only
+// 260px wide, so everything reads top to bottom: header, the goal's name,
+// then a big percentage with the bar under it.
 export function GoalBanner({
   objectives,
   accounts,
@@ -41,65 +43,71 @@ export function GoalBanner({
 
   return (
     <div
-      className="relative flex flex-col gap-6 overflow-hidden rounded-xl bg-cover bg-center p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8"
+      className="relative flex flex-col overflow-hidden rounded-xl p-6"
       style={{
         background: featured?.image_url
           ? `url(${featured.image_url})`
-          : "linear-gradient(135deg, var(--hero-bg) 0%, var(--accent) 100%)",
+          : "linear-gradient(160deg, var(--hero-bg) 0%, var(--accent) 100%)",
         backgroundSize: "cover",
         backgroundPosition: "center",
       }}
     >
-      {/* Darken the featured goal's photo just enough that white text stays
-          legible over it — the plain gradient fallback already has enough
-          contrast on its own and doesn't need this. */}
-      {featured?.image_url && <div className="absolute inset-0 bg-black/45" />}
+      {/* Darkening layer so the white text stays readable — heavier over a
+          goal's photo (which can be any brightness), lighter over the plain
+          gradient, whose accent-green end was still too bright on its own. */}
+      <div
+        className={`absolute inset-0 ${featured?.image_url ? "bg-black/60" : "bg-black/35"}`}
+      />
 
-      <div className="relative">
-        <h2 className="text-xl font-bold text-hero-text sm:text-2xl">
+      <div className="relative flex items-center justify-between gap-3">
+        <h2 className="flex items-center gap-2 text-heading text-hero-text">
+          <span aria-hidden="true">🎯</span>
           Goals
         </h2>
-        <p className="mt-1 max-w-sm text-sm text-hero-text-muted">
-          Set a goal and track your progress toward it.
-        </p>
         <Link
           href="/goals"
-          className="mt-4 inline-flex items-center rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-hero-bg transition-colors hover:bg-white/90"
+          className="text-xs font-medium text-hero-text-muted transition-colors hover:text-hero-text"
         >
-          Create a goal
+          View All
         </Link>
       </div>
 
-      {featured && (
-        <div className="relative flex items-center gap-4 sm:w-[280px] sm:shrink-0">
-          <div className="flex size-14 shrink-0 items-center justify-center rounded-full bg-white/15 text-2xl backdrop-blur-sm">
-            🎯
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-xs text-hero-text-muted">Upcoming goal</p>
-            <p className="truncate text-sm font-semibold text-hero-text">
-              {featured.name}
-            </p>
-            <div className="mt-2 flex items-center gap-2">
-              <SegmentedProgress
-                pct={pct ?? 0}
-                overBudget={false}
-                color="white"
-                trackColor="rgba(255,255,255,0.25)"
-                className="min-w-0 flex-1"
-              />
-              <span className="tabular shrink-0 text-xs text-hero-text-muted">
-                {pct !== null ? `${Math.round(pct)}%` : "—"}
+      {featured ? (
+        <div className="relative mt-5">
+          <p className="text-[11px] font-semibold tracking-wide text-hero-text-muted uppercase">
+            Upcoming goal
+          </p>
+          <p className="mt-1 line-clamp-2 text-lg leading-snug font-semibold text-hero-text">
+            {featured.name}
+          </p>
+
+          <div className="mt-4 flex items-baseline justify-between gap-2">
+            <span className="tabular text-3xl font-bold text-hero-text">
+              {pct !== null ? `${Math.round(pct)}%` : "—"}
+            </span>
+            {featured.end_date && (
+              <span className="shrink-0 text-xs text-hero-text-muted">
+                Due {formatDate(featured.end_date)}
               </span>
-            </div>
-            {accountPct !== null && linkedAccount?.goal != null && (
-              <p className="tabular mt-1 text-xs text-hero-text-muted">
-                {formatMoney(linkedAccount.balance)} /{" "}
-                {formatMoney(linkedAccount.goal)}
-              </p>
             )}
           </div>
+          <SegmentedProgress
+            pct={pct ?? 0}
+            overBudget={false}
+            color="white"
+            trackColor="rgba(255,255,255,0.25)"
+            className="mt-2"
+          />
+          {accountPct !== null && linkedAccount?.goal != null && (
+            <p className="tabular mt-2 text-xs text-hero-text-muted">
+              {formatMoney(linkedAccount.balance)} of {formatMoney(linkedAccount.goal)}
+            </p>
+          )}
         </div>
+      ) : (
+        <p className="relative mt-2 text-sm text-hero-text-muted">
+          Set a goal and track your progress toward it.
+        </p>
       )}
     </div>
   );

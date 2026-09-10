@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { upsertBudgetLine } from "@/app/actions";
 import { Money } from "@/app/(app)/money";
 import { CategoryChip } from "@/app/(app)/category-chip";
+import { CategoryDetailPanel } from "@/app/(app)/category-detail-panel";
 import { EmptyState } from "@/app/(app)/empty-state";
 import { useToast } from "@/app/(app)/toast";
 import { SegmentedProgress } from "@/app/(app)/segmented-progress";
@@ -49,6 +49,9 @@ export function BudgetCategoriesCard({
   // budgeted category.
   limit?: number;
 }) {
+  // Which category's detail panel is open, if any.
+  const [detailId, setDetailId] = useState<string | null>(null);
+
   // The full month's budget: every category that actually has money
   // attached (planned or spent) rather than every category the household
   // has ever created, alphabetical so it reads as a scannable list instead
@@ -62,6 +65,7 @@ export function BudgetCategoriesCard({
   // shows, it shouldn't make the total look smaller than it really is.
   const totalPlanned = sorted.reduce((sum, c) => sum + c.planned, 0);
   const totalActual = sorted.reduce((sum, c) => sum + c.actual, 0);
+  const detailCategory = detailId ? (sorted.find((c) => c.id === detailId) ?? null) : null;
 
   return (
     <div className="card flex min-w-0 flex-col overflow-hidden">
@@ -103,6 +107,7 @@ export function BudgetCategoriesCard({
                 category={c}
                 editablePeriodId={editablePeriodId}
                 index={i}
+                onOpen={() => setDetailId(c.id)}
               />
             ))}
             <div className="flex items-center justify-between rounded-lg bg-bg px-3 py-2 text-xs font-semibold text-text">
@@ -144,6 +149,7 @@ export function BudgetCategoriesCard({
                     category={c}
                     editablePeriodId={editablePeriodId}
                     index={i}
+                    onOpen={() => setDetailId(c.id)}
                   />
                 ))}
               </tbody>
@@ -165,6 +171,15 @@ export function BudgetCategoriesCard({
           </div>
         </>
       )}
+
+      {detailCategory && (
+        <CategoryDetailPanel
+          key={detailCategory.id}
+          category={detailCategory}
+          editablePeriodId={editablePeriodId}
+          onClose={() => setDetailId(null)}
+        />
+      )}
     </div>
   );
 }
@@ -173,12 +188,21 @@ function MobileCategoryCard({
   category: c,
   editablePeriodId,
   index = 0,
+  onOpen,
 }: {
   category: CategoryProgress;
   editablePeriodId: string | null;
   index?: number;
+  onOpen: () => void;
 }) {
   const [plannedInput, setPlannedInput] = useState(String(c.planned));
+  // A save elsewhere (e.g. the detail panel) revalidates and hands this a
+  // fresh `planned` — resync so the inline input doesn't show a stale value.
+  const [lastPlanned, setLastPlanned] = useState(c.planned);
+  if (c.planned !== lastPlanned) {
+    setLastPlanned(c.planned);
+    setPlannedInput(String(c.planned));
+  }
   const [, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
   const showToast = useToast();
@@ -211,14 +235,19 @@ function MobileCategoryCard({
   }
 
   return (
-    <Link
-      href={
-        editablePeriodId
-          ? `/transactions?period=${editablePeriodId}&category=${c.id}`
-          : `/transactions?category=${c.id}`
-      }
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
       style={{ animationDelay: `${index * 35}ms` }}
-      className={`animate-fade-in-up block rounded-xl border border-border bg-surface p-3 shadow-card transition-colors ${
+      className={`animate-fade-in-up block cursor-pointer rounded-xl border border-border bg-surface p-3 shadow-card transition-colors ${
         isUnbudgeted ? "opacity-60" : ""
       }`}
     >
@@ -236,7 +265,7 @@ function MobileCategoryCard({
         {editablePeriodId ? (
           <label
             className="relative shrink-0"
-            onClick={(e) => e.preventDefault()}
+            onClick={(e) => e.stopPropagation()}
           >
             <span className="pointer-events-none absolute top-1/2 left-1.5 -translate-y-1/2 text-xs text-text-faint">
               $
@@ -248,6 +277,7 @@ function MobileCategoryCard({
               onChange={(e) => setPlannedInput(e.target.value)}
               onBlur={save}
               onKeyDown={(e) => {
+                e.stopPropagation();
                 if (e.key === "Enter") e.currentTarget.blur();
               }}
               className="tabular no-spinner w-16 rounded-md border border-border bg-bg py-0.5 pr-1.5 pl-3.5 text-right text-xs text-text outline-none focus:border-accent"
@@ -259,7 +289,7 @@ function MobileCategoryCard({
           <Money amount={c.planned} className="shrink-0 text-xs text-text-faint" />
         )}
       </div>
-    </Link>
+    </div>
   );
 }
 
@@ -267,13 +297,21 @@ function CategoryRow({
   category: c,
   editablePeriodId,
   index = 0,
+  onOpen,
 }: {
   category: CategoryProgress;
   editablePeriodId: string | null;
   index?: number;
+  onOpen: () => void;
 }) {
-  const router = useRouter();
   const [plannedInput, setPlannedInput] = useState(String(c.planned));
+  // A save elsewhere (e.g. the detail panel) revalidates and hands this a
+  // fresh `planned` — resync so the inline input doesn't show a stale value.
+  const [lastPlanned, setLastPlanned] = useState(c.planned);
+  if (c.planned !== lastPlanned) {
+    setLastPlanned(c.planned);
+    setPlannedInput(String(c.planned));
+  }
   const [, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
   const showToast = useToast();
@@ -305,25 +343,24 @@ function CategoryRow({
   }
 
   const isUnbudgeted = c.planned === 0 && c.actual === 0;
-  const href = editablePeriodId
-    ? `/transactions?period=${editablePeriodId}&category=${c.id}`
-    : `/transactions?category=${c.id}`;
 
   return (
     <tr
-      onClick={() => router.push(href)}
+      onClick={onOpen}
       onKeyDown={(e) => {
         // Only react when the row itself is focused, not a descendant
         // (the planned-amount input already handles its own Enter key) —
-        // otherwise pressing Enter to save that input would also navigate.
+        // otherwise pressing Enter to save that input would also open the
+        // detail panel.
         if (e.target !== e.currentTarget) return;
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          router.push(href);
+          onOpen();
         }
       }}
-      role="link"
+      role="button"
       tabIndex={0}
+      aria-label={`${c.name} details`}
       style={{ animationDelay: `${index * 35}ms` }}
       className={`animate-fade-in-up cursor-pointer border-b border-border transition-colors last:border-b-0 hover:bg-bg even:bg-bg/40 ${
         isUnbudgeted ? "opacity-60" : ""

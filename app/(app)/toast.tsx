@@ -37,8 +37,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <ToastContext.Provider value={showToast}>
       {children}
       {/* Sits above the mobile floating quick-add/chat buttons instead of
-          overlapping them; desktop has no such stack, so it sits low there. */}
-      <div className="pointer-events-none fixed right-4 bottom-40 z-[100] flex flex-col gap-2 sm:right-6 sm:bottom-6">
+          overlapping them, and above the floating nav dock on desktop. */}
+      <div className="pointer-events-none fixed right-4 bottom-40 z-[100] flex flex-col gap-2 sm:right-6 sm:bottom-6 lg:bottom-24">
         {toasts.map((t) => (
           <div
             key={t.id}

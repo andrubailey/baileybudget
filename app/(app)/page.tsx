@@ -357,12 +357,11 @@ export default async function DashboardPage({
               </div>
             }
           />
-
-          <GoalBanner objectives={objectives} accounts={accounts} />
         </div>
 
-        <div className="xl:sticky xl:top-6">
+        <div className="space-y-6 xl:sticky xl:top-6">
           <AccountsGlanceCard accounts={activeAccounts} />
+          <GoalBanner objectives={objectives} accounts={accounts} />
         </div>
       </div>
     </div>

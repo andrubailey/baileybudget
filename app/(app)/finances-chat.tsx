@@ -11,6 +11,10 @@ import { NAV_GROUPS } from "./sidebar";
 
 type DisplayMessage = { role: "user" | "assistant"; text: string };
 
+// A conversation other than the one currently on screen, kept only while
+// the Advisor stays open (everything resets when it closes).
+type Chat = { id: string; title: string; messages: DisplayMessage[]; apiState: unknown[] };
+
 const ALL_LINKS = NAV_GROUPS.flatMap((g) => g.links);
 
 type Match =
@@ -23,22 +27,20 @@ const MODE_KEY = "finances-chat-mode";
 const DEFAULT_WIDTH = 384;
 const MIN_WIDTH = 300;
 const MAX_WIDTH = 640;
-// Fixed panel height for both the popup and the mobile sheet's content
-// area — a single constant instead of a value that jumps between a bare-bar
-// size and a full conversation size. Everything (welcome message, live
-// results, chat history) scrolls inside this one steady frame, so opening
-// the panel never snaps or resizes out from under you.
-const PANEL_HEIGHT = "min(520px, 70vh)";
 
 const DOCK_ICON_PATH = "M4 4h16v16H4V4Zm11.5 0v16";
 
-const WELCOME: DisplayMessage = {
-  role: "assistant",
-  text: "Search for a page or transaction, or tell me what happened and I'll log it.",
-};
-
 const CHAT_ICON_PATH =
   "M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8-1.297 0-2.53-.242-3.643-.677L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8Z";
+
+const SPARKLE_PATH = "M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z";
+
+const SUGGESTIONS = [
+  "How much have I spent this month?",
+  "Am I over budget anywhere?",
+  "What's my net worth right now?",
+  "How does this month compare to last month?",
+];
 
 // Minimal shape of the Web Speech API, which TypeScript's DOM lib doesn't
 // ship types for since it's still non-standard (Chrome/Safari only, under
@@ -86,12 +88,77 @@ function GoArrow() {
   );
 }
 
-// Renders inline inside the same scrollable feed as the chat transcript,
-// right below the most recent message — a live, keyboard-navigable list of
-// matching pages and transactions for whatever's currently typed. There's
-// no separate "Search mode" screen it swaps into; this block simply appears
-// while there's a draft and disappears once it's cleared or sent, the same
-// way search results in a messaging app's search field would.
+// Renders `**bold**` spans inside one line of assistant text.
+function renderInline(text: string) {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+    part.length > 4 && part.startsWith("**") && part.endsWith("**") ? (
+      <strong key={i} className="font-semibold text-text">
+        {part.slice(2, -2)}
+      </strong>
+    ) : (
+      part
+    ),
+  );
+}
+
+// A small, safe subset of markdown for assistant answers — "#" headings,
+// "-"/"1." lists, **bold**, and paragraphs — built as React elements rather
+// than injected HTML, so nothing the model writes can run as markup.
+function RichText({ text }: { text: string }) {
+  const blocks: React.ReactNode[] = [];
+  const pending: { list: { ordered: boolean; items: string[] } | null } = { list: null };
+
+  const flushList = () => {
+    const list = pending.list;
+    if (!list) return;
+    const items = list.items.map((item, i) => <li key={i}>{renderInline(item)}</li>);
+    blocks.push(
+      list.ordered ? (
+        <ol key={blocks.length} className="ml-5 list-decimal space-y-1">
+          {items}
+        </ol>
+      ) : (
+        <ul key={blocks.length} className="ml-5 list-disc space-y-1">
+          {items}
+        </ul>
+      ),
+    );
+    pending.list = null;
+  };
+
+  for (const raw of text.split("\n")) {
+    const line = raw.trimEnd();
+    const bullet = line.match(/^\s*[-*]\s+(.*)$/);
+    const numbered = line.match(/^\s*\d+[.)]\s+(.*)$/);
+    if (bullet || numbered) {
+      const ordered = !bullet;
+      if (pending.list && pending.list.ordered !== ordered) flushList();
+      if (!pending.list) pending.list = { ordered, items: [] };
+      pending.list.items.push((bullet ?? numbered)![1]);
+      continue;
+    }
+    flushList();
+    if (!line.trim()) continue;
+    const heading = line.match(/^#{1,4}\s+(.*)$/);
+    if (heading) {
+      blocks.push(
+        <h3 key={blocks.length} className="pt-2 text-base font-semibold text-text">
+          {renderInline(heading[1])}
+        </h3>,
+      );
+      continue;
+    }
+    blocks.push(<p key={blocks.length}>{renderInline(line)}</p>);
+  }
+  flushList();
+
+  return <div className="space-y-2.5 text-sm leading-relaxed text-text-muted">{blocks}</div>;
+}
+
+// Renders inline inside the same scrollable feed as the conversation — a
+// live, keyboard-navigable list of matching pages and transactions for
+// whatever's currently typed. It appears while there's a draft and
+// disappears once it's cleared or sent.
 function InlineResults({
   matches,
   pageMatchCount,
@@ -108,7 +175,7 @@ function InlineResults({
   onSelect: (match: Match) => void;
 }) {
   return (
-    <div className="flex flex-col gap-0.5 border-t border-border px-2 pt-2">
+    <div className="flex flex-col gap-0.5 border-t border-border px-2 pt-2 pb-2">
       {pageMatchCount > 0 && (
         <p className="px-3 pt-1 pb-0.5 text-[11px] font-semibold tracking-wide text-text-faint uppercase">
           Pages
@@ -190,22 +257,20 @@ function InlineResults({
       )}
       {!searching && matches.length === 0 && (
         <p className="px-3 py-2.5 text-center text-xs text-text-faint">
-          No matching pages or transactions — press Enter to ask the assistant instead.
+          No matching pages or transactions. Press Enter to ask the advisor instead.
         </p>
       )}
     </div>
   );
 }
 
-// The scrollable feed shared by every layout (popup/sidebar/mobile) — past
-// chat messages on top, and (while there's a live draft) the matching
-// pages/transactions for it appended right after, in the same scroll
-// region. This is the "back and forth right in the search bar": one
-// continuous surface instead of a chat screen and a search screen that
-// swap places.
-function Feed({
+// The scrollable conversation shared by every layout: a welcome with
+// suggested questions when empty, then the back-and-forth (your questions as
+// small pills, answers as formatted text), with live search results for the
+// current draft underneath.
+function AdvisorFeed({
   messages,
-  loading,
+  thinking,
   listening,
   scrollRef,
   trimmedInput,
@@ -215,9 +280,11 @@ function Feed({
   setActiveIndex,
   searching,
   onSelectMatch,
+  onSuggestion,
+  compact = false,
 }: {
   messages: DisplayMessage[];
-  loading: boolean;
+  thinking: boolean;
   listening: boolean;
   scrollRef: React.RefObject<HTMLDivElement | null>;
   trimmedInput: string;
@@ -227,128 +294,209 @@ function Feed({
   setActiveIndex: (i: number) => void;
   searching: boolean;
   onSelectMatch: (match: Match) => void;
+  onSuggestion: (text: string) => void;
+  compact?: boolean;
 }) {
+  const showWelcome = messages.length === 0 && trimmedInput.length === 0 && !thinking;
   return (
     <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
-      <div className="space-y-3 px-4 py-4">
-        {messages.map((m, i) => (
-          <div
-            key={i}
-            className={`max-w-[90%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap ${
-              m.role === "user" ? "ml-auto bg-accent text-white" : "bg-bg text-text"
-            }`}
-          >
-            {m.text}
-          </div>
-        ))}
-        {loading && (
-          <div className="max-w-[90%] rounded-lg bg-bg px-3 py-2 text-sm text-text-muted">
-            {listening ? "Listening…" : "Working on it…"}
+      <div className={compact ? "px-4 py-4" : "mx-auto max-w-2xl px-6 py-6"}>
+        {showWelcome && (
+          <div className={`flex flex-col items-center text-center ${compact ? "py-6" : "pt-14 pb-4"}`}>
+            <span className="flex size-10 items-center justify-center rounded-full bg-accent-soft text-accent">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d={SPARKLE_PATH} stroke="currentColor" strokeWidth={1.6} strokeLinejoin="round" />
+              </svg>
+            </span>
+            <p
+              className={`mt-4 font-semibold tracking-tight text-text ${compact ? "text-base" : "text-2xl"}`}
+            >
+              Your AI financial advisor
+            </p>
+            <p className="mt-1.5 max-w-sm text-sm text-text-muted">
+              Ask about your spending, budget, and balances, or tell me what happened and I&apos;ll
+              log it.
+            </p>
+            <div className="mt-6 flex max-w-lg flex-wrap justify-center gap-2">
+              {SUGGESTIONS.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => onSuggestion(s)}
+                  className="rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-medium text-text-muted transition-colors hover:border-accent hover:text-text"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
           </div>
         )}
+
+        <div className="space-y-5">
+          {messages.map((m, i) =>
+            m.role === "user" ? (
+              <div key={i} className="flex justify-end">
+                <p className="max-w-[80%] rounded-2xl bg-bg px-4 py-2 text-sm whitespace-pre-wrap text-text">
+                  {m.text}
+                </p>
+              </div>
+            ) : (
+              <RichText key={i} text={m.text} />
+            ),
+          )}
+          {(thinking || listening) && (
+            <p className="flex items-center gap-2 text-sm text-text-faint">
+              <span className="size-1.5 animate-pulse rounded-full bg-accent" />
+              {listening ? "Listening…" : "Thinking…"}
+            </p>
+          )}
+        </div>
       </div>
+
       {trimmedInput.length > 0 && (
-        <InlineResults
-          matches={matches}
-          pageMatchCount={pageMatchCount}
-          activeIndex={activeIndex}
-          setActiveIndex={setActiveIndex}
-          searching={searching}
-          onSelect={onSelectMatch}
-        />
+        <div className={compact ? "" : "mx-auto max-w-2xl px-4"}>
+          <InlineResults
+            matches={matches}
+            pageMatchCount={pageMatchCount}
+            activeIndex={activeIndex}
+            setActiveIndex={setActiveIndex}
+            searching={searching}
+            onSelect={onSelectMatch}
+          />
+        </div>
       )}
     </div>
   );
 }
 
-// The one input bar, pinned at the bottom of the panel under the feed —
-// always the same shape (textarea + mic + send), no toggle to pick a mode.
-// Enter does whichever thing makes sense (jump to a highlighted result, or
-// ask the assistant if there isn't one); the send button always asks the
-// assistant, for on the rare case there's a result you want to ignore.
-function InputBar({
+// The "Ask anything" bar pinned under the conversation. Enter jumps to a
+// highlighted search result if there is one, otherwise asks the advisor;
+// the send button always asks the advisor.
+function AdvisorInput({
   input,
   setInput,
-  loading,
+  busy,
   listening,
   speechSupported,
   onSend,
   onToggleVoice,
   onKeyDown,
   inputRef,
+  compact = false,
 }: {
   input: string;
   setInput: (v: string) => void;
-  loading: boolean;
+  busy: boolean;
   listening: boolean;
   speechSupported: boolean;
   onSend: (e: React.FormEvent) => void;
   onToggleVoice: () => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   inputRef?: (el: HTMLTextAreaElement | null) => void;
+  compact?: boolean;
 }) {
   return (
     <form
       onSubmit={onSend}
-      className="flex shrink-0 items-end gap-2 border-t border-border p-3"
+      className={`shrink-0 ${compact ? "border-t border-border p-3" : "px-6 pt-2 pb-5"}`}
     >
-      <textarea
-        ref={inputRef}
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        onKeyDown={onKeyDown}
-        rows={1}
-        placeholder="Search, or tell me what happened…"
-        className="w-full flex-1 resize-none rounded-lg border border-border bg-bg px-3 py-2 text-base text-text outline-none focus:border-accent sm:text-sm"
-      />
-      {speechSupported && (
-        <button
-          type="button"
-          onClick={onToggleVoice}
-          aria-label={listening ? "Stop voice input" : "Log by voice"}
-          title={listening ? "Stop voice input" : "Log by voice"}
-          className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${
-            listening
-              ? "bg-negative text-white"
-              : "border border-border text-text-muted hover:bg-bg"
-          }`}
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-            <path
-              d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0M12 19v2"
-              stroke="currentColor"
-              strokeWidth={1.8}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
-      )}
-      <button
-        type="submit"
-        disabled={loading || !input.trim()}
-        title="Ask the assistant"
-        className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-      >
-        Send
-      </button>
+      <div className={compact ? "" : "mx-auto max-w-2xl"}>
+        <div className="flex items-end gap-2 rounded-xl border border-border bg-surface p-2 shadow-card transition-colors focus-within:border-accent">
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={onKeyDown}
+            rows={1}
+            placeholder="Ask anything or search…"
+            className="max-h-40 min-h-9 flex-1 resize-none bg-transparent px-2 py-1.5 text-base text-text outline-none placeholder:text-text-faint sm:text-sm"
+          />
+          {speechSupported && (
+            <button
+              type="button"
+              onClick={onToggleVoice}
+              aria-label={listening ? "Stop voice input" : "Speak instead"}
+              title={listening ? "Stop voice input" : "Speak instead"}
+              className={`flex size-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
+                listening ? "bg-negative text-white" : "text-text-muted hover:bg-bg"
+              }`}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0M12 19v2"
+                  stroke="currentColor"
+                  strokeWidth={1.8}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          )}
+          <button
+            type="submit"
+            disabled={busy || !input.trim()}
+            aria-label="Ask the advisor"
+            className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M12 19V5M5 12l7-7 7 7"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        </div>
+        {!compact && (
+          <p className="mt-2 text-center text-[11px] text-text-faint">
+            Answers come from your budget data and aren&apos;t financial advice.
+          </p>
+        )}
+      </div>
     </form>
   );
 }
 
-// The household's one place to search pages/transactions and to dump a
-// batch of income/expenses/transfers in plain language (typed, pasted, or
-// spoken) instead of filling out the transaction form once per line item.
-// Defaults to a floating chat bubble on desktop — a small anchored popup
-// instead of permanently eating screen width — with an option inside it to
-// switch to the old always-visible right-docked sidebar instead, for
-// whoever prefers that. On mobile (where there's no room for either) the
-// same panel opens as a full-screen sheet.
+// Separate component so the list passes openChat down as a plain handler —
+// an inline closure over it inside render trips the React Compiler refs rule.
+function ChatListItem({
+  id,
+  title,
+  active,
+  onSelect,
+}: {
+  id: string;
+  title: string;
+  active: boolean;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(id)}
+      className={`block w-full truncate rounded-lg px-2.5 py-2 text-left text-sm transition-colors ${
+        active
+          ? "bg-surface font-medium text-text shadow-card"
+          : "text-text-muted hover:bg-surface/70 hover:text-text"
+      }`}
+    >
+      {title}
+    </button>
+  );
+}
+
+// The AI Advisor — one place to search pages and transactions, ask questions
+// about the household's money, and log income/expenses/transfers in plain
+// language (typed, pasted, or spoken). ⌘K opens it as a large centered modal
+// with a list of this session's chats; an option in its header switches to
+// an always-visible right-docked column instead. On mobile it opens as a
+// full-screen sheet.
 export function FinancesChat() {
   const router = useRouter();
   // Starts in the default state (matching the server-rendered HTML) and
-  // reads the saved preference after mount, to avoid a hydration mismatch —
-  // same pattern as the left sidebar's own collapse state.
+  // reads the saved preference after mount, to avoid a hydration mismatch.
   const [mode, setMode] = useState<"popup" | "sidebar">("popup");
   const [popupOpen, setPopupOpen] = useState(false);
   // Closing plays the reverse of the open animation before the panel
@@ -359,14 +507,22 @@ export function FinancesChat() {
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [resizing, setResizing] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [messages, setMessages] = useState<DisplayMessage[]>([WELCOME]);
+  // The conversation on screen. Other conversations from this session live
+  // in `chats` until you switch back to them.
+  const [messages, setMessages] = useState<DisplayMessage[]>([]);
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [activeChatId, setActiveChatId] = useState("chat-0");
+  // Which chat is waiting on an answer, if any — a reply that lands after
+  // you've switched away gets filed into that chat, not the one on screen.
+  const [loadingChatId, setLoadingChatId] = useState<string | null>(null);
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
   const [listening, setListening] = useState(false);
   const [txnResults, setTxnResults] = useState<TransactionSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const apiState = useRef<unknown[]>([]);
+  const activeChatIdRef = useRef("chat-0");
+  const chatSeq = useRef(0);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const mobileScrollRef = useRef<HTMLDivElement | null>(null);
@@ -374,10 +530,12 @@ export function FinancesChat() {
   const searchSeq = useRef(0);
   const speechSupported = getSpeechRecognition() !== null;
 
+  const busy = loadingChatId !== null;
+  const thinking = loadingChatId !== null && loadingChatId === activeChatId;
+
   const trimmedInput = input.trim();
   // Every link's label vacuously matches an empty query — without the length
-  // guard, opening ⌘K on a blank input dumped the entire sidebar nav as
-  // results instead of just showing the welcome message.
+  // guard, opening ⌘K on a blank input dumped the entire nav as results.
   const pageMatches =
     trimmedInput.length > 0
       ? ALL_LINKS.filter((link) => link.label.toLowerCase().includes(trimmedInput.toLowerCase()))
@@ -394,6 +552,12 @@ export function FinancesChat() {
       href: `/transactions?period=${result.period_id}&highlight=${result.id}`,
       result,
     })),
+  ];
+
+  const activeTitle = messages.find((m) => m.role === "user")?.text;
+  const listedChats = [
+    ...(activeTitle ? [{ id: activeChatId, title: activeTitle }] : []),
+    ...chats.filter((c) => c.id !== activeChatId).map((c) => ({ id: c.id, title: c.title })),
   ];
 
   // Reset the active selection whenever the draft changes, adjusted during
@@ -439,23 +603,63 @@ export function FinancesChat() {
     }
   }
 
-  // Called wherever the panel actually closes/hides (popup close, mobile
-  // sheet close, sidebar collapse) — the conversation and draft don't carry
-  // over to the next time it's opened, so every open starts clean rather
-  // than picking up a stale thread from whenever it was last used.
+  function switchActiveChat(id: string) {
+    activeChatIdRef.current = id;
+    setActiveChatId(id);
+  }
+
+  // The on-screen conversation, as a Chat to file away before switching —
+  // or `prev` unchanged if it's still empty.
+  function snapshotActive(prev: Chat[]): Chat[] {
+    const firstQuestion = messages.find((m) => m.role === "user")?.text;
+    if (!firstQuestion) return prev;
+    return [
+      {
+        id: activeChatId,
+        title: firstQuestion.slice(0, 60),
+        messages,
+        apiState: apiState.current,
+      },
+      ...prev.filter((c) => c.id !== activeChatId),
+    ];
+  }
+
+  function startNewChat() {
+    setChats((prev) => snapshotActive(prev));
+    setMessages([]);
+    apiState.current = [];
+    switchActiveChat(`chat-${++chatSeq.current}`);
+    setInput("");
+    inputRef.current?.focus();
+  }
+
+  function openChat(id: string) {
+    if (id === activeChatId) return;
+    const target = chats.find((c) => c.id === id);
+    if (!target) return;
+    setChats((prev) => snapshotActive(prev).filter((c) => c.id !== id));
+    setMessages(target.messages);
+    apiState.current = target.apiState;
+    switchActiveChat(id);
+    setInput("");
+  }
+
+  // Called wherever the Advisor actually closes/hides (popup close, mobile
+  // sheet close, sidebar collapse) — nothing carries over to the next open.
   function resetConversation() {
-    setMessages([WELCOME]);
+    setMessages([]);
+    setChats([]);
     setInput("");
     setTxnResults([]);
     setSearching(false);
     setActiveIndex(0);
     apiState.current = [];
+    switchActiveChat(`chat-${++chatSeq.current}`);
   }
 
   // Enter is the one "do the obvious thing" key: jump to whatever result is
-  // highlighted if there is one, otherwise ask the assistant. Arrow keys
-  // move the highlight when there's a list to move it through. There's no
-  // mode to switch between first — both live in the same textarea at once.
+  // highlighted if there is one, otherwise ask the advisor. Arrow keys move
+  // the highlight when there's a list to move it through.
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (matches.length > 0) {
       if (e.key === "ArrowDown") {
@@ -514,15 +718,14 @@ export function FinancesChat() {
       } catch {
         // ignore
       }
-      // Collapsing the sidebar hides the panel just like closing the popup
+      // Collapsing the sidebar hides the Advisor just like closing the popup
       // does, so it gets the same fresh start next time it's opened.
       if (next) resetConversation();
       return next;
     });
   }
 
-  // ⌘K / "/" (see GlobalShortcuts) opens this same panel and focuses it —
-  // it doubles as the app's search, so there's no separate palette to open.
+  // ⌘K / "/" (see GlobalShortcuts) opens the Advisor and focuses its input.
   useEffect(() => {
     function handleOpenChat() {
       // flushSync forces the panel/sheet's DOM to actually commit before
@@ -547,8 +750,8 @@ export function FinancesChat() {
   function setModeAndPersist(next: "popup" | "sidebar") {
     setMode(next);
     // Switching from the sidebar to the popup would otherwise leave nothing
-    // on screen until the bubble is clicked — open the popup right away so
-    // the switch feels like a continuation, not a dead end.
+    // on screen until ⌘K is pressed — open the popup right away so the
+    // switch feels like a continuation, not a dead end.
     if (next === "popup") setPopupOpen(true);
     try {
       localStorage.setItem(MODE_KEY, next);
@@ -610,7 +813,7 @@ export function FinancesChat() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
     mobileScrollRef.current?.scrollTo({ top: mobileScrollRef.current.scrollHeight });
-  }, [messages, loading]);
+  }, [messages, loadingChatId]);
 
   // Lock body scroll behind the full-screen mobile sheet, same pattern the
   // mobile nav drawer already uses.
@@ -623,43 +826,58 @@ export function FinancesChat() {
     };
   }, [mobileOpen]);
 
-  async function sendMessage(text: string) {
-    if (!text || loading) return;
+  // Adds a reply to whichever chat asked for it — the one on screen, or a
+  // filed-away one if you switched chats while it was thinking.
+  function appendToChat(chatId: string, message: DisplayMessage, nextState?: unknown[]) {
+    if (activeChatIdRef.current === chatId) {
+      setMessages((m) => [...m, message]);
+      if (nextState) apiState.current = nextState;
+      return;
+    }
+    setChats((prev) =>
+      prev.map((c) =>
+        c.id === chatId
+          ? { ...c, messages: [...c.messages, message], apiState: nextState ?? c.apiState }
+          : c,
+      ),
+    );
+  }
 
+  async function sendMessage(text: string) {
+    if (!text || busy) return;
+
+    const chatId = activeChatId;
+    const priorState = apiState.current;
     setMessages((m) => [...m, { role: "user", text }]);
     setInput("");
     setTxnResults([]);
-    setLoading(true);
+    setLoadingChatId(chatId);
 
     try {
       const res = await fetch("/api/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, state: apiState.current }),
+        body: JSON.stringify({ message: text, state: priorState }),
       });
       const data = await res.json();
 
       if (!res.ok) {
-        setMessages((m) => [
-          ...m,
-          { role: "assistant", text: data.error ?? "Something went wrong." },
-        ]);
+        appendToChat(chatId, { role: "assistant", text: data.error ?? "Something went wrong." });
         return;
       }
 
-      apiState.current = data.state ?? [];
-      setMessages((m) => [...m, { role: "assistant", text: data.reply }]);
+      appendToChat(chatId, { role: "assistant", text: data.reply }, data.state ?? []);
 
       if (data.loggedCount > 0) {
         router.refresh();
       }
     } catch {
-      setMessages((m) => [
-        ...m,
-        { role: "assistant", text: "Couldn't reach the assistant — try again." },
-      ]);
+      appendToChat(chatId, {
+        role: "assistant",
+        text: "Couldn't reach the advisor. Try again.",
+      });
     } finally {
-      setLoading(false);
+      setLoadingChatId(null);
     }
   }
 
@@ -668,8 +886,8 @@ export function FinancesChat() {
     await sendMessage(input.trim());
   }
 
-  // Speak a batch instead of typing it — transcribed and sent straight
-  // through the same natural-language parser as typed messages.
+  // Speak a question or a batch instead of typing it — transcribed and sent
+  // straight through the same advisor as typed messages.
   function startVoiceInput() {
     const SpeechRecognitionCtor = getSpeechRecognition();
     if (!SpeechRecognitionCtor || listening) return;
@@ -700,51 +918,92 @@ export function FinancesChat() {
     else startVoiceInput();
   }
 
+  const feedProps = {
+    messages,
+    thinking,
+    listening,
+    trimmedInput,
+    matches,
+    pageMatchCount: pageMatches.length,
+    activeIndex,
+    setActiveIndex,
+    searching,
+    onSelectMatch: go,
+    onSuggestion: sendMessage,
+  };
+  const inputProps = {
+    input,
+    setInput,
+    busy,
+    listening,
+    speechSupported,
+    onSend: handleSend,
+    onToggleVoice: toggleVoice,
+    onKeyDown: handleKeyDown,
+    inputRef: (el: HTMLTextAreaElement | null) => {
+      inputRef.current = el;
+    },
+  };
+
   return (
     <>
-      {/* Desktop, popup mode (default): opens as a centered modal — like any
-          other command palette — instead of a bubble anchored bottom-right.
-          There's no floating trigger button; it only appears via ⌘K, "/", or
-          the sidebar search field's ghost ⌘K badge. Fixed height (see
-          PANEL_HEIGHT), truly centered on the page rather than pinned near
-          the top — safe to do now that the height is constant, since a
-          centered panel that also resized itself would drift up and down
-          every time its content changed. */}
+      {/* Desktop, popup mode (default): a large centered modal opened via
+          ⌘K, "/", or the dock's search button — a column of this session's
+          chats on the left, the conversation and "Ask anything" bar on the
+          right. Fixed height, so it never resizes itself as content changes. */}
       {mode === "popup" && (popupOpen || popupClosing) && (
         <div
-          className={`fixed inset-0 z-50 hidden items-center justify-center bg-black/40 p-4 lg:flex ${
+          className={`fixed inset-0 z-50 hidden items-center justify-center bg-black/40 p-6 lg:flex ${
             popupClosing ? "animate-modal-backdrop-out" : "animate-modal-backdrop"
           }`}
           onClick={closePopup}
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            style={{ height: PANEL_HEIGHT }}
-            className={`flex w-full max-w-lg flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-modal ${
+            role="dialog"
+            aria-modal="true"
+            aria-label="AI Advisor"
+            className={`flex h-[min(760px,88vh)] w-full max-w-5xl overflow-hidden rounded-2xl border border-border bg-surface shadow-modal ${
               popupClosing ? "animate-modal-panel-out" : "animate-modal-panel"
             }`}
           >
-            <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                    <path
-                      d={CHAT_ICON_PATH}
-                      stroke="currentColor"
-                      strokeWidth={1.6}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
+            <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-bg/60 p-3">
+              <p className="card-label px-2 pt-1.5 pb-4 text-text-muted">AI Advisor</p>
+              <p className="px-2 pb-1.5 text-xs font-medium text-text-faint">Today</p>
+              <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto">
+                {listedChats.length === 0 ? (
+                  <p className="px-2 py-1.5 text-xs text-text-faint">Your chats will show up here.</p>
+                ) : (
+                  listedChats.map((chat) => (
+                    <ChatListItem
+                      key={chat.id}
+                      id={chat.id}
+                      title={chat.title}
+                      active={chat.id === activeChatId}
+                      onSelect={openChat}
                     />
-                  </svg>
-                </span>
-                <p className="truncate text-sm font-semibold text-text">Finances chat</p>
-              </div>
-              <div className="flex shrink-0 items-center gap-1">
+                  ))
+                )}
+              </nav>
+              <button
+                type="button"
+                onClick={startNewChat}
+                className="mt-3 flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-text transition-colors hover:bg-bg"
+              >
+                New chat
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth={2} strokeLinecap="round" />
+                </svg>
+              </button>
+            </aside>
+
+            <section className="flex min-w-0 flex-1 flex-col">
+              <div className="flex h-12 shrink-0 items-center justify-end gap-1 px-3">
                 <button
                   type="button"
                   onClick={() => setModeAndPersist("sidebar")}
-                  title="Switch to sidebar"
-                  aria-label="Switch to sidebar"
+                  title="Dock to the side"
+                  aria-label="Dock to the side"
                   className="flex size-8 shrink-0 items-center justify-center rounded-md text-text-faint transition-colors hover:bg-bg hover:text-text"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -761,7 +1020,7 @@ export function FinancesChat() {
                   type="button"
                   onClick={closePopup}
                   title="Close"
-                  aria-label="Close finances chat"
+                  aria-label="Close AI Advisor"
                   className="flex size-8 shrink-0 items-center justify-center rounded-md text-text-faint transition-colors hover:bg-bg hover:text-text"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -774,47 +1033,23 @@ export function FinancesChat() {
                   </svg>
                 </button>
               </div>
-            </div>
 
-            <Feed
-              messages={messages}
-              loading={loading}
-              listening={listening}
-              scrollRef={scrollRef}
-              trimmedInput={trimmedInput}
-              matches={matches}
-              pageMatchCount={pageMatches.length}
-              activeIndex={activeIndex}
-              setActiveIndex={setActiveIndex}
-              searching={searching}
-              onSelectMatch={go}
-            />
-            <InputBar
-              input={input}
-              setInput={setInput}
-              loading={loading}
-              listening={listening}
-              speechSupported={speechSupported}
-              onSend={handleSend}
-              onToggleVoice={toggleVoice}
-              onKeyDown={handleKeyDown}
-              inputRef={(el) => {
-                inputRef.current = el;
-              }}
-            />
+              <AdvisorFeed {...feedProps} scrollRef={scrollRef} />
+              <AdvisorInput {...inputProps} />
+            </section>
           </div>
         </div>
       )}
 
       {/* Desktop, sidebar mode: persistent right-docked column, collapsible
-          + resizable — the original layout, opt-in from the popup's header. */}
+          + resizable — opt-in from the popup's header. */}
       {mode === "sidebar" && (collapsed ? (
         <div className="sticky top-0 hidden h-screen w-14 shrink-0 flex-col items-center border-l border-border bg-surface py-4 lg:flex">
           <button
             type="button"
             onClick={toggle}
-            title="Open finances chat"
-            aria-label="Open finances chat"
+            title="Open AI Advisor"
+            aria-label="Open AI Advisor"
             className="flex size-9 shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-bg hover:text-text"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -835,20 +1070,17 @@ export function FinancesChat() {
             resizing ? "" : "transition-[width] duration-150"
           }`}
         >
-          {/* Drag left/right to resize — mirrors the sidebar's own collapse
-              affordance but continuous instead of a fixed expanded/collapsed
-              width, since chat transcripts benefit from more room than a
-              toggle between two presets would give. */}
+          {/* Drag left/right to resize — continuous instead of a fixed
+              expanded/collapsed width, since conversations benefit from more
+              room than a toggle between two presets would give. */}
           <div
             onMouseDown={(e) => {
               e.preventDefault();
               setResizing(true);
             }}
             onKeyDown={(e) => {
-              // Left/right arrows mirror what dragging left/right does —
-              // left grows the panel (it's docked on the right edge), right
-              // shrinks it — so this is keyboard-operable too, not just
-              // draggable with a mouse.
+              // Left/right arrows mirror what dragging does — left grows the
+              // panel (it's docked on the right edge), right shrinks it.
               const step = e.shiftKey ? 32 : 16;
               if (e.key === "ArrowLeft") {
                 e.preventDefault();
@@ -860,7 +1092,7 @@ export function FinancesChat() {
             }}
             role="separator"
             aria-orientation="vertical"
-            aria-label="Resize finances chat"
+            aria-label="Resize AI Advisor"
             aria-valuemin={MIN_WIDTH}
             aria-valuemax={MAX_WIDTH}
             aria-valuenow={width}
@@ -868,26 +1100,24 @@ export function FinancesChat() {
             className="absolute inset-y-0 left-0 z-10 w-1.5 -translate-x-1/2 cursor-col-resize touch-none hover:bg-accent-border focus-visible:bg-accent active:bg-accent"
           />
           <div className="flex h-[72px] shrink-0 items-center justify-between border-b border-border px-4">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                  <path
-                    d={CHAT_ICON_PATH}
-                    stroke="currentColor"
-                    strokeWidth={1.6}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </span>
-              <p className="truncate text-sm font-semibold text-text">Finances chat</p>
-            </div>
+            <p className="card-label text-text-muted">AI Advisor</p>
             <div className="flex shrink-0 items-center gap-1">
               <button
                 type="button"
+                onClick={startNewChat}
+                title="New chat"
+                aria-label="New chat"
+                className="flex size-8 shrink-0 items-center justify-center rounded-md text-text-faint transition-colors hover:bg-bg hover:text-text"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" />
+                </svg>
+              </button>
+              <button
+                type="button"
                 onClick={() => setModeAndPersist("popup")}
-                title="Switch to popup"
-                aria-label="Switch to popup"
+                title="Open as a window"
+                aria-label="Open as a window"
                 className="flex size-8 shrink-0 items-center justify-center rounded-md text-text-faint transition-colors hover:bg-bg hover:text-text"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -904,7 +1134,7 @@ export function FinancesChat() {
                 type="button"
                 onClick={toggle}
                 title="Collapse"
-                aria-label="Collapse finances chat"
+                aria-label="Collapse AI Advisor"
                 className="flex size-8 shrink-0 items-center justify-center rounded-md text-text-faint transition-colors hover:bg-bg hover:text-text"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -919,42 +1149,18 @@ export function FinancesChat() {
             </div>
           </div>
 
-          <Feed
-            messages={messages}
-            loading={loading}
-            listening={listening}
-            scrollRef={scrollRef}
-            trimmedInput={trimmedInput}
-            matches={matches}
-            pageMatchCount={pageMatches.length}
-            activeIndex={activeIndex}
-            setActiveIndex={setActiveIndex}
-            searching={searching}
-            onSelectMatch={go}
-          />
-          <InputBar
-            input={input}
-            setInput={setInput}
-            loading={loading}
-            listening={listening}
-            speechSupported={speechSupported}
-            onSend={handleSend}
-            onToggleVoice={toggleVoice}
-            onKeyDown={handleKeyDown}
-            inputRef={(el) => {
-              inputRef.current = el;
-            }}
-          />
+          <AdvisorFeed {...feedProps} scrollRef={scrollRef} compact />
+          <AdvisorInput {...inputProps} compact />
         </div>
       ))}
 
       {/* Mobile: no room for a permanent column, so a floating button opens
-          the same panel as a full-screen sheet instead. Sits just above the
+          the Advisor as a full-screen sheet instead. Sits just above the
           bottom tab bar. */}
       <button
         type="button"
         onClick={() => setMobileOpen(true)}
-        aria-label="Open finances chat"
+        aria-label="Open AI Advisor"
         className="fixed right-4 bottom-20 z-40 flex size-14 items-center justify-center rounded-full bg-accent text-white shadow-raised transition-transform duration-150 active:scale-95 lg:hidden"
         style={{ marginBottom: "env(safe-area-inset-bottom)" }}
       >
@@ -972,14 +1178,14 @@ export function FinancesChat() {
       {mobileOpen && (
         <div className="fixed inset-0 z-50 flex flex-col bg-surface lg:hidden">
           <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
-            <p className="text-base font-semibold text-text">Finances chat</p>
+            <p className="card-label text-text-muted">AI Advisor</p>
             <button
               type="button"
               onClick={() => {
                 setMobileOpen(false);
                 resetConversation();
               }}
-              aria-label="Close finances chat"
+              aria-label="Close AI Advisor"
               className="flex size-11 items-center justify-center rounded-lg text-text-faint transition-colors hover:bg-bg hover:text-text"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -993,32 +1199,8 @@ export function FinancesChat() {
             </button>
           </div>
 
-          <Feed
-            messages={messages}
-            loading={loading}
-            listening={listening}
-            scrollRef={mobileScrollRef}
-            trimmedInput={trimmedInput}
-            matches={matches}
-            pageMatchCount={pageMatches.length}
-            activeIndex={activeIndex}
-            setActiveIndex={setActiveIndex}
-            searching={searching}
-            onSelectMatch={go}
-          />
-          <InputBar
-            input={input}
-            setInput={setInput}
-            loading={loading}
-            listening={listening}
-            speechSupported={speechSupported}
-            onSend={handleSend}
-            onToggleVoice={toggleVoice}
-            onKeyDown={handleKeyDown}
-            inputRef={(el) => {
-              inputRef.current = el;
-            }}
-          />
+          <AdvisorFeed {...feedProps} scrollRef={mobileScrollRef} compact />
+          <AdvisorInput {...inputProps} compact />
         </div>
       )}
     </>

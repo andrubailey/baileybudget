@@ -52,7 +52,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           avatarUrl={profile?.avatar_url ?? null}
         />
         <div className="flex min-w-0 flex-1 flex-col">
-          <main className="w-full min-w-0 flex-1 px-4 py-6 pb-24 sm:px-6 lg:px-8 lg:py-10 lg:pb-10">
+          <main className="w-full min-w-0 flex-1 px-4 py-6 pb-24 sm:px-6 lg:px-8 lg:py-10 lg:pb-32">
             <PullToRefresh>
               <div className="mx-auto max-w-[1600px]">
                 <PageTransition>{children}</PageTransition>

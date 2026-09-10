@@ -915,6 +915,56 @@ export async function getTopCategoryByMonth(
   return result;
 }
 
+export type CategoryMonthSpend = { month: string; amount: number };
+
+// Per-month spend for one expense category over the last `months` calendar
+// months (oldest first, current month last), zero-filled so a quiet month
+// still shows up. Backs the category detail panel's "spent last month",
+// "monthly average", and month-by-month bars. Split transactions (whose
+// categories live on transaction_splits rows, not the parent) aren't counted.
+export async function getCategoryHistory(
+  categoryId: string,
+  months = 6,
+): Promise<CategoryMonthSpend[]> {
+  const supabase = await createClient();
+  const now = new Date();
+  const startDate = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (months - 1), 1),
+  );
+  const start = startDate.toISOString().slice(0, 10);
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0))
+    .toISOString()
+    .slice(0, 10);
+
+  const [{ data, error }, debtAccountIds] = await Promise.all([
+    supabase
+      .from("transactions")
+      .select("amount, txn_date, account_id, kind")
+      .eq("category_id", categoryId)
+      .in("kind", ["income", "expense"])
+      .gte("txn_date", start)
+      .lte("txn_date", end)
+      .is("deleted_at", null),
+    getDebtAccountIds(),
+  ]);
+  if (error) throw error;
+
+  const byMonth = new Map<string, number>();
+  for (const t of data ?? []) {
+    if (reclassifyKind(t.kind, t.account_id, debtAccountIds) !== "expense") continue;
+    const month = t.txn_date.slice(0, 7);
+    byMonth.set(month, (byMonth.get(month) ?? 0) + t.amount);
+  }
+
+  const result: CategoryMonthSpend[] = [];
+  for (let i = 0; i < months; i++) {
+    const d = new Date(Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth() + i, 1));
+    const key = d.toISOString().slice(0, 7);
+    result.push({ month: key, amount: byMonth.get(key) ?? 0 });
+  }
+  return result;
+}
+
 export async function getCategories(): Promise<Category[]> {
   const categories = await getAllCategoriesRaw();
   return [...categories].sort(

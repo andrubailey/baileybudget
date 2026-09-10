@@ -328,6 +328,41 @@ body {
   color: var(--text-faint);
 }
 
+/* Small spaced caps label for panel sections ("AI ADVISOR", "LAST 6
+   MONTHS"), in the app's one font. Color is set at each use site so it
+   never fights a utility class. */
+.card-label {
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Right-edge slide-over panel (category detail). */
+@keyframes drawer-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes drawer-out {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+.animate-drawer-in {
+  animation: drawer-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.animate-drawer-out {
+  animation: drawer-out 160ms ease-in forwards;
+}
+
 /* The one card surface. p-5 on phones, p-6 from sm up, matching what
    every card in the app already did by hand. */
 .card {

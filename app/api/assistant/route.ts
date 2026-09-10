@@ -2,10 +2,24 @@ import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
 import { cleanMerchantDescription } from "@/lib/merchant-name";
+import {
+  getAccountsWithBalances,
+  getCategoryProgressForRange,
+  getMonthlyTotals,
+  getPeriodSummaryForRange,
+  searchTransactions,
+} from "@/lib/queries";
 
 const MODEL = "claude-opus-5";
+// If Opus 5 declines a request, the API reruns the same request on Opus 4.8
+// inside this call instead of just stopping.
+const FALLBACK_BETA = "server-side-fallback-2026-06-01";
+const FALLBACK_MODEL = "claude-opus-4-8";
+// Room for a lookup or two, a batch of logs, and the final answer.
+const MAX_STEPS = 8;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-const LOG_TRANSACTION_TOOL: Anthropic.Tool = {
+const LOG_TRANSACTION_TOOL: Anthropic.Beta.BetaTool = {
   name: "log_transaction",
   description:
     "Log one income, expense, or transfer into the household budget. Call this once per transaction — if the user describes several in one message, call it multiple times in the same turn, once for each. If the amount or whether it's income vs. expense vs. transfer is genuinely ambiguous, ask a clarifying question in plain text instead of guessing.",
@@ -44,6 +58,58 @@ const LOG_TRANSACTION_TOOL: Anthropic.Tool = {
   },
 };
 
+// Read-only lookups so the advisor answers from the household's real data
+// instead of guessing. None of these can change anything.
+const READ_TOOLS: Anthropic.Beta.BetaTool[] = [
+  {
+    name: "get_account_balances",
+    description:
+      "Current balance of every active account, with whether it's a debt account (balance = money owed) and whether it's business or personal. Use for net worth, cash on hand, or 'how much is in X'.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "get_spending_summary",
+    description:
+      "Income, expense, and net totals for a date range, plus each expense category's budget (planned) vs. actual spend in that range. Use for 'how much did I spend on X', 'am I over budget', and category questions. For a calendar month, pass its first and last day.",
+    input_schema: {
+      type: "object",
+      properties: {
+        start_date: { type: "string", description: "Inclusive start, YYYY-MM-DD." },
+        end_date: { type: "string", description: "Inclusive end, YYYY-MM-DD." },
+      },
+      required: ["start_date", "end_date"],
+    },
+  },
+  {
+    name: "get_monthly_totals",
+    description:
+      "Income and expense totals for every calendar month in a date range, including months with no activity. Use for trends and month-over-month comparisons.",
+    input_schema: {
+      type: "object",
+      properties: {
+        start_date: { type: "string", description: "Inclusive start, YYYY-MM-DD." },
+        end_date: { type: "string", description: "Inclusive end, YYYY-MM-DD." },
+      },
+      required: ["start_date", "end_date"],
+    },
+  },
+  {
+    name: "search_transactions",
+    description:
+      "Find individual transactions by merchant/description, notes, category name, account name, or exact amount. Returns up to 20 of the most recent matches.",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "Text or amount to search for, e.g. 'Publix' or '64.20'.",
+        },
+      },
+      required: ["query"],
+    },
+  },
+];
+
 function findByName<T extends { name: string }>(
   list: T[],
   name: string | undefined,
@@ -55,6 +121,89 @@ function findByName<T extends { name: string }>(
     list.find((x) => x.name.toLowerCase().includes(lower)) ??
     null
   );
+}
+
+function readRange(input: Record<string, unknown>): { start: string; end: string } | null {
+  const start = input.start_date;
+  const end = input.end_date;
+  if (typeof start !== "string" || typeof end !== "string") return null;
+  if (!ISO_DATE.test(start) || !ISO_DATE.test(end) || start > end) return null;
+  return { start, end };
+}
+
+const BAD_RANGE = "start_date and end_date must both be YYYY-MM-DD, with start_date on or before end_date.";
+
+// Returns null for a tool name that isn't one of the read tools.
+async function runReadTool(
+  name: string,
+  input: Record<string, unknown>,
+): Promise<{ content: string; isError?: boolean } | null> {
+  switch (name) {
+    case "get_account_balances": {
+      const accounts = await getAccountsWithBalances();
+      return {
+        content: JSON.stringify(
+          accounts
+            .filter((a) => a.is_active)
+            .map((a) => ({
+              name: a.name,
+              balance: a.balance,
+              is_debt: a.is_debt,
+              is_business: a.is_business,
+              account_type: a.account_type,
+            })),
+        ),
+      };
+    }
+    case "get_spending_summary": {
+      const range = readRange(input);
+      if (!range) return { content: BAD_RANGE, isError: true };
+      const [totals, categories] = await Promise.all([
+        getPeriodSummaryForRange(range.start, range.end),
+        getCategoryProgressForRange(range.start, range.end),
+      ]);
+      return {
+        content: JSON.stringify({
+          range,
+          totals,
+          categories: categories
+            .filter((c) => c.planned !== 0 || c.actual !== 0)
+            .map((c) => ({
+              name: c.name,
+              planned: c.planned,
+              actual: c.actual,
+              remaining: c.remaining,
+              over_budget: c.overBudget,
+            })),
+        }),
+      };
+    }
+    case "get_monthly_totals": {
+      const range = readRange(input);
+      if (!range) return { content: BAD_RANGE, isError: true };
+      return { content: JSON.stringify(await getMonthlyTotals(range.start, range.end)) };
+    }
+    case "search_transactions": {
+      const query = typeof input.query === "string" ? input.query : "";
+      const results = await searchTransactions(query);
+      return {
+        content: JSON.stringify(
+          results.map((t) => ({
+            date: t.txn_date,
+            kind: t.kind,
+            description: t.description,
+            amount: t.amount,
+            category: t.category_name,
+            account: t.account_name,
+            to_account: t.to_account_name,
+            notes: t.notes,
+          })),
+        ),
+      };
+    }
+    default:
+      return null;
+  }
 }
 
 export async function POST(request: Request) {
@@ -92,7 +241,7 @@ async function handlePost(request: Request) {
 
   const body = await request.json();
   const userMessage = String(body.message ?? "").trim();
-  const state: Anthropic.MessageParam[] = Array.isArray(body.state)
+  const state: Anthropic.Beta.BetaMessageParam[] = Array.isArray(body.state)
     ? body.state
     : [];
 
@@ -116,17 +265,22 @@ async function handlePost(request: Request) {
 
   const today = new Date().toISOString().slice(0, 10);
 
-  const system = `You are a budgeting assistant embedded in a household budget app. Your only job is logging income, expense, and transfer transactions via the log_transaction tool — you cannot do anything else (no editing accounts, categories, or past transactions).
+  const system = `You are the AI financial advisor inside a household budget app shared by a couple. You do two things:
 
-Today's date is ${today}.
+1. Answer questions about their finances — spending, budgets, balances, net worth, trends — using the read tools (get_account_balances, get_spending_summary, get_monthly_totals, search_transactions). Always look numbers up; never estimate or invent figures. If the data doesn't cover what they asked, say so.
+2. Log income, expenses, and transfers they describe, using log_transaction.
+
+Today's date is ${today}. "This month" means the first of this month through today; "last month" is the full previous calendar month.
 
 Known accounts: ${accountList.map((a) => a.name).join(", ") || "(none yet)"}
 Known expense categories: ${categoryList.filter((c) => c.kind === "expense").map((c) => c.name).join(", ") || "(none yet)"}
 Known income categories: ${categoryList.filter((c) => c.kind === "income").map((c) => c.name).join(", ") || "(none yet)"}
 
-The user often pastes or dictates a whole batch at once — several expenses, a paycheck, and a transfer all in one message, sometimes as a list. Parse the *entire* message and call log_transaction once per transaction it describes, all in the same turn, in the order mentioned. Don't stop after the first one. For a transfer, set account_name to where the money leaves and to_account_name to where it lands, and never set category_name. Match account_name/to_account_name/category_name to the known lists above when possible — small wording differences are fine, they'll be matched loosely. If a field is truly unclear for one item (e.g. no amount given), ask about just that one instead of guessing, but still log everything else that was clear. After logging, confirm briefly in plain language — if you logged more than one, summarize as a short list, not a paragraph.`;
+Logging: they often paste or dictate a whole batch at once — several expenses, a paycheck, and a transfer in one message, sometimes as a list. Parse the entire message and call log_transaction once per transaction, in the order mentioned. For a transfer, set account_name to where the money leaves and to_account_name to where it lands, and never set category_name. Match account and category names to the known lists above — small wording differences are fine. If a field is truly unclear for one item (e.g. no amount), ask about just that one and still log everything else that was clear. After logging, confirm briefly; for more than one, use a short list.
 
-  const messages: Anthropic.MessageParam[] = [
+Answering: lead with the direct answer and the key number, then only the detail that matters. When an answer has several parts, use short "## " headings and "- " bullet lists, and **bold** the key figure sparingly. Keep it concise. For general money guidance beyond their own data, be practical and mention you're not a licensed financial advisor. You can't edit or delete existing transactions, accounts, categories, or budgets — point them to the right page in the app instead.`;
+
+  const messages: Anthropic.Beta.BetaMessageParam[] = [
     ...state,
     { role: "user", content: userMessage },
   ];
@@ -140,21 +294,32 @@ The user often pastes or dictates a whole batch at once — several expenses, a 
   });
   let loggedCount = 0;
 
-  for (let i = 0; i < 4; i++) {
-    const response = await client.messages.create({
+  for (let i = 0; i < MAX_STEPS; i++) {
+    const response = await client.beta.messages.create({
       model: MODEL,
-      max_tokens: 4096,
+      max_tokens: 16000,
+      betas: [FALLBACK_BETA],
+      fallbacks: [{ model: FALLBACK_MODEL }],
       output_config: { effort: "medium" },
       system,
-      tools: [LOG_TRANSACTION_TOOL],
+      tools: [LOG_TRANSACTION_TOOL, ...READ_TOOLS],
       messages,
     });
 
     messages.push({ role: "assistant", content: response.content });
 
+    if (response.stop_reason === "refusal") {
+      return NextResponse.json({
+        reply:
+          "I can't help with that one. Try asking about your spending, budget, or balances, or tell me something to log.",
+        state: messages,
+        loggedCount,
+      });
+    }
+
     if (response.stop_reason !== "tool_use") {
       const text = response.content
-        .filter((b): b is Anthropic.TextBlock => b.type === "text")
+        .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
         .map((b) => b.text)
         .join("\n")
         .trim();
@@ -166,18 +331,28 @@ The user often pastes or dictates a whole batch at once — several expenses, a 
     }
 
     const toolUseBlocks = response.content.filter(
-      (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
+      (b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use",
     );
 
-    const toolResults: Anthropic.ToolResultBlockParam[] = [];
+    const toolResults: Anthropic.Beta.BetaToolResultBlockParam[] = [];
     for (const block of toolUseBlocks) {
       if (block.name !== "log_transaction") {
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: block.id,
-          content: "Unknown tool.",
-          is_error: true,
-        });
+        try {
+          const read = await runReadTool(block.name, block.input as Record<string, unknown>);
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: block.id,
+            content: read?.content ?? "Unknown tool.",
+            is_error: read ? read.isError : true,
+          });
+        } catch (err) {
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: block.id,
+            content: `Lookup failed: ${err instanceof Error ? err.message : "unknown error"}`,
+            is_error: true,
+          });
+        }
         continue;
       }
 
@@ -274,7 +449,7 @@ The user often pastes or dictates a whole batch at once — several expenses, a 
   }
 
   return NextResponse.json({
-    reply: "That took more steps than expected — let's try again with a simpler message.",
+    reply: "That took more steps than expected — try asking again a little more specifically.",
     state: messages,
     loggedCount,
   });
