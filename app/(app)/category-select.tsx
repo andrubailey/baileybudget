@@ -18,6 +18,8 @@ export function CategorySelect({
   onChange,
   name = "category_id",
   className = FIELD_CLASS,
+  autoFocus = false,
+  onBlur,
 }: {
   categories: Category[];
   kind: "income" | "expense";
@@ -25,6 +27,11 @@ export function CategorySelect({
   onChange: (id: string) => void;
   name?: string;
   className?: string;
+  // For inline table editing: focus on mount, and let the caller close
+  // the editor when focus leaves (not while the "new category" field is
+  // open, which manages its own focus).
+  autoFocus?: boolean;
+  onBlur?: () => void;
 }) {
   const [localCategories, setLocalCategories] = useState<Category[]>([]);
   const [adding, setAdding] = useState(false);
@@ -114,6 +121,11 @@ export function CategorySelect({
     <select
       name={name}
       value={value}
+      autoFocus={autoFocus}
+      onBlur={onBlur}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onBlur?.();
+      }}
       onChange={(e) => {
         if (e.target.value === NEW_OPTION_VALUE) {
           setAdding(true);

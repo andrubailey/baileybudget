@@ -1,4 +1,5 @@
 import { getPeriods, pickPeriod } from "@/lib/periods";
+import { PageHeader } from "@/app/(app)/page-header";
 import { getBudgetGrid } from "@/lib/queries";
 import { BudgetsView } from "./budgets-view";
 
@@ -12,14 +13,14 @@ export default async function BudgetsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl leading-tight font-semibold tracking-tight text-text sm:text-display">Budget</h1>
-        <p className="mt-1 text-sm text-text-muted">
-          {currentPeriod
+      <PageHeader
+        title="Budget"
+        description={
+          currentPeriod
             ? `Planned amounts for ${currentPeriod.name}. Click a number to edit it.`
-            : "Set planned amounts for each category."}
-        </p>
-      </div>
+            : "Set planned amounts for each category."
+        }
+      />
 
       <BudgetsView rows={rows} periods={orderedPeriods} currentPeriod={currentPeriod} />
     </div>

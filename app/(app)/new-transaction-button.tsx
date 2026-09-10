@@ -7,6 +7,8 @@ import { QuickAddTransferButton } from "./quick-add-transfer";
 import type { Account, Category } from "@/lib/types";
 
 type Context = { periodId: string | null; accounts: Account[]; categories: Category[] };
+type Kind = "expense" | "income" | "transfer";
+type PendingOpen = Kind | "picker";
 
 const OPTIONS = [
   {
@@ -66,25 +68,66 @@ export function NewTransactionButton({
   menuPosition?: "above" | "below";
   // Skips the client-side getQuickAddContext() round trip entirely — pass
   // this when the page rendering this button already fetched periods/
-  // accounts/categories server-side (most page-level usages), so the button
-  // doesn't sit hidden for a beat after first paint waiting on its own fetch
-  // of data the page already has. Left unset for chrome (sidebar/mobile nav)
-  // that has no server-rendered data of its own to hand down.
+  // accounts/categories server-side (most page-level usages). Left unset
+  // for chrome (the sidebar's hidden instance) that has no server-rendered
+  // data of its own to hand down — that case fetches lazily, below.
   initialContext?: Context;
 }) {
   const [context, setContext] = useState<Context | null>(initialContext ?? null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const openers = useRef<Record<"expense" | "income" | "transfer", () => void>>({
+  const openers = useRef<Record<Kind, () => void>>({
     expense: () => {},
     income: () => {},
     transfer: () => {},
   });
-
+  // Mirrors `context` for the window-event listener below, which is
+  // registered once and would otherwise close over the initial (null) value.
+  const contextRef = useRef(context);
   useEffect(() => {
-    if (initialContext) return;
-    getQuickAddContext().then(setContext);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only ever fetches once on mount when no initialContext was provided; initialContext itself isn't expected to change across renders
-  }, []);
+    contextRef.current = context;
+  }, [context]);
+  const fetching = useRef(false);
+  // What to open once a lazily-fetched context lands — a shortcut pressed
+  // (or the trigger clicked) before the data is here shouldn't be dropped
+  // on the floor, nor should it open the wrong thing.
+  const pendingOpen = useRef<PendingOpen | null>(null);
+
+  // No fetch on mount. The sidebar mounts a hidden instance of this on
+  // every page purely to keep the shortcuts live, and fetching eagerly
+  // meant every single page load paid for a periods + accounts + categories
+  // round trip that's only ever needed the moment someone actually goes to
+  // log something — which on most page views is never. Fetch on first use
+  // instead, and only once.
+  function ensureContext() {
+    if (contextRef.current || fetching.current) return;
+    fetching.current = true;
+    getQuickAddContext()
+      .then(setContext)
+      .finally(() => {
+        fetching.current = false;
+      });
+  }
+
+  function open(target: PendingOpen) {
+    if (contextRef.current?.periodId) {
+      if (target === "picker") setPickerOpen(true);
+      else openers.current[target]();
+      return;
+    }
+    pendingOpen.current = target;
+    ensureContext();
+  }
+
+  // Replays whatever was requested while the context was still loading.
+  // Runs after commit, so the QuickAddButton children below have rendered
+  // and populated `openers` by the time a specific kind is invoked.
+  useEffect(() => {
+    if (!context?.periodId || !pendingOpen.current) return;
+    const target = pendingOpen.current;
+    pendingOpen.current = null;
+    if (target === "picker") setPickerOpen(true);
+    else openers.current[target]();
+  }, [context]);
 
   // Lets the global keyboard shortcuts (see GlobalShortcuts — "n" opens the
   // picker, ⌥E/⌥I/⌥T jump straight to a specific type) trigger this from
@@ -92,27 +135,30 @@ export function NewTransactionButton({
   // to coordinate through.
   useEffect(() => {
     function handleShortcut(e: Event) {
-      const kind = (e as CustomEvent<{ kind?: "expense" | "income" | "transfer" }>).detail
-        ?.kind;
-      if (kind) {
-        openers.current[kind]();
-      } else {
-        setPickerOpen(true);
-      }
+      const kind = (e as CustomEvent<{ kind?: Kind }>).detail?.kind;
+      open(kind ?? "picker");
     }
     window.addEventListener("budgetapp:new-transaction", handleShortcut);
     return () => window.removeEventListener("budgetapp:new-transaction", handleShortcut);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `open` reads everything through refs, so the listener never goes stale and only needs registering once
   }, []);
 
-  if (!context || !context.periodId) return null;
-  const { periodId, accounts, categories } = context;
+  // A loaded context with no period means there's nothing to log into —
+  // same degenerate state the old code hid the button for entirely.
+  if (context && !context.periodId) return null;
+  const ready = context !== null && context.periodId !== null;
+
+  function togglePicker() {
+    if (pickerOpen) setPickerOpen(false);
+    else open("picker");
+  }
 
   return (
     <div className="relative">
       {variant === "hidden" ? null : variant === "icon" ? (
         <button
           type="button"
-          onClick={() => setPickerOpen((v) => !v)}
+          onClick={togglePicker}
           aria-label="New transaction"
           className="flex size-11 items-center justify-center rounded-lg bg-accent text-white transition-opacity hover:opacity-90"
         >
@@ -123,7 +169,7 @@ export function NewTransactionButton({
       ) : variant === "inline" ? (
         <button
           type="button"
-          onClick={() => setPickerOpen((v) => !v)}
+          onClick={togglePicker}
           className="flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-accent/90"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -134,7 +180,7 @@ export function NewTransactionButton({
       ) : (
         <button
           type="button"
-          onClick={() => setPickerOpen((v) => !v)}
+          onClick={togglePicker}
           title={collapsed ? "New transaction" : undefined}
           className={`flex w-full items-center gap-3 rounded-lg bg-accent px-3 py-2.5 text-[15px] font-semibold text-white transition-opacity hover:opacity-90 ${
             collapsed ? "justify-center" : ""
@@ -152,7 +198,7 @@ export function NewTransactionButton({
         </button>
       )}
 
-      {pickerOpen && (
+      {ready && pickerOpen && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setPickerOpen(false)} />
           <div
@@ -191,35 +237,40 @@ export function NewTransactionButton({
         </>
       )}
 
-      {/* Invisible — these just hold the real forms/modals open for reuse. */}
-      <QuickAddButton
-        kind="expense"
-        periodId={periodId}
-        accounts={accounts}
-        categories={categories}
-        renderTrigger={(open) => {
-          openers.current.expense = open;
-          return null;
-        }}
-      />
-      <QuickAddButton
-        kind="income"
-        periodId={periodId}
-        accounts={accounts}
-        categories={categories}
-        renderTrigger={(open) => {
-          openers.current.income = open;
-          return null;
-        }}
-      />
-      <QuickAddTransferButton
-        periodId={periodId}
-        accounts={accounts}
-        renderTrigger={(open) => {
-          openers.current.transfer = open;
-          return null;
-        }}
-      />
+      {/* Invisible — these just hold the real forms/modals open for reuse.
+          Only mounted once the context is in hand, since they need it. */}
+      {ready && context && (
+        <>
+          <QuickAddButton
+            kind="expense"
+            periodId={context.periodId!}
+            accounts={context.accounts}
+            categories={context.categories}
+            renderTrigger={(open) => {
+              openers.current.expense = open;
+              return null;
+            }}
+          />
+          <QuickAddButton
+            kind="income"
+            periodId={context.periodId!}
+            accounts={context.accounts}
+            categories={context.categories}
+            renderTrigger={(open) => {
+              openers.current.income = open;
+              return null;
+            }}
+          />
+          <QuickAddTransferButton
+            periodId={context.periodId!}
+            accounts={context.accounts}
+            renderTrigger={(open) => {
+              openers.current.transfer = open;
+              return null;
+            }}
+          />
+        </>
+      )}
     </div>
   );
 }

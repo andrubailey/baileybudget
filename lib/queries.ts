@@ -125,6 +125,14 @@ const getAllAccountsRaw = cache(async () => {
   return data ?? [];
 });
 
+// The plain account rows, no balance math. For anything that only needs
+// names/flags (the quick-add forms' account pickers) — getAccountsWithBalances
+// paginates the entire transactions table to compute balances, which is far
+// too much work to pay just to fill a dropdown.
+export async function getAccounts(): Promise<Account[]> {
+  return (await getAllAccountsRaw()) as Account[];
+}
+
 // Same sharing as getAllAccountsRaw — getCategories, getPlannedTotalsByPeriod,
 // and getTopCategoryByMonth all need "every category" and previously each
 // ran their own `.from("categories").select(...)`, which meant a single
@@ -840,7 +848,9 @@ export async function getDebtBalanceHistory(): Promise<NetWorthPoint[]> {
 
 export type TopCategoryByMonth = {
   month: string;
+  categoryId: string;
   categoryName: string;
+  categoryIcon: string | null;
   amount: number;
 } | null;
 
@@ -866,6 +876,7 @@ export async function getTopCategoryByMonth(
   if (error) throw error;
 
   const nameById = new Map(categories.map((c) => [c.id, c.name]));
+  const iconById = new Map(categories.map((c) => [c.id, c.icon ?? null]));
   const byMonthCategory = new Map<string, Map<string, number>>();
   for (const t of rows ?? []) {
     if (reclassifyKind(t.kind, t.account_id, debtAccountIds) !== "expense") continue;
@@ -893,7 +904,9 @@ export async function getTopCategoryByMonth(
       top
         ? {
             month,
+            categoryId: top.categoryId,
             categoryName: nameById.get(top.categoryId) ?? "—",
+            categoryIcon: iconById.get(top.categoryId) ?? null,
             amount: top.amount,
           }
         : null,

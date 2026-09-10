@@ -19,6 +19,8 @@ import { YearSwitcher } from "./year-switcher";
 import { ExportCsvButton } from "./export-csv-button";
 import { WeeklyRecapPanel } from "./weekly-recap-panel";
 import { ImportDataButton } from "./import-data-button";
+import { PageHeader } from "@/app/(app)/page-header";
+import { CategoryChip } from "@/app/(app)/category-chip";
 
 function iso(d: Date) {
   return d.toISOString().slice(0, 10);
@@ -41,15 +43,11 @@ export default async function ReportsPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl leading-tight font-semibold tracking-tight text-text sm:text-display">Reports</h1>
-          <p className="mt-1 text-sm text-text-muted">
-            Yearly trends and this week&apos;s recap, at a glance.
-          </p>
-        </div>
-        <ImportDataButton accounts={accounts} categories={categories} />
-      </div>
+      <PageHeader
+        title="Reports"
+        description="Yearly trends and this week's recap, at a glance."
+        actions={<ImportDataButton accounts={accounts} categories={categories} />}
+      />
 
       {/* Trends is the primary content; the weekly recap sits alongside it
           instead of behind its own tab, so both are visible on one page
@@ -337,9 +335,15 @@ async function TrendsPanel({ requestedYear }: { requestedYear?: string }) {
                   </td>
                   <td className="px-6 py-2.5 text-sm text-text-muted">
                     {top ? (
-                      <>
-                        {top.categoryName} (<Money amount={top.amount} />)
-                      </>
+                      <span className="flex items-center gap-2">
+                        <CategoryChip
+                          id={top.categoryId}
+                          name={top.categoryName}
+                          icon={top.categoryIcon}
+                          size="xs"
+                        />
+                        <Money amount={top.amount} className="text-text-faint" />
+                      </span>
                     ) : (
                       "—"
                     )}

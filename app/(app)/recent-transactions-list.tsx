@@ -1,10 +1,11 @@
 "use client";
 
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
-import { formatMoney, formatDate, transferDisplayDescription } from "@/lib/format";
-import { getLetterColors } from "@/lib/letter-colors";
 import type { Account, Category, Transaction } from "@/lib/types";
+import { toAccountLookup } from "@/lib/transaction-presentation";
 import { TransactionDetailModal } from "@/app/(app)/transaction-detail-modal";
+import { TransactionRow } from "@/app/(app)/transaction-row";
+import { isPendingTransaction, usePendingTransactions } from "@/app/(app)/pending-transactions";
 
 // Client-side so a row click can open the same TransactionDetailModal the
 // full Transactions page uses, instead of the Overview page's Recent
@@ -13,13 +14,18 @@ export function RecentTransactionsList({
   transactions,
   accounts,
   categories,
+  // When the parent isn't pinning this list's height (mobile, or a
+  // standalone page), cap the rows here instead of measuring.
+  maxRows,
 }: {
   transactions: Transaction[];
   accounts: Account[];
   categories: Category[];
+  maxRows?: number;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [detailClosing, setDetailClosing] = useState(false);
+  const withPending = usePendingTransactions(transactions);
 
   // Rather than scrolling (or letting extra rows push the card taller — see
   // DashboardEqualHeightRow, which fixes this card's height to match the
@@ -29,7 +35,7 @@ export function RecentTransactionsList({
   // trims to whatever whole number of rows fits; re-measures on resize.
   const containerRef = useRef<HTMLDivElement>(null);
   const firstRowRef = useRef<HTMLButtonElement | null>(null);
-  const [visibleCount, setVisibleCount] = useState(7);
+  const [visibleCount, setVisibleCount] = useState(maxRows ?? 7);
 
   useLayoutEffect(() => {
     const container = containerRef.current;
@@ -37,36 +43,39 @@ export function RecentTransactionsList({
     function recompute() {
       const rowHeight = firstRowRef.current?.offsetHeight;
       if (!container || !rowHeight) return;
-      const count = Math.max(1, Math.floor(container.clientHeight / rowHeight));
+      // A container whose height isn't being pinned by the parent (see
+      // DashboardEqualHeightRow's data-pinned flag) reports its own content
+      // height, which would always "fit" exactly the rows already rendered
+      // — use the caller's cap (or the default) in that case instead.
+      const pinned = container.closest('[data-pinned="true"]') !== null;
+      const fits = Math.max(1, Math.floor(container.clientHeight / rowHeight));
+      const count = pinned ? fits : (maxRows ?? 7);
       setVisibleCount((current) => (current === count ? current : count));
     }
     recompute();
     const observer = new ResizeObserver(recompute);
     observer.observe(container);
     return () => observer.disconnect();
-  }, [transactions.length]);
+  }, [transactions.length, maxRows]);
 
-  const accountById = useMemo(
+  const accountsById = useMemo(() => toAccountLookup(accounts), [accounts]);
+  const accountNameById = useMemo(
     () => new Map(accounts.map((a) => [a.id, a.name])),
     [accounts],
   );
-  const accountBankById = useMemo(
-    () => new Map(accounts.map((a) => [a.id, a.bank])),
-    [accounts],
-  );
-  const allTransactions = transactions;
-  const visibleTransactions = transactions.slice(0, visibleCount);
+  const categoryById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
+  const visibleTransactions = withPending.slice(0, visibleCount);
   // Every distinct person who's logged one of these transactions — backs
   // the detail modal's "Created by" dropdown, same as the Transactions page.
   const knownCreators = useMemo(() => {
     const byEmail = new Map<string, { id: string | null; email: string }>();
-    for (const t of allTransactions) {
+    for (const t of transactions) {
       if (t.created_by_email) {
         byEmail.set(t.created_by_email, { id: t.created_by, email: t.created_by_email });
       }
     }
     return Array.from(byEmail.values());
-  }, [allTransactions]);
+  }, [transactions]);
 
   function closeDetail() {
     setDetailClosing(true);
@@ -77,68 +86,30 @@ export function RecentTransactionsList({
   }
 
   const detailTransaction = editingId
-    ? (allTransactions.find((t) => t.id === editingId) ?? null)
+    ? (transactions.find((t) => t.id === editingId) ?? null)
     : null;
 
   return (
     <>
       <div ref={containerRef} className="h-full min-h-0 overflow-hidden">
-      <div className="divide-y divide-border">
-        {visibleTransactions.map((t, i) => {
-          const displayDescription = transferDisplayDescription(
-            t.description,
-            t.kind,
-            t.to_account_id ? accountBankById.get(t.to_account_id) : null,
-          );
-          const avatar = getLetterColors(displayDescription);
-          // At-a-glance "which account" — the whole reason this used to be
-          // split into Business/Personal sections, now just a label on the
-          // row itself instead of two separate lists to scan.
-          const accountLabel =
-            t.kind === "transfer"
-              ? [t.account_id, t.to_account_id]
-                  .map((id) => (id ? accountById.get(id) : null))
-                  .filter(Boolean)
-                  .join(" → ")
-              : t.account_id
-                ? accountById.get(t.account_id)
-                : null;
-          return (
-            <button
-              key={t.id}
-              ref={i === 0 ? firstRowRef : undefined}
-              type="button"
-              onClick={() => setEditingId(t.id)}
-              style={{ animationDelay: `${i * 35}ms` }}
-              className="animate-fade-in-up flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors hover:bg-bg"
-            >
-              <span
-                className="flex size-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
-                style={{ backgroundColor: avatar.bg, color: avatar.text }}
-              >
-                {displayDescription.trim()[0]?.toUpperCase() ?? "?"}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-text">
-                  {displayDescription}
-                </p>
-                <p className="truncate text-xs text-text-faint">
-                  {formatDate(t.txn_date)}
-                  {accountLabel && <> · {accountLabel}</>}
-                </p>
-              </div>
-              <span
-                className={`tabular ml-4 shrink-0 text-sm font-medium ${
-                  t.kind === "income" ? "text-success" : "text-text"
-                }`}
-              >
-                {t.kind === "income" ? "+" : t.kind === "expense" ? "-" : ""}
-                {formatMoney(t.amount)}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+        <div className="divide-y divide-border">
+          {visibleTransactions.map((t, i) => {
+            const category = t.category_id ? (categoryById.get(t.category_id) ?? null) : null;
+            return (
+              <TransactionRow
+                key={t.id}
+                ref={i === 0 ? firstRowRef : undefined}
+                transaction={t}
+                accountsById={accountsById}
+                category={category}
+                meta={{ date: true, account: true, category: false }}
+                onClick={isPendingTransaction(t) ? undefined : () => setEditingId(t.id)}
+                className={isPendingTransaction(t) ? "animate-pulse opacity-60" : ""}
+                index={i}
+              />
+            );
+          })}
+        </div>
       </div>
 
       {detailTransaction && (
@@ -149,12 +120,12 @@ export function RecentTransactionsList({
           knownCreators={knownCreators}
           accountName={
             detailTransaction.account_id
-              ? (accountById.get(detailTransaction.account_id) ?? "—")
+              ? (accountNameById.get(detailTransaction.account_id) ?? "—")
               : "—"
           }
           toAccountName={
             detailTransaction.to_account_id
-              ? (accountById.get(detailTransaction.to_account_id) ?? "—")
+              ? (accountNameById.get(detailTransaction.to_account_id) ?? "—")
               : null
           }
           closing={detailClosing}

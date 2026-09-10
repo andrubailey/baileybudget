@@ -58,9 +58,17 @@ ANTHROPIC_API_KEY=your-anthropic-api-key
 
 Usage is billed per request on your Anthropic account — a few cents per hundred logged transactions at most. Without this key set, the widget still shows but logging fails with a clear error.
 
+If your Anthropic API key is org-wide rather than scoped to a specific workspace, requests will fail with a 400 error asking for an `anthropic-workspace-id` header. Fix this by also setting:
+
+```
+ANTHROPIC_WORKSPACE_ID=wrkspc_your-workspace-id
+```
+
+Find your workspace ID at [console.anthropic.com](https://console.anthropic.com/settings/workspaces). Not needed if your key is already scoped to one workspace.
+
 ## Deploying
 
-Push this repo to GitHub, then import it on [Vercel](https://vercel.com/new). Add the three env vars from `.env.local` (including `ANTHROPIC_API_KEY`, if you enabled the assistant) in the Vercel project settings. Every push to `main` redeploys automatically.
+Push this repo to GitHub, then import it on [Vercel](https://vercel.com/new). Add the env vars from `.env.local` (including `ANTHROPIC_API_KEY` and, if needed, `ANTHROPIC_WORKSPACE_ID`) in the Vercel project settings. Every push to `main` redeploys automatically — but adding or changing an environment variable requires a fresh deploy to take effect (redeploy manually from the dashboard, or push a commit).
 
 ## Data model
 

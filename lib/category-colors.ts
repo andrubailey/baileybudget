@@ -12,6 +12,9 @@ const PALETTE = [
   "#2e6f8f",
   "#9c2e63",
   "#7a9c2e",
+  "#8f4a2e",
+  "#4a2e8f",
+  "#2e8f8a",
 ];
 
 export function getCategoryColor(categoryId: string): string {

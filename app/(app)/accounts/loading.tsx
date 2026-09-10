@@ -1,8 +1,4 @@
-function Block({ className }: { className: string }) {
-  return (
-    <div className={`animate-pulse rounded-xl bg-border/60 ${className}`} />
-  );
-}
+import { Block } from "@/app/(app)/skeleton";
 
 // Shape matches the real accounts page: header, add-account/add-transfer
 // buttons, then a grid of account cards.

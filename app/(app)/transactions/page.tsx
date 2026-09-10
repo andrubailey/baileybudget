@@ -8,6 +8,7 @@ import {
   type SplitDetail,
 } from "@/lib/queries";
 import { TransactionsTable } from "./transactions-table";
+import { PageHeader } from "@/app/(app)/page-header";
 import type { Period, Transaction } from "@/lib/types";
 
 export default async function TransactionsPage({
@@ -18,6 +19,7 @@ export default async function TransactionsPage({
     category?: string;
     account?: string;
     q?: string;
+    flag?: string;
     highlight?: string;
   }>;
 }) {
@@ -26,8 +28,11 @@ export default async function TransactionsPage({
     category: initialCategoryFilter,
     account: initialAccountFilter,
     q: initialSearch,
+    flag,
     highlight: highlightId,
   } = await searchParams;
+  const initialFlag =
+    flag === "pending" || flag === "uncategorized" ? flag : undefined;
 
   // accounts/categories don't depend on which period is selected, so they
   // run alongside the whole period → recurring-generation → transactions →
@@ -45,13 +50,10 @@ export default async function TransactionsPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl leading-tight font-semibold tracking-tight text-text sm:text-display">Transactions</h1>
-        <p className="mt-1 text-sm text-text-muted">
-          Log income and expenses, manage recurring bills, and set category
-          budgets.
-        </p>
-      </div>
+      <PageHeader
+        title="Transactions"
+        description="Every income, expense and transfer. Click a row to see or edit it."
+      />
 
       {!period ? (
         <p className="text-sm text-text-muted">
@@ -67,6 +69,7 @@ export default async function TransactionsPage({
           initialCategoryFilter={initialCategoryFilter}
           initialAccountFilter={initialAccountFilter}
           initialSearch={initialSearch}
+          initialFlag={initialFlag}
           highlightId={highlightId}
           periods={periods}
           selectedPeriodId={period.id}

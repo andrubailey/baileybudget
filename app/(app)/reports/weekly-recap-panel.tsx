@@ -1,4 +1,5 @@
 import { getPeriodSummaryForRange, getCategoryProgressForRange, getTransactionsForRange } from "@/lib/queries";
+import { CategoryChip } from "@/app/(app)/category-chip";
 import { formatMoney, formatDate } from "@/lib/format";
 
 // `compact` renders this for the Reports page's sidebar column — a fixed
@@ -72,8 +73,8 @@ export async function WeeklyRecapPanel({ compact = false }: { compact?: boolean 
               style={{ animationDelay: `${i * 35}ms` }}
               className="animate-fade-in-up flex items-center justify-between text-sm"
             >
-              <span className="text-text">{c.name}</span>
-              <span className="tabular font-medium text-text-muted">{formatMoney(c.actual)}</span>
+              <CategoryChip id={c.id} name={c.name} icon={c.icon} size="xs" className="min-w-0" />
+              <span className="tabular shrink-0 pl-2 font-medium text-text-muted">{formatMoney(c.actual)}</span>
             </li>
           ))}
           {topCategories.length === 0 && <li className="text-sm text-text-muted">No spending logged this week.</li>}

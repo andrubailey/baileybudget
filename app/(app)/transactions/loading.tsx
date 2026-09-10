@@ -1,8 +1,4 @@
-function Block({ className }: { className: string }) {
-  return (
-    <div className={`animate-pulse rounded-xl bg-border/60 ${className}`} />
-  );
-}
+import { Block, SkeletonList } from "@/app/(app)/skeleton";
 
 // Shape matches the real transactions page: header, tabs, the
 // add-transaction button + period switcher row, then the table.
@@ -23,7 +19,7 @@ export default function Loading() {
         <Block className="h-10 w-32" />
       </div>
 
-      <Block className="h-[520px]" />
+      <SkeletonList rows={10} />
     </div>
   );
 }

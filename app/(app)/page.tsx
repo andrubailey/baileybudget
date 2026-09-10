@@ -129,10 +129,8 @@ export default async function DashboardPage({
   const recentTransactionsSource = editablePeriod
     ? await getTransactions(editablePeriod.id)
     : transactions;
-  // More than would ever fit visibly — the card scrolls internally to
-  // whatever height matches the Budget Categories card next to it, so it's
-  // never left with dead space at the bottom the way a small fixed slice
-  // (7) would be once that card grows taller than 7 rows.
+  // More than would ever fit visibly — the card trims itself to whatever
+  // height matches the Budget card next to it.
   const recentTransactions = recentTransactionsSource.slice(0, 30);
 
   // Net worth = every active account's balance summed together, not budget
@@ -158,7 +156,6 @@ export default async function DashboardPage({
   const expenseTrend = trend(summary.expense, previousSummary.expense, {
     invert: true,
   });
-
 
   // Amount actually moved into savings this range vs. the same-length prior
   // range — the literal dollar total of transfers into savings-type
@@ -212,166 +209,154 @@ export default async function DashboardPage({
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_260px] xl:items-start">
         <div className="min-w-0 space-y-6">
           {/* Five-column grid so Net Worth can span 2 columns — the largest,
-          most important card — while the other three take 1 each. Deferred
-          to 2xl (not xl) since the finances chat column now eats real
-          content width on every page — at xl the cards were cramped enough
-          to visually collide once that column is docked. */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-5">
-        <MetricCard
-          label="Net Worth"
-          index={0}
-          className="2xl:col-span-2"
-          value={
-            <AnimatedMoney
-              value={netWorth}
-              className={`tabular text-[34px] leading-[40px] font-bold tracking-[-0.005em] ${
-                netWorth >= 0 ? "text-text" : "text-danger"
-              }`}
-            />
-          }
-          trendValue={netWorthTrend}
-          graph={
-            balanceHistory.length > 1 && (
-              <Sparkline
-                points={balanceHistory}
-                color={
-                  balanceHistory[balanceHistory.length - 1].balance >=
-                  balanceHistory[0].balance
-                    ? "var(--success)"
-                    : "var(--danger)"
-                }
-              />
-            )
-          }
-        />
-
-        <MetricCard
-          label="Monthly Income"
-          index={1}
-          iconBg="var(--positive-bg)"
-          iconColor="var(--positive-strong)"
-          icon={
-            <path
-              d="M3 17 9 11l4 4 8-8M21 7h-6m6 0v6"
-              stroke="currentColor"
-              strokeWidth={1.6}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          }
-          value={
-            <AnimatedMoney
-              value={summary.income}
-              className="tabular text-[34px] leading-[40px] font-bold tracking-[-0.005em] text-text"
-            />
-          }
-          trendValue={incomeTrend}
-        />
-
-        <MetricCard
-          label="Monthly Expenses"
-          index={2}
-          iconBg="var(--negative-bg)"
-          iconColor="var(--negative-strong)"
-          icon={
-            <path
-              d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0v12a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V7m-6 4v5m4-5v5"
-              stroke="currentColor"
-              strokeWidth={1.6}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          }
-          value={
-            <AnimatedMoney
-              value={summary.expense}
-              className="tabular text-[34px] leading-[40px] font-bold tracking-[-0.005em] text-text"
-            />
-          }
-          trendValue={expenseTrend}
-        />
-
-        <MetricCard
-          label="Saved This Month"
-          index={3}
-          iconBg="var(--projected-bg)"
-          iconColor="var(--projected-strong)"
-          icon={
-            <path
-              d="M12 2 3 7v6c0 5 4 8.5 9 9 5-.5 9-4 9-9V7l-9-5Zm-3.5 9.5 2 2 4.5-4.5"
-              stroke="currentColor"
-              strokeWidth={1.6}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          }
-          value={
-            <AnimatedMoney
-              value={savingsTransfers.net}
-              className={`tabular text-[34px] leading-[40px] font-bold tracking-[-0.005em] ${
-                savingsTransfers.net >= 0 ? "text-text" : "text-danger"
-              }`}
-            />
-          }
-          trendValue={savedTrend}
-          badge={
-            // Gross, not net — a real withdrawal should still surface here
-            // even in a month where an unrelated deposit into some other
-            // savings account happens to keep the net figure positive.
-            savingsTransfers.withdrawn > 0 ? (
-              <span
-                className="tabular rounded-full px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap"
-                style={{ backgroundColor: "var(--projected-bg)", color: "var(--projected-strong)" }}
-              >
-                {formatMoney(savingsTransfers.withdrawn)} Withdrawn
-              </span>
-            ) : null
-          }
-        />
-      </div>
-
-      {/* Budget categories + recent transactions, side by side — at 2xl this
-          lines up with the metric row above it on the same 5-column grid:
-          Budget Categories spans 3 (under Net Worth + Monthly Income),
-          Recent Transactions spans 2 (under Monthly Expenses + Savings
-          Rate). Budget dictates the pair's height (its own natural content
-          size); Recent Transactions is measured against it and scrolls
-          internally rather than growing the row — see
-          DashboardEqualHeightRow for why plain CSS stretch can't do this. */}
-      <DashboardEqualHeightRow
-        budget={
-          <BudgetCategoriesCard
-            categoryProgress={categoryProgress}
-            editablePeriodId={editablePeriod?.id ?? null}
-            rangeIsSinglePeriod={Boolean(editablePeriod)}
-          />
-        }
-        recent={
-          <div className="flex h-full min-h-0 flex-col rounded-xl border border-border bg-surface p-5 shadow-card sm:p-6">
-            <div className="mb-4 flex shrink-0 items-center justify-between">
-              <p className="text-heading text-text">Recent Transactions</p>
-              <Link
-                href="/transactions"
-                className="text-xs font-medium text-text-faint hover:text-text"
-              >
-                View All
-              </Link>
-            </div>
-
-            {recentTransactions.length === 0 ? (
-              <EmptyState message="No transactions logged for this range yet." />
-            ) : (
-              <div className="min-h-0 flex-1 overflow-hidden">
-                <RecentTransactionsList
-                  transactions={recentTransactions}
-                  accounts={accounts}
-                  categories={categories}
+              most important card — while the other three take 1 each. Phones
+              swipe through the cards; from sm up they sit in a grid. */}
+          <div className="snap-row -mx-4 px-4 sm:mx-0 sm:grid sm:grid-cols-2 sm:gap-4 sm:overflow-visible sm:px-0 2xl:grid-cols-5">
+            <MetricCard
+              label="Net Worth"
+              index={0}
+              className="2xl:col-span-2"
+              value={
+                <AnimatedMoney
+                  value={netWorth}
+                  className={`text-balance-display ${netWorth >= 0 ? "text-text" : "text-negative"}`}
                 />
-              </div>
-            )}
+              }
+              trendValue={netWorthTrend}
+              graph={
+                balanceHistory.length > 1 && (
+                  <Sparkline
+                    points={balanceHistory}
+                    color={
+                      balanceHistory[balanceHistory.length - 1].balance >=
+                      balanceHistory[0].balance
+                        ? "var(--positive)"
+                        : "var(--negative)"
+                    }
+                  />
+                )
+              }
+            />
+
+            <MetricCard
+              label="Monthly Income"
+              index={1}
+              iconBg="var(--positive-bg)"
+              iconColor="var(--positive-strong)"
+              icon={
+                <path
+                  d="M3 17 9 11l4 4 8-8M21 7h-6m6 0v6"
+                  stroke="currentColor"
+                  strokeWidth={1.6}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              }
+              value={<AnimatedMoney value={summary.income} className="text-balance-display text-text" />}
+              trendValue={incomeTrend}
+            />
+
+            <MetricCard
+              label="Monthly Expenses"
+              index={2}
+              iconBg="var(--negative-bg)"
+              iconColor="var(--negative-strong)"
+              icon={
+                <path
+                  d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0v12a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V7m-6 4v5m4-5v5"
+                  stroke="currentColor"
+                  strokeWidth={1.6}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              }
+              value={<AnimatedMoney value={summary.expense} className="text-balance-display text-text" />}
+              trendValue={expenseTrend}
+            />
+
+            <MetricCard
+              label="Saved This Month"
+              index={3}
+              iconBg="var(--projected-bg)"
+              iconColor="var(--projected-strong)"
+              icon={
+                <path
+                  d="M12 2 3 7v6c0 5 4 8.5 9 9 5-.5 9-4 9-9V7l-9-5Zm-3.5 9.5 2 2 4.5-4.5"
+                  stroke="currentColor"
+                  strokeWidth={1.6}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              }
+              value={
+                <AnimatedMoney
+                  value={savingsTransfers.net}
+                  className={`text-balance-display ${
+                    savingsTransfers.net >= 0 ? "text-text" : "text-negative"
+                  }`}
+                />
+              }
+              trendValue={savedTrend}
+              badge={
+                // Gross, not net — a real withdrawal should still surface here
+                // even in a month where an unrelated deposit into some other
+                // savings account happens to keep the net figure positive.
+                savingsTransfers.withdrawn > 0 ? (
+                  <span
+                    className="tabular rounded-full px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap"
+                    style={{ backgroundColor: "var(--projected-bg)", color: "var(--projected-strong)" }}
+                  >
+                    {formatMoney(savingsTransfers.withdrawn)} Withdrawn
+                  </span>
+                ) : null
+              }
+            />
           </div>
-        }
-      />
+
+          {/* Budget categories + recent transactions, side by side. Budget
+              dictates the pair's height (its own natural content size);
+              Recent Transactions is measured against it and trims to what
+              fits rather than growing the row — see DashboardEqualHeightRow
+              for why plain CSS stretch can't do this. */}
+          <DashboardEqualHeightRow
+            budget={
+              <BudgetCategoriesCard
+                categoryProgress={categoryProgress}
+                editablePeriodId={editablePeriod?.id ?? null}
+                rangeIsSinglePeriod={Boolean(editablePeriod)}
+              />
+            }
+            recent={
+              <div className="card flex h-full min-h-0 flex-col">
+                <div className="mb-4 flex shrink-0 items-center justify-between">
+                  <p className="text-heading text-text">Recent Transactions</p>
+                  <Link
+                    href="/transactions"
+                    className="text-xs font-medium text-text-faint hover:text-text"
+                  >
+                    View All
+                  </Link>
+                </div>
+
+                {recentTransactions.length === 0 ? (
+                  <EmptyState
+                    compact
+                    message="Nothing logged for this range yet."
+                    shortcut={{ keys: ["⌥", "E"], label: "to log an expense from anywhere" }}
+                  />
+                ) : (
+                  <div className="min-h-0 flex-1 overflow-hidden">
+                    <RecentTransactionsList
+                      transactions={recentTransactions}
+                      accounts={accounts}
+                      categories={categories}
+                      maxRows={8}
+                    />
+                  </div>
+                )}
+              </div>
+            }
+          />
 
           <GoalBanner objectives={objectives} accounts={accounts} />
         </div>
@@ -384,6 +369,27 @@ export default async function DashboardPage({
   );
 }
 
+function TrendArrow({ up }: { up: boolean }) {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      className={`shrink-0 ${up ? "" : "rotate-180"}`}
+    >
+      <path
+        d="M12 19V5m0 0-6 6m6-6 6 6"
+        stroke="currentColor"
+        strokeWidth={2.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function MetricCard({
   label,
   icon,
@@ -392,7 +398,6 @@ function MetricCard({
   value,
   trendValue,
   graph,
-  footnote,
   badge,
   className,
   index = 0,
@@ -404,7 +409,6 @@ function MetricCard({
   value: React.ReactNode;
   trendValue: Trend;
   graph?: React.ReactNode;
-  footnote?: React.ReactNode;
   // Small pill pinned to the top-right corner of the card, for a called-out
   // fact that doesn't fit the label/value/trend shape (e.g. a savings
   // withdrawal that dragged the rate down).
@@ -417,44 +421,25 @@ function MetricCard({
   const trendNote = trendValue && (
     <p
       className={`mt-2 flex items-center gap-1 text-xs font-medium ${
-        trendValue.good ? "text-success" : "text-danger"
+        trendValue.good ? "text-positive" : "text-negative"
       }`}
     >
-      <svg
-        width="12"
-        height="12"
-        viewBox="0 0 24 24"
-        fill="none"
-        aria-hidden="true"
-        className={`shrink-0 ${trendValue.pct >= 0 ? "" : "rotate-180"}`}
-      >
-        <path
-          d="M12 19V5m0 0-6 6m6-6 6 6"
-          stroke="currentColor"
-          strokeWidth={2.5}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
+      <TrendArrow up={trendValue.pct >= 0} />
       {Math.abs(trendValue.pct).toFixed(1)}% from last month
     </p>
   );
 
-  // Icon cards (Income/Expenses/Savings Rate) use the reference layout: icon
+  // Icon cards (Income/Expenses/Saved) use the reference layout: icon
   // pinned top-left, then the label/value/trend block anchored to the
-  // bottom of the card. Net Worth has no icon and keeps its own
-  // top-down layout instead, since its graph needs the middle space.
+  // bottom of the card. Net Worth has no icon and keeps its own top-down
+  // layout instead, since its graph needs the middle space.
   if (icon) {
     return (
       <div
         style={{ animationDelay: `${index * 60}ms` }}
-        className={`card-hover animate-fade-in-up relative flex h-full flex-col justify-between rounded-xl border border-border bg-surface p-5 shadow-card sm:p-6 ${className ?? ""}`}
+        className={`card card-hover animate-fade-in-up relative flex h-full flex-col justify-between ${className ?? ""}`}
       >
-        {badge && (
-          <div className="absolute top-5 right-5 sm:top-6 sm:right-6">
-            {badge}
-          </div>
-        )}
+        {badge && <div className="absolute top-5 right-5 sm:top-6 sm:right-6">{badge}</div>}
         <span
           className="flex size-9 shrink-0 items-center justify-center rounded-full"
           style={{ backgroundColor: iconBg, color: iconColor }}
@@ -464,12 +449,9 @@ function MetricCard({
           </svg>
         </span>
         <div className="mt-4">
-          <p className="text-[13px] font-medium whitespace-nowrap text-text-muted">
-            {label}
-          </p>
+          <p className="text-[13px] font-medium whitespace-nowrap text-text-muted">{label}</p>
           <div className="mt-1">{value}</div>
           {trendNote}
-          {footnote}
         </div>
       </div>
     );
@@ -478,15 +460,12 @@ function MetricCard({
   return (
     <div
       style={{ animationDelay: `${index * 60}ms` }}
-      className={`card-hover animate-fade-in-up flex h-full flex-col rounded-xl border border-border bg-surface p-5 shadow-card sm:p-6 ${className ?? ""}`}
+      className={`card card-hover animate-fade-in-up flex h-full flex-col ${className ?? ""}`}
     >
-      <p className="text-[13px] font-medium whitespace-nowrap text-text-muted">
-        {label}
-      </p>
+      <p className="text-[13px] font-medium whitespace-nowrap text-text-muted">{label}</p>
       <div className="mt-5">{value}</div>
       {trendNote}
       {graph && <div className="mt-4">{graph}</div>}
     </div>
   );
 }
-

@@ -5,6 +5,10 @@ import { createTransfer } from "@/app/actions";
 import type { Account } from "@/lib/types";
 import { SubmitButton } from "@/app/(app)/submit-button";
 import { useToast } from "@/app/(app)/toast";
+import {
+  announcePendingTransaction,
+  withdrawPendingTransaction,
+} from "@/app/(app)/pending-transactions";
 import { FIELD_CLASS as fieldClass } from "@/lib/ui";
 
 export function QuickAddTransferButton({
@@ -20,8 +24,24 @@ export function QuickAddTransferButton({
   const showToast = useToast();
 
   async function handleSubmit(formData: FormData) {
+    const fromId = String(formData.get("from_account_id") ?? "") || null;
+    const toId = String(formData.get("to_account_id") ?? "") || null;
+    const fromName = accounts.find((a) => a.id === fromId)?.name ?? "account";
+    const toName = accounts.find((a) => a.id === toId)?.name ?? "account";
+    const pendingId = announcePendingTransaction({
+      kind: "transfer",
+      description: `From ${fromName} to ${toName}`,
+      amount: Number(formData.get("amount") ?? 0),
+      txn_date: String(formData.get("txn_date") ?? new Date().toISOString().slice(0, 10)),
+      account_id: fromId,
+      to_account_id: toId,
+      category_id: null,
+      period_id: periodId,
+      notes: String(formData.get("notes") ?? "").trim() || null,
+    });
     const result = await createTransfer(formData);
     if (!result.ok) {
+      withdrawPendingTransaction(pendingId);
       showToast(result.error ? `Couldn't save: ${result.error}` : "Couldn't save transfer");
       return;
     }

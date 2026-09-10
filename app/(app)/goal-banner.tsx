@@ -85,7 +85,7 @@ export function GoalBanner({
                 pct={pct ?? 0}
                 overBudget={false}
                 color="white"
-                trackClassName="bg-white/25"
+                trackColor="rgba(255,255,255,0.25)"
                 className="min-w-0 flex-1"
               />
               <span className="tabular shrink-0 text-xs text-hero-text-muted">

@@ -22,6 +22,7 @@ import { StatusPill } from "@/app/(app)/status-pill";
 import { EmptyState } from "@/app/(app)/empty-state";
 import { Celebration, useCelebration } from "@/app/(app)/celebration";
 import { FIELD_CLASS as fieldClass } from "@/lib/ui";
+import { ReconcileButton } from "./reconcile-button";
 
 function defaultLoginUrl(bank: string | null): string | null {
   if (!bank) return null;
@@ -98,7 +99,7 @@ export function AccountList({
       {groups.map((group) => (
         <div key={group.key} className="mb-6 last:mb-0">
           {groups.length > 1 && (
-            <p className="mb-3 text-[11px] font-semibold tracking-wide text-text-faint uppercase">
+            <p className="text-section-label mb-3">
               {group.label}
             </p>
           )}
@@ -148,7 +149,7 @@ export function AccountList({
                   }}
                   aria-label={`Edit ${a.name}`}
                   style={{ animationDelay: `${i * 40}ms` }}
-                  className={`card-hover animate-fade-in-up cursor-pointer rounded-xl border border-border bg-surface p-5 shadow-card sm:p-6 ${
+                  className={`card card-hover animate-fade-in-up cursor-pointer ${
                     !a.is_active ? "opacity-70" : ""
                   }`}
                 >
@@ -204,7 +205,7 @@ export function AccountList({
                       amount={a.balance}
                       variant="balance"
                       tone={a.is_debt && !paidOff ? "negative" : undefined}
-                      className="text-[28px] leading-[34px] font-bold tracking-[-0.005em] text-text"
+                      className="text-balance-sm text-text"
                     />
                     {a.is_debt && (
                       <span className="text-sm font-normal text-text-faint">
@@ -220,17 +221,20 @@ export function AccountList({
                     </StatusPill>
                   )}
 
-                  {loginUrl && (
-                    <a
-                      href={loginUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline"
-                    >
-                      Log in to {a.bank ?? "bank"} ↗
-                    </a>
-                  )}
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                    {loginUrl && (
+                      <a
+                        href={loginUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline"
+                      >
+                        Log in to {a.bank ?? "bank"} ↗
+                      </a>
+                    )}
+                    {a.is_active && <ReconcileButton account={a} />}
+                  </div>
 
                   {progress !== null && (
                     <div className="mt-4">

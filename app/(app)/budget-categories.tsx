@@ -5,8 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { upsertBudgetLine } from "@/app/actions";
 import { Money } from "@/app/(app)/money";
-import { getCategoryIcon } from "@/lib/category-icons";
-import { getCategoryColor } from "@/lib/category-colors";
+import { CategoryChip } from "@/app/(app)/category-chip";
 import { EmptyState } from "@/app/(app)/empty-state";
 import { useToast } from "@/app/(app)/toast";
 import { SegmentedProgress } from "@/app/(app)/segmented-progress";
@@ -65,7 +64,7 @@ export function BudgetCategoriesCard({
   const totalActual = sorted.reduce((sum, c) => sum + c.actual, 0);
 
   return (
-    <div className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-surface p-5 shadow-card sm:p-6">
+    <div className="card flex min-w-0 flex-col overflow-hidden">
       <div className="mb-1 flex items-center justify-between gap-3">
         <h2 className="text-heading text-text">Budget</h2>
         <Link
@@ -84,12 +83,13 @@ export function BudgetCategoriesCard({
       {sorted.length === 0 ? (
         <EmptyState
           message="No expense categories yet."
+          compact
           action={
             <Link
-              href="/transactions?view=categories"
-              className="text-xs text-accent underline underline-offset-2"
+              href="/budgets"
+              className="text-xs font-medium text-accent underline underline-offset-2"
             >
-              Add one
+              Set up your budget
             </Link>
           }
         />
@@ -115,33 +115,24 @@ export function BudgetCategoriesCard({
           </div>
 
           <div className="mt-3 hidden overflow-x-auto sm:block">
-            {/* table-fixed + a defined share per column (set on the header
-                row, which is what table-fixed sizes from) — auto layout let
-                Name absorb 100% of whatever the card's width left over, so
-                the other three columns bunched together on the right
-                instead of the row filling out evenly. Planned/Actual both
-                use text-center with lopsided padding (more on the left than
-                the right) to push each number toward the right side of its
-                own column — a true geometric center read as too far left,
-                since the Progress bar itself sits pushed to the right edge
-                of its own column (justify-end), not flush against Actual.
-                Actual leans further right than Planned (pl-16 vs pl-14).
-                Progress's own bar is flex-sized but capped thin (see
-                below), so its column doesn't need a hard minimum width
-                reserved either. */}
-            <table className="w-full table-fixed text-left">
+            {/* table-fixed with a share per column and ordinary padding —
+                every cell's content has to fit inside its own column, so
+                nothing (like the progress bar) can draw over a neighbor.
+                Planned and Actual are right-aligned so their figures line
+                up with the Subtotal row beneath them. */}
+            <table className="w-full min-w-[640px] table-fixed text-left">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="w-[26%] px-4 py-2 text-xs font-medium text-text-muted">
+                  <th className="w-[30%] px-4 py-2 text-xs font-medium text-text-muted">
                     Name
                   </th>
-                  <th className="w-[16%] py-2 pr-0 pl-14 text-center text-xs font-medium text-text-muted">
+                  <th className="w-[18%] px-4 py-2 text-right text-xs font-medium text-text-muted">
                     Planned
                   </th>
-                  <th className="w-[16%] py-2 pr-0 pl-32 text-center text-xs font-medium text-text-muted">
+                  <th className="w-[18%] px-4 py-2 text-right text-xs font-medium text-text-muted">
                     Actual
                   </th>
-                  <th className="w-[42%] px-4 py-2 text-right text-xs font-medium text-text-muted">
+                  <th className="w-[34%] px-4 py-2 text-right text-xs font-medium text-text-muted">
                     Progress
                   </th>
                 </tr>
@@ -161,10 +152,10 @@ export function BudgetCategoriesCard({
                   <td className="px-4 py-2 text-xs font-semibold text-text">
                     Subtotal
                   </td>
-                  <td className="py-2 pr-0 pl-14 text-center">
+                  <td className="px-4 py-2 text-right">
                     <Money amount={totalPlanned} className="tabular text-sm font-semibold text-text" />
                   </td>
-                  <td className="py-2 pr-0 pl-32 text-center">
+                  <td className="px-4 py-2 text-right">
                     <Money amount={totalActual} className="tabular text-sm font-semibold text-text" />
                   </td>
                   <td className="px-4 py-2" />
@@ -197,7 +188,6 @@ function MobileCategoryCard({
       : c.actual > 0
         ? 100
         : 0;
-  const color = getCategoryColor(c.id);
   const isUnbudgeted = c.planned === 0 && c.actual === 0;
 
   useEffect(() => {
@@ -233,15 +223,7 @@ function MobileCategoryCard({
       }`}
     >
       <div className="flex items-center gap-2.5">
-        <span
-          className="flex size-7 shrink-0 items-center justify-center rounded-full text-sm"
-          style={{ backgroundColor: `${color}26` }}
-        >
-          {getCategoryIcon(c.name, c.icon)}
-        </span>
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-text">
-          {c.name}
-        </span>
+        <CategoryChip id={c.id} name={c.name} icon={c.icon} className="min-w-0 flex-1" />
         <Money
           amount={c.remaining}
           signDisplay="auto"
@@ -322,7 +304,6 @@ function CategoryRow({
     });
   }
 
-  const color = getCategoryColor(c.id);
   const isUnbudgeted = c.planned === 0 && c.actual === 0;
   const href = editablePeriodId
     ? `/transactions?period=${editablePeriodId}&category=${c.id}`
@@ -349,24 +330,13 @@ function CategoryRow({
       }`}
     >
       <td className="px-4 py-3">
-        <div className="flex items-center gap-2.5">
-          <span
-            className="flex size-7 shrink-0 items-center justify-center rounded-full text-sm"
-            style={{ backgroundColor: `${color}26` }}
-          >
-            {getCategoryIcon(c.name, c.icon)}
-          </span>
-          <span className="text-sm font-medium text-text">{c.name}</span>
-        </div>
+        <CategoryChip id={c.id} name={c.name} icon={c.icon} />
       </td>
-      <td className="py-3 pr-0 pl-14 text-center">
+      <td className="px-4 py-3 text-right">
         {editablePeriodId ? (
-          // The checkmark used to trail the input in normal flow, which
-          // reserved space for it even while invisible — that pushed the
-          // input itself off-center within the cell. Floating the
-          // checkmark outside the input's own box (absolute, not in flow)
-          // lets the input sit dead-center like the Subtotal row and
-          // Actual column do.
+          // The checkmark floats outside the input's box (absolute, not in
+          // flow) so it never reserves space and shifts the input off the
+          // column's right edge, where the Subtotal figure lines up.
           <label
             className="relative inline-block"
             onClick={(e) => e.stopPropagation()}
@@ -385,7 +355,7 @@ function CategoryRow({
               }}
               className="tabular no-spinner w-24 rounded-md border border-border bg-bg py-1 pr-2 pl-5 text-right text-sm text-text outline-none focus:border-accent"
             />
-            <span className="absolute top-1/2 left-full ml-1.5 -translate-y-1/2">
+            <span className="absolute top-1/2 right-full mr-1.5 -translate-y-1/2">
               <SavedCheck show={saved} />
             </span>
           </label>
@@ -393,17 +363,18 @@ function CategoryRow({
           <Money amount={c.planned} className="text-sm text-text-muted" />
         )}
       </td>
-      <td className="py-3 pr-0 pl-32 text-center text-sm">
+      <td className="px-4 py-3 text-right text-sm">
         <Money amount={c.actual} tone={c.overBudget ? "negative" : "neutral"} />
       </td>
-      <td className="px-4 py-3">
-        <div className="flex items-center justify-end gap-2">
-          {/* max-w-16 keeps the bar thin instead of stretching to fill the
-              Progress column's full 42% share — min-w-6 + flex-1 (rather
-              than a hard fixed width) still lets it shrink on a narrower
-              card so it can't overlap the next column, it just never grows
-              past 4rem wide. */}
-          <SegmentedProgress pct={pct} overBudget={c.overBudget} className="min-w-6 max-w-16 flex-1" />
+      <td className="py-3 pr-4 pl-8">
+        <div className="flex items-center justify-end gap-3">
+          {/* Fixed width that ends exactly on a whole pill (10 pills × 4px +
+              9 gaps × 3px = 67px) and still fits the Progress column at the
+              table's 640px minimum — a flexible bar got squeezed into
+              whatever was left and clipped mid-pill. */}
+          <div className="w-[67px] shrink-0">
+            <SegmentedProgress pct={pct} overBudget={c.overBudget} />
+          </div>
           <span
             className={`w-20 shrink-0 text-right text-xs font-medium whitespace-nowrap ${
               c.overBudget ? "text-negative" : "text-text-muted"

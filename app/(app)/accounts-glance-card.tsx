@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { AccountWithBalance } from "@/lib/queries";
 import { formatMoney } from "@/lib/format";
 import { BankLogo } from "@/app/(app)/accounts/bank-logo";
+import { EmptyState } from "@/app/(app)/empty-state";
 
 // Preferred display order for the Personal group — checking first as the
 // day-to-day account, then the two savings goals in the order they matter
@@ -29,7 +30,23 @@ function byPersonalOrder(a: AccountWithBalance, b: AccountWithBalance) {
 // overhaul reuses this exact minimal view as its own full-page destination
 // instead of the full account-management page.
 export function AccountsGlanceCard({ accounts }: { accounts: AccountWithBalance[] }) {
-  if (accounts.length === 0) return null;
+  if (accounts.length === 0) {
+    return (
+      <div className="card">
+        <p className="text-heading mb-4 text-text">Accounts</p>
+        <EmptyState
+          compact
+          icon="wallet"
+          message="No accounts yet."
+          action={
+            <Link href="/accounts" className="text-xs font-medium text-accent underline underline-offset-2">
+              Add your first account
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
 
   const debt = accounts.filter((a) => a.is_debt);
   const groups: {
@@ -60,7 +77,7 @@ export function AccountsGlanceCard({ accounts }: { accounts: AccountWithBalance[
   }
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-5 shadow-card sm:p-6">
+    <div className="card">
       <div className="mb-4 flex items-center justify-between gap-3">
         <p className="text-heading text-text">Accounts</p>
         <Link
@@ -75,7 +92,7 @@ export function AccountsGlanceCard({ accounts }: { accounts: AccountWithBalance[
           let rowIndex = 0;
           return groups.map((group) => (
             <div key={group.key}>
-              <p className="mb-2.5 text-[11px] font-semibold tracking-wide text-text-faint uppercase">
+              <p className="text-section-label mb-2.5">
                 {group.label}
               </p>
               <div className="divide-y divide-border">

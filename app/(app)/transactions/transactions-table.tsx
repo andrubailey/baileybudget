@@ -6,20 +6,25 @@ import {
   bulkUpdateTransactions,
   deleteTransaction,
   restoreTransaction,
-  toggleTransactionCleared,
   toggleTransactionPendingApproval,
 } from "@/app/actions";
-import { formatMoney, formatDate, transferDisplayDescription } from "@/lib/format";
+import { formatMoney, formatDate } from "@/lib/format";
 import type { Account, Category, Period, Transaction } from "@/lib/types";
 import type { SplitDetail } from "@/lib/queries";
 import { BankLogo } from "@/app/(app)/accounts/bank-logo";
-import { getLetterColors } from "@/lib/letter-colors";
-import { getCategoryIcon } from "@/lib/category-icons";
+import { presentTransaction, toAccountLookup } from "@/lib/transaction-presentation";
 import { EmptyState } from "@/app/(app)/empty-state";
-import { Money } from "@/app/(app)/money";
 import { useToast } from "@/app/(app)/toast";
 import { PeriodSwitcher } from "@/app/(app)/period-switcher";
 import { TransactionDetailModal } from "@/app/(app)/transaction-detail-modal";
+import { CategoryChip } from "@/app/(app)/category-chip";
+import { isPendingTransaction, usePendingTransactions } from "@/app/(app)/pending-transactions";
+import {
+  RowFlags,
+  TransactionAmount,
+  TransactionAvatar,
+  TransactionRow,
+} from "@/app/(app)/transaction-row";
 
 // The ✓ and action columns stay pinned first/last — reordering a checkbox
 // away from the row's edge, or the row's action buttons into the middle,
@@ -93,6 +98,7 @@ export function TransactionsTable({
   initialCategoryFilter,
   initialAccountFilter,
   initialSearch,
+  initialFlag,
   highlightId,
   periods,
   selectedPeriodId,
@@ -104,6 +110,9 @@ export function TransactionsTable({
   initialCategoryFilter?: string;
   initialAccountFilter?: string;
   initialSearch?: string;
+  // Deep link from the dashboard's attention strip — "show me just the
+  // rows waiting for approval" / "just the uncategorized ones".
+  initialFlag?: "pending" | "uncategorized";
   // Set when arriving from a ⌘K search result — scrolls that specific
   // transaction into view and briefly flashes it, so "click a search result"
   // actually lands you ON the transaction instead of just the right period.
@@ -144,6 +153,14 @@ export function TransactionsTable({
   if (initialCategoryFilter !== lastInitialCategoryFilter) {
     setLastInitialCategoryFilter(initialCategoryFilter);
     setCategoryFilter(initialCategoryFilter ?? "");
+  }
+  const [flagFilter, setFlagFilter] = useState<"" | "pending" | "uncategorized">(
+    initialFlag ?? "",
+  );
+  const [lastInitialFlag, setLastInitialFlag] = useState(initialFlag);
+  if (initialFlag !== lastInitialFlag) {
+    setLastInitialFlag(initialFlag);
+    setFlagFilter(initialFlag ?? "");
   }
   const [kindFilter, setKindFilter] = useState<
     "" | "income" | "expense" | "transfer"
@@ -253,14 +270,6 @@ export function TransactionsTable({
     id: string;
     description: string;
   } | null>(null);
-  // Optimistic overrides for the cleared toggle, keyed by transaction id.
-  // Without this the checkbox/swipe just reflects the `transactions` prop,
-  // which only catches up once the server action's revalidation round-trips
-  // back — on mobile that round-trip lands after the swipe has already
-  // snapped back, so the status visibly reverts before the real data arrives.
-  const [clearedOverrides, setClearedOverrides] = useState<
-    Record<string, boolean>
-  >({});
   // Marks a row as fading out the instant delete is clicked — the row's
   // actual removal from `transactions` only lands once the server action's
   // revalidation round-trips back, which would otherwise mean the row just
@@ -369,23 +378,17 @@ export function TransactionsTable({
     () => new Map(accounts.map((a) => [a.id, a.bank])),
     [accounts],
   );
+  const accountsById = useMemo(() => toAccountLookup(accounts), [accounts]);
   const categoryById = useMemo(
     () => new Map(categories.map((c) => [c.id, c.name])),
     [categories],
   );
-  const categoryIconById = useMemo(
-    () => new Map(categories.map((c) => [c.id, c.icon])),
+  const categoryRecordById = useMemo(
+    () => new Map(categories.map((c) => [c.id, c])),
     [categories],
   );
-  const effectiveTransactions = useMemo(
-    () =>
-      transactions.map((t) =>
-        t.id in clearedOverrides
-          ? { ...t, cleared: clearedOverrides[t.id] }
-          : t,
-      ),
-    [transactions, clearedOverrides],
-  );
+
+  const effectiveTransactions = usePendingTransactions(transactions);
 
   // Every distinct person who's logged a transaction in this list — backs
   // the detail modal's "Created by" dropdown so reassigning attribution
@@ -412,6 +415,13 @@ export function TransactionsTable({
     () =>
       effectiveTransactions.filter((t) => {
         if (kindFilter && t.kind !== kindFilter) return false;
+        if (flagFilter === "pending" && !t.pending_approval) return false;
+        if (
+          flagFilter === "uncategorized" &&
+          (t.kind === "transfer" || t.category_id !== null || splitsByTransaction?.has(t.id))
+        ) {
+          return false;
+        }
         if (
           accountFilter &&
           t.account_id !== accountFilter &&
@@ -439,6 +449,8 @@ export function TransactionsTable({
     [
       effectiveTransactions,
       kindFilter,
+      flagFilter,
+      splitsByTransaction,
       accountFilter,
       categoryFilter,
       amountMin,
@@ -502,23 +514,6 @@ export function TransactionsTable({
       return next;
     });
     setUndoRow(null);
-  }
-
-  async function handleToggleCleared(id: string, cleared: boolean) {
-    setClearedOverrides((prev) => ({ ...prev, [id]: cleared }));
-    try {
-      await toggleTransactionCleared(id, cleared);
-      // Safe to drop now — the revalidated `transactions` prop will already
-      // agree, and dropping it avoids the override permanently masking a
-      // future change to this row from elsewhere (e.g. the other person).
-      setClearedOverrides((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
-    } catch {
-      setClearedOverrides((prev) => ({ ...prev, [id]: !cleared }));
-    }
   }
 
   function toggleSelect(id: string) {
@@ -705,7 +700,17 @@ export function TransactionsTable({
       )}
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        {(search || accountFilter || categoryFilter || kindFilter) && (
+        {flagFilter && (
+          <button
+            type="button"
+            onClick={() => setFlagFilter("")}
+            className="flex items-center gap-1.5 rounded-full border border-caution-border bg-caution-bg px-2.5 py-1 text-xs font-medium text-caution-strong"
+          >
+            {flagFilter === "pending" ? "Waiting for approval" : "Uncategorized"}
+            <span aria-hidden="true">✕</span>
+          </button>
+        )}
+        {(search || accountFilter || categoryFilter || kindFilter || flagFilter) && (
           <span className="text-xs text-text-faint">
             {filtered.length} of {transactions.length}
           </span>
@@ -739,26 +744,16 @@ export function TransactionsTable({
           reliably transform-animated for swipe gestures across browsers, so
           small screens get their own list instead of a squeezed table. */}
       <div key={kindFilter} className="animate-fade-in-up space-y-2 sm:hidden">
-        {sortedFiltered.map((t) => (
+        {sortedFiltered.map((t, i) => (
           <MobileTransactionCard
             key={t.id}
             transaction={t}
-            displayDescription={transferDisplayDescription(
-              t.description,
-              t.kind,
-              t.to_account_id ? accountBankById.get(t.to_account_id) : null,
-            )}
-            accountName={
-              t.account_id ? (accountById.get(t.account_id) ?? "—") : "—"
-            }
-            categoryName={
-              t.category_id ? (categoryById.get(t.category_id) ?? null) : null
-            }
-            categoryIcon={
-              t.category_id ? categoryIconById.get(t.category_id) : null
-            }
+            index={i}
+            accountsById={accountsById}
+            category={t.category_id ? (categoryRecordById.get(t.category_id) ?? null) : null}
+            splitCount={splitsByTransaction?.get(t.id)?.length ?? null}
+            onOpen={() => openDetail(t.id)}
             onDelete={() => handleDelete(t)}
-            onToggleCleared={(cleared) => handleToggleCleared(t.id, cleared)}
           />
         ))}
         {filtered.length === 0 && (
@@ -917,11 +912,8 @@ export function TransactionsTable({
           </thead>
           <tbody>
             {sortedFiltered.map((t) => {
-                const displayDescription = transferDisplayDescription(
-                  t.description,
-                  t.kind,
-                  t.to_account_id ? accountBankById.get(t.to_account_id) : null,
-                );
+                const p = presentTransaction(t, accountsById);
+                const displayDescription = p.displayDescription;
                 return (
                 <Fragment key={t.id}>
                   <tr
@@ -932,7 +924,7 @@ export function TransactionsTable({
                     onClick={() => openDetail(t.id)}
                     className={`h-14 cursor-pointer overflow-hidden border-b border-border transition-[opacity,background-color] duration-300 last:border-b-0 hover:bg-bg even:bg-bg/40 ${
                       deletingIds.has(t.id) ? "opacity-0" : "opacity-100"
-                    } ${newIds.has(t.id) ? "animate-row-highlight" : ""} ${
+                    } ${isPendingTransaction(t) ? "animate-pulse pointer-events-none opacity-60" : ""} ${newIds.has(t.id) ? "animate-row-highlight" : ""} ${
                       selectedIds.has(t.id) ? "bg-accent-soft/60" : ""
                     }`}
                   >
@@ -957,54 +949,26 @@ export function TransactionsTable({
                       >
                         {col === "description" && (
                           <div className="flex items-center gap-3">
-                            <span
-                              className="flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
-                              style={{
-                                backgroundColor: getLetterColors(displayDescription).bg,
-                                color: getLetterColors(displayDescription).text,
-                              }}
-                            >
-                              {displayDescription.trim()[0]?.toUpperCase() ?? "?"}
-                            </span>
+                            <TransactionAvatar label={displayDescription} size="sm" />
                             <div className="flex min-w-0 items-center gap-1.5">
                               <span className="truncate text-sm font-medium text-text">
                                 {displayDescription}
                               </span>
-                              {t.recurring_transaction_id && (
-                                <span
-                                  className="shrink-0 text-xs"
-                                  title="Recurring"
-                                >
-                                  🔁
-                                </span>
-                              )}
-                              {t.pending_approval && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleTransactionPendingApproval(t.id, false);
-                                  }}
-                                  title="Needs approval — click to approve"
-                                  className="shrink-0 rounded-full bg-caution-bg px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap text-caution-strong transition-colors hover:bg-caution-border"
-                                >
-                                  Needs approval
-                                </button>
-                              )}
+                              <RowFlags
+                                transaction={t}
+                                onApprove={() => toggleTransactionPendingApproval(t.id, false)}
+                              />
                             </div>
                           </div>
                         )}
                         {col === "category" &&
-                          (t.category_id && categoryById.get(t.category_id) ? (
-                            <span className="flex items-center gap-1.5 truncate">
-                              <span className="shrink-0">
-                                {getCategoryIcon(
-                                  categoryById.get(t.category_id)!,
-                                  categoryIconById.get(t.category_id),
-                                )}
-                              </span>
-                              <span className="truncate">{categoryById.get(t.category_id)}</span>
-                            </span>
+                          (t.category_id && categoryRecordById.get(t.category_id) ? (
+                            <CategoryChip
+                              id={t.category_id}
+                              name={categoryRecordById.get(t.category_id)!.name}
+                              icon={categoryRecordById.get(t.category_id)!.icon}
+                              size="xs"
+                            />
                           ) : splitsByTransaction?.has(t.id) ? (
                             <span
                               className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent"
@@ -1063,13 +1027,7 @@ export function TransactionsTable({
                             </span>
                           )}
                         {col === "amount" && (
-                          <Money
-                            amount={t.amount}
-                            signDisplay={
-                              t.kind === "income" ? "+" : t.kind === "expense" ? "-" : "none"
-                            }
-                            tone={t.kind === "income" ? "positive" : "neutral"}
-                          />
+                          <TransactionAmount amount={t.amount} presentation={p} />
                         )}
                         {col === "notes" && (
                           <span className="block truncate" title={t.notes ?? undefined}>
@@ -1099,6 +1057,30 @@ export function TransactionsTable({
                       transactions.length === 0
                         ? "No transactions logged for this period yet."
                         : "No transactions match your search/filters."
+                    }
+                    shortcut={
+                      transactions.length === 0
+                        ? { keys: ["⌥", "E"], label: "to log an expense" }
+                        : undefined
+                    }
+                    action={
+                      transactions.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSearch("");
+                            setAccountFilter("");
+                            setCategoryFilter("");
+                            setKindFilter("");
+                            setFlagFilter("");
+                            setAmountMin("");
+                            setAmountMax("");
+                          }}
+                          className="text-xs font-medium text-accent underline underline-offset-2"
+                        >
+                          Clear filters
+                        </button>
+                      ) : undefined
                     }
                   />
                 </td>
@@ -1137,25 +1119,26 @@ export function TransactionsTable({
   );
 }
 
-// Swipe left to reveal Delete, swipe right to reveal a Mark cleared toggle —
-// mirrors common mobile mail/messaging apps instead of requiring a tap into
-// a cramped inline edit form just to clear or remove a row.
+// Swipe left to reveal Delete — mirrors common mobile mail/messaging apps
+// instead of requiring a tap into a cramped edit form just to remove a row.
+// The row itself is the shared TransactionRow; this only adds the swipe
+// chrome.
 function MobileTransactionCard({
   transaction: t,
-  displayDescription,
-  accountName,
-  categoryName,
-  categoryIcon,
+  index,
+  accountsById,
+  category,
+  splitCount,
+  onOpen,
   onDelete,
-  onToggleCleared,
 }: {
   transaction: Transaction;
-  displayDescription: string;
-  accountName: string;
-  categoryName: string | null;
-  categoryIcon?: string | null;
+  index: number;
+  accountsById: ReturnType<typeof toAccountLookup>;
+  category: Category | null;
+  splitCount: number | null;
+  onOpen: () => void;
   onDelete: () => void;
-  onToggleCleared: (cleared: boolean) => void;
 }) {
   const [dragX, setDragX] = useState(0);
   // Whether a touch is actively in progress — this affects the rendered
@@ -1165,6 +1148,7 @@ function MobileTransactionCard({
   // rendered on a given frame.
   const [isDragging, setIsDragging] = useState(false);
   const startX = useRef<number | null>(null);
+  const moved = useRef(false);
   const SWIPE_THRESHOLD = 72;
   // Whether this drag has already buzzed for crossing the threshold — reset
   // per-gesture so it fires once as the swipe arms, not on every pixel past
@@ -1183,13 +1167,15 @@ function MobileTransactionCard({
   function handleTouchStart(e: React.TouchEvent) {
     startX.current = e.touches[0].clientX;
     armedBuzzed.current = false;
+    moved.current = false;
     setIsDragging(true);
   }
 
   function handleTouchMove(e: React.TouchEvent) {
     if (startX.current === null) return;
     const delta = e.touches[0].clientX - startX.current;
-    const next = Math.max(-120, Math.min(120, delta));
+    if (Math.abs(delta) > 6) moved.current = true;
+    const next = Math.max(-120, Math.min(0, delta));
     if (!armedBuzzed.current && Math.abs(next) >= SWIPE_THRESHOLD) {
       armedBuzzed.current = true;
       buzz(10);
@@ -1204,19 +1190,13 @@ function MobileTransactionCard({
     if (dragX <= -SWIPE_THRESHOLD) {
       buzz([10, 30, 10]);
       onDelete();
-    } else if (dragX >= SWIPE_THRESHOLD) {
-      buzz([10, 30, 10]);
-      onToggleCleared(!t.cleared);
     }
     setDragX(0);
   }
 
   return (
     <div className="relative overflow-hidden rounded-xl">
-      <div className="absolute inset-0 flex items-center justify-between px-4">
-        <span className="text-xs font-semibold text-success">
-          {t.cleared ? "Mark pending" : "Mark cleared"}
-        </span>
+      <div className="absolute inset-0 flex items-center justify-end px-4">
         <span className="text-xs font-semibold text-negative">Delete</span>
       </div>
       <div
@@ -1227,52 +1207,27 @@ function MobileTransactionCard({
           transform: `translateX(${dragX}px)`,
           transition: isDragging ? "none" : "transform 150ms",
         }}
-        className="relative flex items-center gap-3 rounded-xl border border-border bg-surface p-3.5 shadow-card"
+        className="card-flush relative p-3.5"
       >
-        <span
-          className="flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
-          style={{
-            backgroundColor: getLetterColors(displayDescription).bg,
-            color: getLetterColors(displayDescription).text,
+        <TransactionRow
+          bare
+          transaction={t}
+          accountsById={accountsById}
+          category={category}
+          categorySlot={
+            splitCount ? (
+              <span className="rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-medium text-accent">
+                Split ({splitCount})
+              </span>
+            ) : undefined
+          }
+          index={index}
+          onClick={() => {
+            // A swipe that ended on the row shouldn't also open it.
+            if (!moved.current) onOpen();
           }}
-        >
-          {displayDescription.trim()[0]?.toUpperCase() ?? "?"}
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-1.5 truncate text-sm font-medium text-text">
-            <span className="truncate">{displayDescription}</span>
-            {t.pending_approval && (
-              <span className="shrink-0 rounded-full bg-caution-bg px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap text-caution-strong">
-                Needs approval
-              </span>
-            )}
-          </p>
-          <p className="flex items-center gap-1.5 text-xs text-text-faint">
-            <span className="min-w-0 truncate">{accountName}</span>
-            {categoryName && (
-              <span className="shrink-0 whitespace-nowrap">
-                · {getCategoryIcon(categoryName, categoryIcon)} {categoryName}
-              </span>
-            )}
-            <span className="shrink-0 whitespace-nowrap">
-              · {formatDate(t.txn_date)}
-            </span>
-          </p>
-        </div>
-        <Money
-          amount={t.amount}
-          signDisplay={t.kind === "income" ? "+" : t.kind === "expense" ? "-" : "none"}
-          tone={t.kind === "income" ? "positive" : "neutral"}
-          className="shrink-0 text-sm font-medium"
         />
-        {!t.cleared && (
-          <span
-            className="size-1.5 shrink-0 rounded-full bg-caution"
-            title="Pending"
-          />
-        )}
       </div>
     </div>
   );
 }
-

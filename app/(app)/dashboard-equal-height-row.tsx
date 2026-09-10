@@ -8,8 +8,14 @@ import { useLayoutEffect, useRef, useState } from "react";
 // so a longer transaction list would drag Budget's height up with it (dead
 // space at its bottom) instead of Budget staying independent. Measuring
 // Budget's actual rendered height and applying it to Recent Transactions —
-// which scrolls internally past that height instead of growing the row —
+// which trims to whatever fits that height instead of growing the row —
 // is the only way to make Budget the one dictating the pair's height.
+//
+// Only applies once the two are actually side by side (lg+). Stacked on a
+// phone, each card is its own natural height — pinning the recent list to
+// the budget card's height there just clipped it for no reason.
+const SIDE_BY_SIDE = "(min-width: 1024px)";
+
 export function DashboardEqualHeightRow({
   budget,
   recent,
@@ -23,12 +29,24 @@ export function DashboardEqualHeightRow({
   useLayoutEffect(() => {
     const el = budgetRef.current;
     if (!el) return;
+    const media = window.matchMedia(SIDE_BY_SIDE);
+    let measured: number | null = null;
+    function apply() {
+      setHeight(media.matches ? measured : null);
+    }
     const observer = new ResizeObserver((entries) => {
       const h = entries[0]?.contentRect.height;
-      if (h) setHeight(h);
+      if (h) {
+        measured = h;
+        apply();
+      }
     });
     observer.observe(el);
-    return () => observer.disconnect();
+    media.addEventListener("change", apply);
+    return () => {
+      observer.disconnect();
+      media.removeEventListener("change", apply);
+    };
   }, []);
 
   return (
@@ -38,6 +56,7 @@ export function DashboardEqualHeightRow({
       </div>
       <div
         className="flex min-w-0 flex-col overflow-hidden 2xl:col-span-2"
+        data-pinned={height ? "true" : "false"}
         style={height ? { height } : undefined}
       >
         {recent}

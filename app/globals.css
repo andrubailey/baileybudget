@@ -293,6 +293,83 @@ body {
   color: var(--text-faint);
 }
 
+@layer components {
+/* Layout roles that were previously hand-copied per page (every page
+   title repeated the same six utility classes; every card the same
+   five). Named once here so a new page/card can't drift. */
+.text-page-title {
+  font-size: 24px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+@media (min-width: 640px) {
+  .text-page-title {
+    font-size: 30px;
+    line-height: 38px;
+  }
+}
+/* A secondary balance — an account card, a stat tile — one step below
+   .text-balance-display so a page never has two "largest" numbers. */
+.text-balance-sm {
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+/* Group label above a list section ("Business", "Personal", "Debt"). */
+.text-section-label {
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* The one card surface. p-5 on phones, p-6 from sm up, matching what
+   every card in the app already did by hand. */
+.card {
+  border-radius: 0.75rem;
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  padding: 1.25rem;
+  box-shadow: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
+}
+@media (min-width: 640px) {
+  .card {
+    padding: 1.5rem;
+  }
+}
+.card-flush {
+  border-radius: 0.75rem;
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  box-shadow: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
+}
+
+/* Horizontal snap row for the mobile dashboard — metric cards swipe
+   sideways as a carousel instead of stacking four tall cards before
+   any real content. */
+.snap-row {
+  display: flex;
+  gap: 0.75rem;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.snap-row::-webkit-scrollbar {
+  display: none;
+}
+.snap-row > * {
+  scroll-snap-align: start;
+  flex: 0 0 82%;
+}
+}
+
 /* ============================================================
    SPACING & RADIUS — Tailwind's default scales, used as-is.
    ------------------------------------------------------------

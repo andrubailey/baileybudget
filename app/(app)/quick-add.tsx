@@ -14,6 +14,10 @@ import { CurrencyInput } from "@/app/(app)/currency-input";
 import { CategorySelect } from "@/app/(app)/category-select";
 import { formatMoney, formatDate } from "@/lib/format";
 import { FIELD_CLASS as fieldClass } from "@/lib/ui";
+import {
+  announcePendingTransaction,
+  withdrawPendingTransaction,
+} from "@/app/(app)/pending-transactions";
 
 type DuplicateMatch = { id: string; description: string; amount: number; txn_date: string };
 
@@ -168,6 +172,22 @@ export function QuickAddButton({
   }
 
   async function submitFormData(formData: FormData) {
+    // Show the row immediately; the server's revalidated list replaces it.
+    const draftAmount = split
+      ? splitRows.reduce((sum, r) => sum + (Number(r.amount) || 0), 0)
+      : Number(formData.get("amount") ?? 0);
+    const pendingId = announcePendingTransaction({
+      kind: effectiveKind,
+      description: String(formData.get("description") ?? "").trim() || title,
+      amount: draftAmount,
+      txn_date: String(formData.get("txn_date") ?? new Date().toISOString().slice(0, 10)),
+      account_id: String(formData.get("account_id") ?? "") || null,
+      to_account_id: null,
+      category_id: split ? null : categoryId || null,
+      period_id: periodId,
+      notes: String(formData.get("notes") ?? "").trim() || null,
+      pending_approval: formData.get("pending_approval") === "on",
+    });
     const result = split
       ? await createSplitTransaction(
           formData,
@@ -178,6 +198,7 @@ export function QuickAddButton({
       : await createTransaction(formData);
 
     if (!result.ok) {
+      withdrawPendingTransaction(pendingId);
       showToast(result.error ? `Couldn't save: ${result.error}` : "Couldn't save transaction");
       return;
     }

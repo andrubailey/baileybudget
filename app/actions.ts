@@ -7,7 +7,7 @@ import { generateToken, hashToken } from "@/lib/tokens";
 import {
   findPossibleDuplicateTransactions,
   generateRecurringForPeriod as generateRecurringForPeriodQuery,
-  getAccountsWithBalances,
+  getAccounts,
   getCategories,
   getTransactionHistory,
   searchTransactions as searchTransactionsQuery,
@@ -17,17 +17,20 @@ import {
 import { getPeriods, pickPeriod } from "@/lib/periods";
 import { cleanMerchantDescription } from "@/lib/merchant-name";
 
-// Data the mobile floating quick-add buttons need, fetched client-side on
-// mount since (unlike the dashboard) they aren't already sitting in a
-// server component's props.
+// Data the quick-add modals need, fetched client-side on demand since
+// (unlike the dashboard) they aren't already sitting in a server
+// component's props.
 export async function getQuickAddContext() {
   // periods and accounts/categories don't depend on each other — this ran
   // sequentially before (periods, then accounts+categories), which meant
   // every open of the New Transaction modal paid for two round-trips back
-  // to back instead of one.
+  // to back instead of one. Plain getAccounts(), not getAccountsWithBalances():
+  // the forms only need each account's name and is_debt flag, and the
+  // balances version paginates through the household's entire transactions
+  // table just to compute numbers nothing here ever displays.
   const [periods, accounts, categories] = await Promise.all([
     getPeriods(),
-    getAccountsWithBalances(),
+    getAccounts(),
     getCategories(),
   ]);
   const period = pickPeriod(periods);
@@ -586,17 +589,6 @@ export async function getHistoryForTransaction(transactionId: string) {
   return getTransactionHistory(transactionId);
 }
 
-export async function toggleTransactionCleared(id: string, cleared: boolean) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("transactions").update({ cleared }).eq("id", id);
-  // The client optimistically flips the checkbox before this resolves, then
-  // reverts on a thrown error — silently swallowing a failed write here would
-  // leave that optimistic state stuck showing the wrong value.
-  if (error) throw error;
-  revalidatePath("/transactions");
-  revalidatePath("/accounts");
-}
-
 export async function createTransfer(
   formData: FormData,
 ): Promise<{ ok: boolean; error?: string }> {
@@ -1042,4 +1034,56 @@ export async function uploadAvatar(
 
   revalidatePath("/");
   return { ok: true, url: avatar_url };
+}
+
+// Reconciliation: the bank's statement balance vs. what the app computes.
+// Instead of hunting for the missing transaction by hand, this posts one
+// explicit adjustment for the difference so the two agree from here on —
+// the adjustment is a normal transaction (visible, editable, deletable),
+// just labeled so it's obvious later what it was. For a debt account the
+// balance is "amount owed," so a bank figure higher than ours means more
+// was charged than we logged: that's stored as kind="income" (the debt
+// convention for a charge), and the reverse as a payment ("expense") —
+// which is exactly the same sign rule as a normal account, since both
+// conventions store "balance went up" as income.
+export async function createBalanceAdjustment(input: {
+  accountId: string;
+  bankBalance: number;
+  appBalance: number;
+  categoryId?: string | null;
+  note?: string | null;
+}): Promise<{ ok: boolean; error?: string; amount?: number }> {
+  const difference = Math.round((input.bankBalance - input.appBalance) * 100) / 100;
+  if (difference === 0) return { ok: true, amount: 0 };
+
+  const supabase = await createClient();
+  const periods = await getPeriods();
+  const period = pickPeriod(periods);
+  if (!period) return { ok: false, error: "No current period to log into." };
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const today = new Date().toISOString().slice(0, 10);
+  const { error } = await supabase.from("transactions").insert({
+    kind: difference > 0 ? "income" : "expense",
+    description: "Balance adjustment (reconciled)",
+    amount: Math.abs(difference),
+    txn_date: today,
+    account_id: input.accountId,
+    category_id: input.categoryId || null,
+    period_id: period.id,
+    notes: input.note?.trim() || `Bank balance ${input.bankBalance.toFixed(2)} vs app ${input.appBalance.toFixed(2)}`,
+    cleared: true,
+    pending_approval: false,
+    created_by: user?.id ?? null,
+    created_by_email: user?.email ?? null,
+  });
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/accounts");
+  revalidatePath("/transactions");
+  revalidatePath("/");
+  return { ok: true, amount: difference };
 }

@@ -1,8 +1,4 @@
-function Block({ className }: { className: string }) {
-  return (
-    <div className={`animate-pulse rounded-xl bg-border/60 ${className}`} />
-  );
-}
+import { Block } from "@/app/(app)/skeleton";
 
 // Shape matches the real budgets page: header, then the wide
 // categories-by-month grid (a spreadsheet, so one block is the honest shape).

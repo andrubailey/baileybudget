@@ -4,10 +4,8 @@ import { useLayoutEffect, useRef, useState } from "react";
 
 // A row of thin vertical pills instead of one continuous bar — each segment
 // represents an even slice of 100%, filling left to right as spend catches
-// up to plan. Reads more like a step/level meter (battery bars, a loading
-// dot row) than a generic progress bar, and each filled pill grows in with
-// its own stagger so the fill visibly sweeps across instead of just
-// appearing.
+// up to plan. Each filled pill grows in with its own stagger, so the fill
+// visibly sweeps across instead of just appearing.
 //
 // Pills are a fixed size everywhere this renders — a narrow budget-table
 // column and a wide account card both get the same PILL_WIDTH/GAP pills;
@@ -28,13 +26,13 @@ export function SegmentedProgress({
   // that palette would be invisible or clash, so it overrides both to a
   // white-on-glass treatment instead.
   color,
-  trackClassName = "bg-neutral-track",
+  trackColor = "var(--neutral-track)",
 }: {
   pct: number;
   overBudget: boolean;
   className?: string;
   color?: string;
-  trackClassName?: string;
+  trackColor?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [segmentCount, setSegmentCount] = useState(MIN_SEGMENTS);
@@ -62,7 +60,7 @@ export function SegmentedProgress({
   return (
     <div
       ref={containerRef}
-      className={`flex h-3.5 items-stretch gap-[3px] overflow-hidden ${className}`}
+      className={`flex h-3.5 w-full items-stretch gap-[3px] overflow-hidden ${className}`}
       role="img"
       aria-label={`${Math.round(clamped)}% of budget used`}
     >
@@ -73,12 +71,11 @@ export function SegmentedProgress({
             key={i}
             style={{
               width: PILL_WIDTH,
-              ...(filled
-                ? { backgroundColor: fillColor, animationDelay: `${i * 45}ms` }
-                : undefined),
+              backgroundColor: filled ? fillColor : trackColor,
+              ...(filled ? { animationDelay: `${i * 45}ms` } : undefined),
             }}
             className={`shrink-0 rounded-full transition-colors duration-300 ${
-              filled ? "animate-bar-grow" : trackClassName
+              filled ? "animate-bar-grow" : ""
             }`}
           />
         );

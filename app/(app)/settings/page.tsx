@@ -1,4 +1,5 @@
 import { listApiTokens } from "@/app/actions";
+import { PageHeader } from "@/app/(app)/page-header";
 import { ApiTokensSection } from "./api-tokens-section";
 
 export default async function SettingsPage() {
@@ -6,10 +7,7 @@ export default async function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl leading-tight font-semibold tracking-tight text-text sm:text-display">Settings</h1>
-        <p className="mt-1 text-sm text-text-muted">Access tokens and integrations.</p>
-      </div>
+      <PageHeader title="Settings" description="Access tokens and integrations." />
 
       <ApiTokensSection tokens={tokens} />
     </div>

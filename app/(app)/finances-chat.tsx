@@ -5,8 +5,8 @@ import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 import { searchTransactions } from "@/app/actions";
 import type { TransactionSearchResult } from "@/lib/queries";
-import { formatMoney, formatDate } from "@/lib/format";
-import { getLetterColors } from "@/lib/letter-colors";
+import { formatDate } from "@/lib/format";
+import { TransactionAmount, TransactionAvatar } from "@/app/(app)/transaction-row";
 import { NAV_GROUPS } from "./sidebar";
 
 type DisplayMessage = { role: "user" | "assistant"; text: string };
@@ -161,31 +161,22 @@ function InlineResults({
                 i === activeIndex ? "bg-accent-soft" : "hover:bg-bg"
               }`}
             >
-              <span
-                className="flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
-                style={{
-                  backgroundColor: getLetterColors(t.description).bg,
-                  color: getLetterColors(t.description).text,
-                }}
-              >
-                {t.description.trim()[0]?.toUpperCase() ?? "?"}
-              </span>
+              <TransactionAvatar label={t.description} size="sm" />
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium text-text">{t.description}</p>
-                <p className="truncate text-xs text-text-faint">
+                <p className="text-metadata truncate">
                   {[t.category_name, t.account_name, formatDate(t.txn_date)]
                     .filter(Boolean)
                     .join(" · ")}
                 </p>
               </div>
-              <span
-                className={`tabular shrink-0 text-sm font-medium ${
-                  t.kind === "income" ? "text-success" : "text-text"
-                }`}
-              >
-                {t.kind === "income" ? "+" : t.kind === "expense" ? "-" : ""}
-                {formatMoney(t.amount)}
-              </span>
+              <TransactionAmount
+                amount={t.amount}
+                presentation={{
+                  sign: t.kind === "income" ? "+" : t.kind === "expense" ? "-" : "none",
+                  tone: t.kind === "income" ? "positive" : "neutral",
+                }}
+              />
               <span className="hidden shrink-0 sm:flex">
                 <GoArrow />
               </span>

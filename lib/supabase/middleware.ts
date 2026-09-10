@@ -34,9 +34,18 @@ export async function updateSession(request: NextRequest) {
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // getClaims() verifies the session JWT's signature locally against the
+  // project's asymmetric (ES256) signing key — the JWKS is fetched once and
+  // cached process-wide by the auth client — instead of getUser(), which
+  // round-trips to the Auth server on every single request. This middleware
+  // runs on every page load, navigation, and server action, so that one
+  // network hop was a fixed ~100–500ms tax on everything. Still a real
+  // signature check (not the unverified getSession()), and it falls back
+  // to getUser() automatically if the key were ever symmetric. Reading the
+  // session here also still triggers the token refresh this middleware is
+  // responsible for, via the cookie adapters above.
+  const { data } = await supabase.auth.getClaims();
+  const user = data?.claims ?? null;
 
   const isLoginPage = request.nextUrl.pathname.startsWith("/login");
   const isAuthCallback = request.nextUrl.pathname.startsWith("/auth/callback");
