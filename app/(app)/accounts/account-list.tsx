@@ -35,9 +35,12 @@ function defaultLoginUrl(bank: string | null): string | null {
 export function AccountList({
   accounts,
   bankOptions,
+  withRail = false,
 }: {
   accounts: AccountWithBalance[];
   bankOptions: readonly string[];
+  // A side rail (the Home card) sits next to the list — one column fewer.
+  withRail?: boolean;
 }) {
   // Server actions here (the edit modal's save, add) all revalidate and hand
   // this component a fresh `accounts` prop — this only exists to diff that
@@ -106,7 +109,9 @@ export function AccountList({
               {group.label}
             </p>
           )}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div
+            className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${withRail ? "xl:grid-cols-3" : "lg:grid-cols-4"}`}
+          >
             {group.accounts.map((a) => {
               const i = cardIndex++;
               const progress =

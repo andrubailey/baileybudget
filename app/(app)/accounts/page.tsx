@@ -1,11 +1,13 @@
 import { getAccountsWithBalances } from "@/lib/queries";
+import { getLoanSummaries } from "@/lib/loans";
 import { PageHeader } from "@/app/(app)/page-header";
 import { BANK_OPTIONS } from "@/lib/types";
 import { AccountList } from "./account-list";
 import { AddAccountForm } from "./add-account-form";
+import { MortgageCard } from "./mortgage-card";
 
 export default async function AccountsPage() {
-  const accounts = await getAccountsWithBalances();
+  const [accounts, loans] = await Promise.all([getAccountsWithBalances(), getLoanSummaries()]);
 
   return (
     <div className="space-y-6">
@@ -15,7 +17,18 @@ export default async function AccountsPage() {
         actions={<AddAccountForm />}
       />
 
-      <AccountList accounts={accounts} bankOptions={BANK_OPTIONS} />
+      {loans.length > 0 ? (
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_400px]">
+          <AccountList accounts={accounts} bankOptions={BANK_OPTIONS} withRail />
+          <div className="space-y-6">
+            {loans.map((summary) => (
+              <MortgageCard key={summary.loan.id} summary={summary} />
+            ))}
+          </div>
+        </div>
+      ) : (
+        <AccountList accounts={accounts} bankOptions={BANK_OPTIONS} />
+      )}
     </div>
   );
 }
