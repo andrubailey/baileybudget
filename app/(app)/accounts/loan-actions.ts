@@ -41,3 +41,32 @@ export async function updateLoanFromStatement(
   revalidateHousehold(["loans"]);
   return { ok: true };
 }
+
+// A separate, much smaller action from updateLoanFromStatement — home value
+// isn't something a statement reports, and changing it has nothing to do
+// with the mortgage itself lowering; it's just what the card's equity math
+// is measured against. purchase_date rides along here rather than getting
+// its own action since the two are set together the first time — when
+// someone was going to type in a value is exactly when they'd also confirm
+// when they bought the place.
+export async function updateHomeValue(
+  id: string,
+  estimated_home_value: number,
+  purchase_date?: string | null,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!Number.isFinite(estimated_home_value) || estimated_home_value <= 0) {
+    return { ok: false, error: "Enter an estimated home value." };
+  }
+  if (purchase_date && !ISO_DATE.test(purchase_date)) {
+    return { ok: false, error: "Purchase date isn't valid." };
+  }
+
+  const supabase = await createClient();
+  const update: { estimated_home_value: number; purchase_date?: string } = { estimated_home_value };
+  if (purchase_date) update.purchase_date = purchase_date;
+  const { error } = await supabase.from("loans").update(update).eq("id", id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidateHousehold(["loans"]);
+  return { ok: true };
+}

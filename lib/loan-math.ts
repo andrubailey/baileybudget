@@ -25,6 +25,17 @@ export type Loan = {
   monthly_payment: number;
   payment_match: string | null;
   payment_category_id: string | null;
+  // Absent until migration 024's login_url column exists.
+  login_url?: string | null;
+  // A manually-entered estimate (Zillow, an appraisal) — absent until
+  // migration 027's estimated_home_value column exists, and null until
+  // someone actually sets it from the mortgage card.
+  estimated_home_value?: number | null;
+  // When the house was actually bought — absent until migration 028's
+  // purchase_date column exists. Distinct from first_payment_date (the
+  // mortgage's first bill, which can land a month or more after closing).
+  // Equity has nothing to do with Net Worth before this date.
+  purchase_date?: string | null;
   created_at: string;
 };
 
@@ -40,6 +51,9 @@ export type LoanPayment = {
 export type LoanSummary = {
   loan: Loan;
   balance: number;
+  // estimated_home_value minus balance — null (not zero) until a value has
+  // been set, so a card can tell "no estimate yet" apart from "no equity."
+  equity: number | null;
   termMonths: number;
   principalAndInterest: number;
   escrowPerMonth: number;
@@ -139,9 +153,13 @@ export function summarizeLoan(loan: Loan, transactions: PaymentTxn[], todayIso: 
   const nextInterest = round2(balance * rate);
   const paidPrincipal = round2(original - balance);
 
+  const homeValue = loan.estimated_home_value;
+  const equity = homeValue != null ? round2(Number(homeValue) - balance) : null;
+
   return {
     loan,
     balance,
+    equity,
     termMonths,
     principalAndInterest,
     escrowPerMonth,
