@@ -62,5 +62,21 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // On a phone, the Overview dashboard is a lot to land on cold — jump
+  // straight to logging a transaction instead. Only the bare root: a
+  // bookmark/link to a specific page (e.g. /transactions) should still open
+  // where it says. User-agent sniffing is the only signal available this
+  // early (no client JS has run yet to check viewport width), so this
+  // targets phone-class UAs specifically — tablets keep the desktop-style
+  // Overview landing.
+  const isMobileUserAgent = /Mobi|Android|iPhone|iPod/i.test(
+    request.headers.get("user-agent") ?? "",
+  );
+  if (user && request.nextUrl.pathname === "/" && isMobileUserAgent) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/add";
+    return NextResponse.redirect(url);
+  }
+
   return supabaseResponse;
 }

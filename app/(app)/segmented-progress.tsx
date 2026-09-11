@@ -1,6 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState } from "react";
+import { observeWidth } from "@/lib/shared-width-observer";
 
 // A row of thin vertical pills instead of one continuous bar — each segment
 // represents an even slice of 100%, filling left to right as spend catches
@@ -11,20 +12,22 @@ import { useLayoutEffect, useRef, useState } from "react";
 // column and a wide account card both get the same PILL_WIDTH/GAP pills;
 // what changes is how many of them fit, measured off the container's own
 // rendered width, so a wider container reads as "more pills," never
-// "fatter pills."
+// "fatter pills." This renders once per row (a budget/goals/accounts list
+// can easily have 20-30 on one page), so the width tracking goes through
+// lib/shared-width-observer — one ResizeObserver for every instance on the
+// page instead of one each — rather than measuring here directly.
 const PILL_WIDTH = 4;
-const GAP = 3;
+const GAP = 4;
 const MIN_SEGMENTS = 4;
+const MAX_SEGMENTS = 32;
 
 export function SegmentedProgress({
   pct,
   overBudget,
   className = "",
   // Both default to the standard accent/negative-on-neutral-track look used
-  // everywhere this renders on a plain card. goal-banner.tsx is the one
-  // exception — it sits on top of a photo/gradient hero background, where
-  // that palette would be invisible or clash, so it overrides both to a
-  // white-on-glass treatment instead.
+  // on a plain card; override them for a bar sitting on a photo or gradient
+  // background, where that palette would be invisible or clash.
   color,
   trackColor = "var(--neutral-track)",
 }: {
@@ -40,17 +43,11 @@ export function SegmentedProgress({
   useLayoutEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-
-    function computeCount() {
-      const width = el!.getBoundingClientRect().width;
+    return observeWidth(el, (width) => {
       const fitted = Math.floor((width + GAP) / (PILL_WIDTH + GAP));
-      setSegmentCount(Math.max(MIN_SEGMENTS, fitted));
-    }
-
-    computeCount();
-    const observer = new ResizeObserver(computeCount);
-    observer.observe(el);
-    return () => observer.disconnect();
+      const clampedCount = Math.min(MAX_SEGMENTS, Math.max(MIN_SEGMENTS, fitted));
+      setSegmentCount((current) => (current === clampedCount ? current : clampedCount));
+    });
   }, []);
 
   const clamped = Math.min(100, Math.max(0, pct));
@@ -60,7 +57,7 @@ export function SegmentedProgress({
   return (
     <div
       ref={containerRef}
-      className={`flex h-3.5 w-full items-stretch gap-[3px] overflow-hidden ${className}`}
+      className={`flex h-3.5 w-full items-stretch gap-1 overflow-hidden ${className}`}
       role="img"
       aria-label={`${Math.round(clamped)}% of budget used`}
     >
@@ -75,7 +72,7 @@ export function SegmentedProgress({
               ...(filled ? { animationDelay: `${i * 45}ms` } : undefined),
             }}
             className={`shrink-0 rounded-full transition-colors duration-300 ${
-              filled ? "animate-bar-grow" : ""
+              filled ? "animate-pill-fade" : ""
             }`}
           />
         );

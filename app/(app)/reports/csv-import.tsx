@@ -1,5 +1,8 @@
 "use client";
 
+import { Dropdown } from "@/app/(app)/dropdown";
+import { accountChoices, categoryChoices } from "@/app/(app)/dropdown-options";
+
 import { useState } from "react";
 import { bulkImportTransactions } from "@/app/actions";
 import type { CsvImportRow } from "@/app/actions";
@@ -146,33 +149,20 @@ export function CsvImport({ accounts, categories }: { accounts: Account[]; categ
             />
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-text">Import into account</label>
-              <select
+              <Dropdown
                 value={accountId}
-                onChange={(e) => setAccountId(e.target.value)}
-                className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text outline-none focus:border-accent"
-              >
-                <option value="">Select account…</option>
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setAccountId}
+                placeholder="Select account…"
+                options={accountChoices(accounts)}
+              />
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-text">Default category (optional)</label>
-              <select
+              <Dropdown
                 value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-                className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text outline-none focus:border-accent"
-              >
-                <option value="">None</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setCategoryId}
+                options={categoryChoices(categories, "None")}
+              />
             </div>
           </div>
 
@@ -273,18 +263,12 @@ function ColumnSelect({
   return (
     <div className="space-y-1.5">
       <label className="text-sm font-medium text-text">{label}</label>
-      <select
+      <Dropdown
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text outline-none focus:border-accent"
-      >
-        <option value="">Select column…</option>
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {o}
-          </option>
-        ))}
-      </select>
+        onChange={onChange}
+        placeholder="Select column…"
+        options={options.map((o) => ({ value: o, label: o }))}
+      />
       {hint && <p className="text-xs text-text-faint">{hint}</p>}
     </div>
   );

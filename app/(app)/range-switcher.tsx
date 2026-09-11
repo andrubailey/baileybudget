@@ -1,5 +1,9 @@
 "use client";
 
+import { DatePicker } from "@/app/(app)/date-picker";
+
+import { Dropdown } from "@/app/(app)/dropdown";
+
 import { useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { RANGE_OPTIONS, type RangeKey } from "@/lib/ranges";
@@ -47,40 +51,36 @@ export function RangeSwitcher({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <select
+      <Dropdown
+        variant="pill"
+        aria-label="Date range"
         value={selected}
-        onChange={(e) => handleChange(e.target.value)}
-        className="rounded-lg border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-text-muted outline-none transition-colors focus:border-accent"
-      >
-        {RANGE_OPTIONS.map((r) => (
-          <option key={r.key} value={r.key}>
-            {r.label}
-          </option>
-        ))}
-      </select>
+        onChange={handleChange}
+        options={RANGE_OPTIONS.map((r) => ({ value: r.key, label: r.label }))}
+      />
 
       {selected === "custom" && (
         <div className="flex items-center gap-2">
-          <input
-            type="date"
+          <DatePicker
+            variant="pill"
+            aria-label="Start date"
             value={customStart}
-            max={customEnd}
-            onChange={(e) => {
-              setCustomStart(e.target.value);
-              applyCustomRange(e.target.value, customEnd);
+            max={customEnd || undefined}
+            onChange={(next) => {
+              setCustomStart(next);
+              applyCustomRange(next, customEnd);
             }}
-            className="rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-text outline-none focus:border-accent"
           />
           <span className="text-text-faint">–</span>
-          <input
-            type="date"
+          <DatePicker
+            variant="pill"
+            aria-label="End date"
             value={customEnd}
-            min={customStart}
-            onChange={(e) => {
-              setCustomEnd(e.target.value);
-              applyCustomRange(customStart, e.target.value);
+            min={customStart || undefined}
+            onChange={(next) => {
+              setCustomEnd(next);
+              applyCustomRange(customStart, next);
             }}
-            className="rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-text outline-none focus:border-accent"
           />
         </div>
       )}

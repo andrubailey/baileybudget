@@ -1,5 +1,8 @@
 "use client";
 
+import { Dropdown } from "@/app/(app)/dropdown";
+import { accountTypeChoices, bankChoices } from "@/app/(app)/dropdown-options";
+
 import { useRef, useState } from "react";
 import {
   removeAccountLogo,
@@ -12,7 +15,6 @@ import { SegmentedProgress } from "@/app/(app)/segmented-progress";
 import type { AccountWithBalance } from "@/lib/queries";
 import {
   ACCOUNT_TYPE_LABELS,
-  ACCOUNT_TYPES,
   BANK_LOGIN_URLS,
 } from "@/lib/types";
 import { BankLogo } from "./bank-logo";
@@ -21,7 +23,9 @@ import { useToast } from "@/app/(app)/toast";
 import { StatusPill } from "@/app/(app)/status-pill";
 import { EmptyState } from "@/app/(app)/empty-state";
 import { Celebration, useCelebration } from "@/app/(app)/celebration";
-import { FIELD_CLASS as fieldClass } from "@/lib/ui";
+import { PANEL_FIELD_INPUT_CLASS } from "@/lib/ui";
+import { PanelField } from "@/app/(app)/panel-field";
+import { ToggleSwitch } from "@/app/(app)/toggle-switch";
 
 function defaultLoginUrl(bank: string | null): string | null {
   if (!bank) return null;
@@ -102,7 +106,7 @@ export function AccountList({
               {group.label}
             </p>
           )}
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {group.accounts.map((a) => {
               const i = cardIndex++;
               const progress =
@@ -147,7 +151,7 @@ export function AccountList({
                     }
                   }}
                   aria-label={`Edit ${a.name}`}
-                  style={{ animationDelay: `${i * 40}ms` }}
+                  style={{ animationDelay: `${i * 12}ms` }}
                   className={`card card-hover animate-fade-in-up cursor-pointer ${
                     !a.is_active ? "opacity-70" : ""
                   }`}
@@ -400,6 +404,8 @@ function AccountEditModal({
     onClose();
   }
 
+  const [isActive, setIsActive] = useState(a.is_active);
+
   return (
     <div
       className="animate-modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
@@ -407,25 +413,35 @@ function AccountEditModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="animate-modal-panel max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-surface p-6 shadow-modal"
+        className="animate-modal-panel flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-modal"
       >
-        <div className="mb-4 flex items-start justify-between">
-          <h2 className="text-lg font-semibold text-text">Edit {a.name}</h2>
+        <div className="flex h-14 shrink-0 items-center gap-1 border-b border-border px-2">
           <button
             type="button"
             onClick={onClose}
-            className="-mr-2.5 flex size-11 shrink-0 items-center justify-center rounded-lg text-text-faint transition-colors hover:bg-bg hover:text-text"
             aria-label="Close"
+            className="flex size-9 shrink-0 items-center justify-center rounded-lg text-text-faint transition-colors hover:bg-bg hover:text-text"
           >
-            ✕
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M15 6l-6 6 6 6"
+                stroke="currentColor"
+                strokeWidth={1.8}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </button>
+          <p className="card-label min-w-0 flex-1 truncate text-center text-text-muted">
+            Edit account
+          </p>
+          {/* Balances the back button so the title stays visually centered. */}
+          <span className="size-9 shrink-0" aria-hidden="true" />
         </div>
 
-        <form
-          action={handleSubmit}
-          className="grid grid-cols-1 gap-4 sm:grid-cols-2"
-        >
-          <div className="flex items-center gap-3 sm:col-span-2">
+        <form action={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
+          <div className="flex items-center gap-3">
             <input
               ref={logoFileInputRef}
               type="file"
@@ -437,7 +453,7 @@ function AccountEditModal({
               type="button"
               onClick={() => logoFileInputRef.current?.click()}
               disabled={logoUploading}
-              className="group relative size-14 shrink-0 overflow-hidden rounded-full border border-border bg-white disabled:opacity-70"
+              className="group relative size-14 shrink-0 overflow-hidden rounded-md border border-border bg-white disabled:opacity-70"
               aria-label="Change account photo"
             >
               {logoPreview ? (
@@ -484,120 +500,125 @@ function AccountEditModal({
             </div>
           </div>
 
-          <div className="space-y-1.5 sm:col-span-2">
-            <label className="text-sm font-medium text-text">Name</label>
+          <PanelField label="Account name">
             <input
               type="text"
               name="name"
               required
               defaultValue={a.name}
-              className={fieldClass}
+              className={PANEL_FIELD_INPUT_CLASS}
             />
+          </PanelField>
+
+          <div className="grid grid-cols-2 gap-3">
+            <PanelField label="Bank">
+              <Dropdown
+                variant="panel"
+                name="bank"
+                defaultValue={a.bank ?? ""}
+                options={bankChoices(bankOptions, "No bank")}
+              />
+            </PanelField>
+
+            <PanelField label="Account type">
+              <Dropdown
+                variant="panel"
+                name="account_type"
+                defaultValue={a.account_type ?? ""}
+                options={accountTypeChoices("Unspecified")}
+              />
+            </PanelField>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-text">Goal</label>
+          <PanelField label="Goal" optional>
             <input
               type="number"
               step="0.01"
               name="goal"
               defaultValue={a.goal ?? ""}
               placeholder="Set a goal"
-              className={fieldClass}
+              className={PANEL_FIELD_INPUT_CLASS}
             />
-          </div>
+          </PanelField>
 
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-text">Bank</label>
-            <select
-              name="bank"
-              defaultValue={a.bank ?? ""}
-              className={fieldClass}
-            >
-              <option value="">No bank</option>
-              {bankOptions.map((b) => (
-                <option key={b} value={b}>
-                  {b}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-text">
-              Account type
-            </label>
-            <select
-              name="account_type"
-              defaultValue={a.account_type ?? ""}
-              className={fieldClass}
-            >
-              <option value="">Unspecified type</option>
-              {ACCOUNT_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {ACCOUNT_TYPE_LABELS[t]}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-text">
-              Login page URL
-            </label>
+          <PanelField label="Login page URL" optional>
             <input
               type="url"
               name="login_url"
               defaultValue={a.login_url ?? ""}
               placeholder={defaultLoginUrl(a.bank) ?? "Login page URL"}
-              className={fieldClass}
+              className={PANEL_FIELD_INPUT_CLASS}
             />
-          </div>
+          </PanelField>
 
-          <label className="flex items-center gap-2 text-sm text-text sm:col-span-2">
-            <input
-              type="checkbox"
+          {/* Summary box — mirrors the reference design's bottom panel
+              (total + a toggle) with this account's own on/off settings. */}
+          <div className="space-y-0.5 rounded-lg border border-border bg-bg p-1">
+            <ToggleRow
+              label="Active"
+              hint="Shown in account lists and totals"
+              name="is_active"
+              checked={isActive}
+              onChange={setIsActive}
+            />
+            <ToggleRow
+              label="Debt account"
+              hint="Loan or credit card — balance means amount owed"
               name="is_debt"
               checked={isDebt}
-              onChange={(e) => setIsDebt(e.target.checked)}
-              className="h-4 w-4 accent-[var(--accent)]"
+              onChange={setIsDebt}
             />
-            This is a debt account (loan, credit card)
-          </label>
-
-          <label className="flex items-center gap-2 text-sm text-text sm:col-span-2">
-            <input
-              type="checkbox"
+            <ToggleRow
+              label="Business account"
+              hint="Grouped separately on the dashboard"
               name="is_business"
               checked={isBusiness}
-              onChange={(e) => setIsBusiness(e.target.checked)}
-              className="h-4 w-4 accent-[var(--accent)]"
+              onChange={setIsBusiness}
             />
-            Business account (groups it separately on the dashboard)
-          </label>
-
-          <label className="flex items-center gap-2 text-sm text-text sm:col-span-2">
-            <input
-              type="checkbox"
-              name="is_active"
-              defaultChecked={a.is_active}
-              className="h-4 w-4 accent-[var(--accent)]"
-            />
-            Active
-          </label>
-
-          <div className="flex items-center gap-3 sm:col-span-2">
-            <SubmitButton pendingText="Saving…">Save changes</SubmitButton>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-text-muted transition-colors hover:bg-bg"
-            >
-              Cancel
-            </button>
           </div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-3 border-t border-border p-4">
+          <SubmitButton pendingText="Saving…">Save</SubmitButton>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-text-muted transition-colors hover:bg-bg"
+          >
+            Cancel
+          </button>
+        </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+// A labeled on/off row for the account summary box — same toggle-switch
+// look as the "Repeats monthly" row in the transaction panel. Backed by a
+// hidden input so the form's plain `formData.get(name) === "on"` read in
+// handleSubmit keeps working unchanged.
+function ToggleRow({
+  label,
+  hint,
+  name,
+  checked,
+  onChange,
+}: {
+  label: string;
+  hint?: string;
+  name: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-md px-3 py-2.5">
+      <div className="min-w-0">
+        <p className="text-sm text-text">{label}</p>
+        {hint && <p className="text-xs text-text-faint">{hint}</p>}
+      </div>
+      <input type="hidden" name={name} value={checked ? "on" : ""} />
+      <ToggleSwitch checked={checked} onChange={onChange} label={label} />
     </div>
   );
 }

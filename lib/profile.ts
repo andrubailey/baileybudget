@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
+import { snapshotClient } from "@/lib/snapshot";
 
 // React's cache() dedupes by arguments within a single request's render —
 // the layout and the dashboard page both need the session and the
@@ -14,15 +15,13 @@ export const getCurrentSession = cache(async () => {
   return session;
 });
 
+// Served from the cached snapshot (see lib/snapshot.ts) — a missing
+// profiles table just reads as no profile, falling back to the email name.
 export const getCurrentUserProfile = cache(async (userId: string) => {
-  const supabase = await createClient();
-  const { data, error } = await supabase
+  const { data } = await snapshotClient()
     .from("profiles")
     .select("display_name, avatar_url")
     .eq("id", userId)
     .maybeSingle();
-  // Best-effort: a household that hasn't run the profiles table migration
-  // yet should just fall back to the email-derived name, not crash.
-  if (error) console.error("profile query failed:", error);
-  return data;
+  return data as { display_name: string | null; avatar_url: string | null } | null;
 });

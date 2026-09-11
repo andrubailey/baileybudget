@@ -4,12 +4,14 @@ import { useState } from "react";
 import { quickCreateCategory } from "@/app/actions";
 import type { Category } from "@/lib/types";
 import { FIELD_CLASS } from "@/lib/ui";
+import { Dropdown } from "@/app/(app)/dropdown";
+import { categoryChoices } from "@/app/(app)/dropdown-options";
 
 const NEW_OPTION_VALUE = "__new__";
 
-// Inline "add a category" affordance for any category <select> in the app —
+// Inline "add a category" affordance for any category picker in the app —
 // replaces the old standalone category-management page. Picking "+ New
-// category…" swaps the select for a name field; the created category is
+// category…" swaps the dropdown for a name field; the created category is
 // selected immediately without a page reload.
 export function CategorySelect({
   categories,
@@ -26,6 +28,9 @@ export function CategorySelect({
   value: string;
   onChange: (id: string) => void;
   name?: string;
+  // Styles the "new category" name field, and picks the dropdown's look:
+  // a PanelField input (p-0) gets the panel style, a compact field the
+  // compact style, anything else the standard field.
   className?: string;
   // For inline table editing: focus on mount, and let the caller close
   // the editor when focus leaves (not while the "new category" field is
@@ -113,35 +118,31 @@ export function CategorySelect({
           </button>
         </div>
         {error && <p className="text-xs text-negative">{error}</p>}
+        {/* Keeps the form's field present while the name is being typed. */}
+        <input type="hidden" name={name} value={value} />
       </div>
     );
   }
 
   return (
-    <select
+    <Dropdown
       name={name}
       value={value}
       autoFocus={autoFocus}
       onBlur={onBlur}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") onBlur?.();
-      }}
-      onChange={(e) => {
-        if (e.target.value === NEW_OPTION_VALUE) {
+      variant={className.includes("p-0") ? "panel" : className.includes("rounded-md") ? "compact" : "field"}
+      onChange={(next) => {
+        if (next === NEW_OPTION_VALUE) {
           setAdding(true);
           return;
         }
-        onChange(e.target.value);
+        onChange(next);
       }}
-      className={className}
-    >
-      <option value="">—</option>
-      {options.map((c) => (
-        <option key={c.id} value={c.id}>
-          {c.name}
-        </option>
-      ))}
-      <option value={NEW_OPTION_VALUE}>+ New category…</option>
-    </select>
+      options={[
+        { value: "", label: "—" },
+        ...categoryChoices(options),
+        { value: NEW_OPTION_VALUE, label: "+ New category…", tone: "accent" as const },
+      ]}
+    />
   );
 }

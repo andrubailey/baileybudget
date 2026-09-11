@@ -1,8 +1,11 @@
 "use client";
 
+import { Dropdown } from "@/app/(app)/dropdown";
+import { accountTypeChoices, bankChoices } from "@/app/(app)/dropdown-options";
+
 import { useState } from "react";
 import { createAccount } from "@/app/actions";
-import { ACCOUNT_TYPE_LABELS, ACCOUNT_TYPES, BANK_OPTIONS } from "@/lib/types";
+import { BANK_OPTIONS } from "@/lib/types";
 import { FIELD_CLASS as fieldClass } from "@/lib/ui";
 
 export function AddAccountForm() {
@@ -34,14 +37,11 @@ export function AddAccountForm() {
       </div>
       <div className="space-y-1.5">
         <label className="text-sm font-medium text-text">Bank</label>
-        <select name="bank" defaultValue="" className={fieldClass}>
-          <option value="">No bank</option>
-          {BANK_OPTIONS.map((b) => (
-            <option key={b} value={b}>
-              {b}
-            </option>
-          ))}
-        </select>
+        <Dropdown
+          name="bank"
+          defaultValue=""
+          options={bankChoices(BANK_OPTIONS, "No bank")}
+        />
       </div>
       <div className="space-y-1.5">
         <label className="text-sm font-medium text-text">Starting balance</label>
@@ -59,14 +59,11 @@ export function AddAccountForm() {
       </div>
       <div className="space-y-1.5">
         <label className="text-sm font-medium text-text">Account type (optional)</label>
-        <select name="account_type" defaultValue="" className={fieldClass}>
-          <option value="">Unspecified</option>
-          {ACCOUNT_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {ACCOUNT_TYPE_LABELS[t]}
-            </option>
-          ))}
-        </select>
+        <Dropdown
+          name="account_type"
+          defaultValue=""
+          options={accountTypeChoices("Unspecified")}
+        />
       </div>
       <label className="flex items-center gap-2 self-end pb-2.5 text-sm text-text sm:col-span-1">
         <input type="checkbox" name="is_business" className="h-4 w-4 accent-[var(--accent)]" />

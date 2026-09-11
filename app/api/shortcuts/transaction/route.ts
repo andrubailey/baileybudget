@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { revalidateHousehold } from "@/lib/cache";
 import { hashToken } from "@/lib/tokens";
 
 type Body = {
@@ -119,7 +120,7 @@ export async function POST(request: NextRequest) {
       .from("transactions")
       .insert({
         kind: "transfer",
-        description: description || "Transfer",
+        description: "Transfer",
         amount,
         txn_date,
         account_id,
@@ -160,5 +161,6 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  revalidateHousehold(["transactions", "periods"]);
   return NextResponse.json({ ok: true, id: transaction.id });
 }

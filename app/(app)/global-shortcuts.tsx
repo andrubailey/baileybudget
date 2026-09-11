@@ -41,6 +41,9 @@ export function GlobalShortcuts() {
       if (e.key === "/") {
         e.preventDefault();
         window.dispatchEvent(new CustomEvent("budgetapp:open-chat"));
+      } else if (e.key === "?") {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent("budgetapp:open-shortcuts"));
       } else if (e.key.toLowerCase() === "n" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         window.dispatchEvent(new CustomEvent("budgetapp:new-transaction"));

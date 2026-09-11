@@ -1,5 +1,5 @@
 import { getCategoryColor } from "@/lib/category-colors";
-import { getCategoryIcon } from "@/lib/category-icons";
+import { CategoryIcon } from "@/app/(app)/category-icon";
 
 // A category, rendered the same way everywhere it appears: its icon in a
 // tinted circle of the category's own (stable, id-hashed) color, then the
@@ -25,17 +25,17 @@ export function CategoryChip({
   className?: string;
 }) {
   const color = getCategoryColor(id);
-  const circle =
-    size === "md" ? "size-9 text-base" : size === "sm" ? "size-7 text-sm" : "size-5 text-[11px]";
+  const circle = size === "md" ? "size-9" : size === "sm" ? "size-7" : "size-5";
+  const iconSize = size === "md" ? 18 : size === "sm" ? 14 : 11;
   const text = size === "md" ? "text-sm font-semibold" : "text-sm font-medium";
   return (
     <span className={`inline-flex min-w-0 items-center gap-2 ${className}`}>
       <span
         className={`flex shrink-0 items-center justify-center rounded-full ${circle}`}
-        style={{ backgroundColor: `${color}26` }}
+        style={{ backgroundColor: `${color}26`, color }}
         aria-hidden="true"
       >
-        {getCategoryIcon(name, icon)}
+        <CategoryIcon name={name} icon={icon} size={iconSize} />
       </span>
       {showName && <span className={`truncate text-text ${text}`}>{name}</span>}
     </span>

@@ -156,6 +156,7 @@ export type Objective = {
   // Background image for the featured-goal banner on the dashboard.
   image_url: string | null;
   created_at: string;
+  deleted_at: string | null;
 };
 
 export type TransactionHistoryEntry = {

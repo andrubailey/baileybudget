@@ -33,6 +33,12 @@ export function CurrencyInput({
   autoFocus,
   placeholder = "0.00",
   className,
+  // Where the $ sign sits — "left-3" fits a bordered field with its own
+  // inset (the default); a borderless field flush against its own wrapper's
+  // padding (e.g. the transaction panel's boxed Amount row) wants "left-0"
+  // instead, so the $ actually reads as flush-left rather than indented
+  // inside an already-inset box.
+  dollarPosition = "left-3",
 }: {
   name: string;
   defaultValue?: number | string;
@@ -40,6 +46,7 @@ export function CurrencyInput({
   autoFocus?: boolean;
   placeholder?: string;
   className?: string;
+  dollarPosition?: string;
 }) {
   const [raw, setRaw] = useState(
     defaultValue !== undefined && defaultValue !== "" ? String(defaultValue) : "",
@@ -47,7 +54,9 @@ export function CurrencyInput({
 
   return (
     <div className="relative">
-      <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-text-faint">
+      <span
+        className={`pointer-events-none absolute top-1/2 ${dollarPosition} -translate-y-1/2 text-sm text-text-faint`}
+      >
         $
       </span>
       <input

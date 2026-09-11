@@ -1,11 +1,16 @@
 "use client";
 
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Account, Category, Transaction } from "@/lib/types";
+import type { SplitDetail } from "@/lib/queries";
 import { toAccountLookup } from "@/lib/transaction-presentation";
 import { TransactionDetailModal } from "@/app/(app)/transaction-detail-modal";
 import { TransactionRow } from "@/app/(app)/transaction-row";
 import { isPendingTransaction, usePendingTransactions } from "@/app/(app)/pending-transactions";
+import { deleteTransaction, restoreTransaction } from "@/app/actions";
+import { useContextMenu } from "@/app/(app)/context-menu";
+import { transactionMenuItems, useTransactionQuickActions } from "@/app/(app)/transaction-menu";
+import { useToast } from "@/app/(app)/toast";
 
 // Client-side so a row click can open the same TransactionDetailModal the
 // full Transactions page uses, instead of the Overview page's Recent
@@ -17,15 +22,71 @@ export function RecentTransactionsList({
   // When the parent isn't pinning this list's height (mobile, or a
   // standalone page), cap the rows here instead of measuring.
   maxRows,
+  splitsByTransaction,
 }: {
   transactions: Transaction[];
   accounts: Account[];
   categories: Category[];
   maxRows?: number;
+  // Lets the detail panel tell a split parent apart from a plain
+  // uncategorized transaction — see TransactionDetailModal's `splits` prop.
+  splitsByTransaction?: Map<string, SplitDetail[]>;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [detailClosing, setDetailClosing] = useState(false);
-  const withPending = usePendingTransactions(transactions);
+  const showToast = useToast();
+
+  // Right-click menu — same options as the Transactions table (minus
+  // selection). Quick edits show immediately; a delete hides the row at
+  // once with an Undo bar, then the server refresh drops it for real.
+  const contextMenu = useContextMenu();
+  const [localEdits, setLocalEdits] = useState<Record<string, Partial<Transaction>>>({});
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
+  const [undoRow, setUndoRow] = useState<{ id: string; description: string } | null>(null);
+  const [lastTransactions, setLastTransactions] = useState(transactions);
+  if (transactions !== lastTransactions) {
+    setLastTransactions(transactions);
+    if (Object.keys(localEdits).length > 0) setLocalEdits({});
+  }
+  const setLocalEdit = useCallback((id: string, patch: Partial<Transaction> | null) => {
+    setLocalEdits((prev) => {
+      const next = { ...prev };
+      if (patch) next[id] = { ...prev[id], ...patch };
+      else delete next[id];
+      return next;
+    });
+  }, []);
+  const quickActions = useTransactionQuickActions(setLocalEdit);
+
+  async function handleDelete(t: Transaction) {
+    setHiddenIds((prev) => new Set(prev).add(t.id));
+    setUndoRow({ id: t.id, description: t.description });
+    setTimeout(() => setUndoRow((current) => (current?.id === t.id ? null : current)), 8000);
+    await deleteTransaction(t.id);
+    showToast("Transaction deleted");
+  }
+
+  async function handleUndo() {
+    if (!undoRow) return;
+    const { id } = undoRow;
+    setUndoRow(null);
+    await restoreTransaction(id);
+    setHiddenIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    showToast("Transaction restored");
+  }
+
+  const pendingMerged = usePendingTransactions(transactions);
+  const withPending = useMemo(
+    () =>
+      pendingMerged
+        .filter((t) => !hiddenIds.has(t.id))
+        .map((t) => (localEdits[t.id] ? { ...t, ...localEdits[t.id] } : t)),
+    [pendingMerged, hiddenIds, localEdits],
+  );
 
   // Rather than scrolling (or letting extra rows push the card taller — see
   // DashboardEqualHeightRow, which fixes this card's height to match the
@@ -65,32 +126,35 @@ export function RecentTransactionsList({
   );
   const categoryById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
   const visibleTransactions = withPending.slice(0, visibleCount);
-  // Every distinct person who's logged one of these transactions — backs
-  // the detail modal's "Created by" dropdown, same as the Transactions page.
-  const knownCreators = useMemo(() => {
-    const byEmail = new Map<string, { id: string | null; email: string }>();
-    for (const t of transactions) {
-      if (t.created_by_email) {
-        byEmail.set(t.created_by_email, { id: t.created_by, email: t.created_by_email });
-      }
-    }
-    return Array.from(byEmail.values());
-  }, [transactions]);
 
   function closeDetail() {
     setDetailClosing(true);
+    // Matches .animate-drawer-out's duration (see globals.css) — the panel
+    // is a right-edge slide-over now, not the old centered modal.
     setTimeout(() => {
       setEditingId(null);
       setDetailClosing(false);
-    }, 150);
+    }, 160);
   }
 
   const detailTransaction = editingId
-    ? (transactions.find((t) => t.id === editingId) ?? null)
+    ? (withPending.find((t) => t.id === editingId) ?? null)
     : null;
 
   return (
     <>
+      {undoRow && (
+        <div className="mb-2 flex items-center justify-between gap-3 rounded-lg border border-accent-border bg-accent-soft px-3 py-2 text-sm">
+          <span className="min-w-0 truncate text-accent">Deleted &ldquo;{undoRow.description}&rdquo;.</span>
+          <button
+            type="button"
+            onClick={handleUndo}
+            className="shrink-0 font-semibold text-accent underline underline-offset-2 hover:text-accent-bright"
+          >
+            Undo
+          </button>
+        </div>
+      )}
       <div ref={containerRef} className="h-full min-h-0 overflow-hidden">
         <div className="divide-y divide-border">
           {visibleTransactions.map((t, i) => {
@@ -104,6 +168,23 @@ export function RecentTransactionsList({
                 category={category}
                 meta={{ date: true, account: true, category: false }}
                 onClick={isPendingTransaction(t) ? undefined : () => setEditingId(t.id)}
+                onContextMenu={
+                  isPendingTransaction(t)
+                    ? undefined
+                    : (e) =>
+                        contextMenu.open(
+                          e,
+                          transactionMenuItems(t, {
+                            accountsById,
+                            accounts,
+                            categories,
+                            isSplit: !!splitsByTransaction?.get(t.id)?.length,
+                            onOpen: () => setEditingId(t.id),
+                            onDelete: () => handleDelete(t),
+                            actions: quickActions,
+                          }),
+                        )
+                }
                 className={isPendingTransaction(t) ? "animate-pulse opacity-60" : ""}
                 index={i}
               />
@@ -112,12 +193,13 @@ export function RecentTransactionsList({
         </div>
       </div>
 
+      {contextMenu.menu}
       {detailTransaction && (
         <TransactionDetailModal
           transaction={detailTransaction}
           accounts={accounts}
           categories={categories}
-          knownCreators={knownCreators}
+          splits={splitsByTransaction?.get(detailTransaction.id)}
           accountName={
             detailTransaction.account_id
               ? (accountNameById.get(detailTransaction.account_id) ?? "—")

@@ -28,7 +28,7 @@ export default async function AddPage() {
   const activeAccounts = accounts.filter((a) => a.is_active);
 
   return (
-    <div className="mx-auto max-w-md space-y-4">
+    <div className="mx-auto max-w-md space-y-6">
       <QuickAddButton
         kind="expense"
         periodId={period.id}

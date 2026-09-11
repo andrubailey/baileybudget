@@ -1,12 +1,12 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateHousehold } from "@/lib/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { generateToken, hashToken } from "@/lib/tokens";
 import {
   findPossibleDuplicateTransactions,
-  generateRecurringForPeriod as generateRecurringForPeriodQuery,
+  postRecurringForPeriod,
   getAccounts,
   getCategories,
   getTransactionHistory,
@@ -70,49 +70,43 @@ export async function createAccount(formData: FormData) {
   await supabase
     .from("accounts")
     .insert({ name, starting_balance, goal, bank, sort_order, account_type, is_business });
-  revalidatePath("/accounts");
-  revalidatePath("/");
+  revalidateHousehold();
 }
 
 export async function updateAccountType(id: string, account_type: string | null) {
   const supabase = await createClient();
   await supabase.from("accounts").update({ account_type }).eq("id", id);
-  revalidatePath("/accounts");
-  revalidatePath("/");
+  revalidateHousehold();
 }
 
 export async function updateAccountLoginUrl(id: string, login_url: string | null) {
   const supabase = await createClient();
   await supabase.from("accounts").update({ login_url }).eq("id", id);
-  revalidatePath("/accounts");
-  revalidatePath("/");
+  revalidateHousehold();
 }
 
 export async function updateAccountBank(id: string, bank: string | null) {
   const supabase = await createClient();
   await supabase.from("accounts").update({ bank }).eq("id", id);
-  revalidatePath("/accounts");
+  revalidateHousehold();
 }
 
 export async function updateAccountGoal(id: string, goal: number | null) {
   const supabase = await createClient();
   await supabase.from("accounts").update({ goal }).eq("id", id);
-  revalidatePath("/accounts");
-  revalidatePath("/");
+  revalidateHousehold();
 }
 
 export async function toggleAccountActive(id: string, is_active: boolean) {
   const supabase = await createClient();
   await supabase.from("accounts").update({ is_active }).eq("id", id);
-  revalidatePath("/accounts");
-  revalidatePath("/");
+  revalidateHousehold();
 }
 
 export async function updateAccountIsDebt(id: string, is_debt: boolean) {
   const supabase = await createClient();
   await supabase.from("accounts").update({ is_debt }).eq("id", id);
-  revalidatePath("/accounts");
-  revalidatePath("/");
+  revalidateHousehold();
 }
 
 export async function updateAccountLowBalanceAlert(
@@ -121,8 +115,7 @@ export async function updateAccountLowBalanceAlert(
 ) {
   const supabase = await createClient();
   await supabase.from("accounts").update({ low_balance_alert }).eq("id", id);
-  revalidatePath("/accounts");
-  revalidatePath("/");
+  revalidateHousehold();
 }
 
 // Single combined save for the account edit modal — one round trip instead
@@ -158,8 +151,7 @@ export async function updateAccountDetails(
       is_business: data.is_business,
     })
     .eq("id", id);
-  revalidatePath("/accounts");
-  revalidatePath("/");
+  revalidateHousehold();
 }
 
 // Backs the file-picker on an account card — uploads straight to the
@@ -205,16 +197,14 @@ export async function uploadAccountLogo(
     return { ok: false, error: error.message };
   }
 
-  revalidatePath("/accounts");
-  revalidatePath("/");
+  revalidateHousehold();
   return { ok: true, url: logo_url };
 }
 
 export async function removeAccountLogo(accountId: string) {
   const supabase = await createClient();
   await supabase.from("accounts").update({ logo_url: null }).eq("id", accountId);
-  revalidatePath("/accounts");
-  revalidatePath("/");
+  revalidateHousehold();
 }
 
 // Backs the "+ New category" quick-add affordance in the transaction
@@ -223,6 +213,7 @@ export async function removeAccountLogo(accountId: string) {
 export async function quickCreateCategory(
   name: string,
   kind: "income" | "expense",
+  icon?: string | null,
 ): Promise<{ ok: boolean; id?: string; error?: string }> {
   const trimmed = name.trim();
   if (!trimmed) return { ok: false, error: "Name is required." };
@@ -230,15 +221,14 @@ export async function quickCreateCategory(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("categories")
-    .insert({ name: trimmed, kind })
+    .insert({ name: trimmed, kind, icon: icon || null })
     .select("id")
     .single();
   if (error || !data) {
     return { ok: false, error: error?.message ?? "Couldn't create category." };
   }
 
-  revalidatePath("/transactions");
-  revalidatePath("/budgets");
+  revalidateHousehold();
   return { ok: true, id: data.id };
 }
 
@@ -257,9 +247,7 @@ export async function upsertBudgetLine(
   if (error) {
     return { ok: false, error: error.message };
   }
-  revalidatePath("/transactions");
-  revalidatePath("/budgets");
-  revalidatePath("/");
+  revalidateHousehold();
   return { ok: true };
 }
 
@@ -280,9 +268,7 @@ export async function deleteBudgetLine(
   if (error) {
     return { ok: false, error: error.message };
   }
-  revalidatePath("/transactions");
-  revalidatePath("/budgets");
-  revalidatePath("/");
+  revalidateHousehold();
   return { ok: true };
 }
 
@@ -301,9 +287,28 @@ export async function updateCategoryActive(
   if (error) {
     return { ok: false, error: error.message };
   }
-  revalidatePath("/transactions");
-  revalidatePath("/budgets");
-  revalidatePath("/");
+  revalidateHousehold();
+  return { ok: true };
+}
+
+// "Need" is descriptive only for now (no needs/wants rollup reads it yet).
+// "Roll over unspent" is live: lib/queries.ts's getRolloverAmounts already
+// folds it into next month's planned amount whenever it's on — this is
+// just the one place in the UI that can turn it on or off, which didn't
+// exist before (direct database edit only).
+export async function updateCategorySettings(
+  id: string,
+  data: { is_need: boolean; rollover: boolean },
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("categories")
+    .update({ is_need: data.is_need, rollover: data.rollover })
+    .eq("id", id);
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+  revalidateHousehold();
   return { ok: true };
 }
 
@@ -321,9 +326,7 @@ export async function updateCategoryIcon(
   if (error) {
     return { ok: false, error: error.message };
   }
-  revalidatePath("/budgets");
-  revalidatePath("/transactions");
-  revalidatePath("/");
+  revalidateHousehold();
   return { ok: true };
 }
 
@@ -396,9 +399,7 @@ export async function bulkImportTransactions(
     await supabase.from("transactions").insert(toInsert);
   }
 
-  revalidatePath("/transactions");
-  revalidatePath("/accounts");
-  revalidatePath("/");
+  revalidateHousehold();
 
   return { imported: toInsert.length, skippedNoPeriod };
 }
@@ -490,16 +491,14 @@ export async function createTransaction(
     }
   }
 
-  revalidatePath("/transactions");
-  revalidatePath("/");
+  revalidateHousehold();
   return { ok: true };
 }
 
 export async function toggleTransactionPendingApproval(id: string, pending_approval: boolean) {
   const supabase = await createClient();
   await supabase.from("transactions").update({ pending_approval }).eq("id", id);
-  revalidatePath("/transactions");
-  revalidatePath("/");
+  revalidateHousehold();
 }
 
 // The detail modal's one-click "Make recurring" — sets up a recurring rule
@@ -533,7 +532,7 @@ export async function createRecurringFromTransaction(
     return { ok: false, error: error.message };
   }
 
-  revalidatePath("/transactions");
+  revalidateHousehold();
   return { ok: true };
 }
 
@@ -581,8 +580,10 @@ export async function updateTransaction(id: string, formData: FormData) {
     })
     .eq("id", id);
 
-  revalidatePath("/transactions");
-  revalidatePath("/");
+  // An edit only changes these two tables — re-fetching every table (the
+  // default) made each save's refresh several times slower than it needs
+  // to be.
+  revalidateHousehold(["transactions", "transaction_history"]);
 }
 
 export async function getHistoryForTransaction(transactionId: string) {
@@ -616,19 +617,9 @@ export async function createTransfer(
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Description is always derived from the two accounts rather than typed —
-  // "From Checking to Savings" says everything a transfer's description
-  // needs to, and generating it server-side (instead of trusting whatever
-  // account names the client sent) keeps it accurate even if the names
-  // change later.
-  const { data: transferAccounts } = await supabase
-    .from("accounts")
-    .select("id, name")
-    .in("id", [from_account_id, to_account_id]);
-  const fromName =
-    transferAccounts?.find((a) => a.id === from_account_id)?.name ?? "account";
-  const toName = transferAccounts?.find((a) => a.id === to_account_id)?.name ?? "account";
-  const description = `From ${fromName} to ${toName}`;
+  // Every transfer is simply "Transfer" — the row already shows which two
+  // accounts it moved between, so the description doesn't repeat them.
+  const description = "Transfer";
 
   const { error } = await supabase.from("transactions").insert({
     kind: "transfer",
@@ -648,9 +639,7 @@ export async function createTransfer(
     return { ok: false, error: error.message };
   }
 
-  revalidatePath("/transactions");
-  revalidatePath("/accounts");
-  revalidatePath("/");
+  revalidateHousehold();
   return { ok: true };
 }
 
@@ -669,13 +658,13 @@ export async function createObjective(formData: FormData) {
   await supabase
     .from("objectives")
     .insert({ name, status, start_date, end_date, notes, linked_account_id, image_url });
-  revalidatePath("/");
+  revalidateHousehold();
 }
 
 export async function updateObjectiveStatus(id: string, status: string) {
   const supabase = await createClient();
   await supabase.from("objectives").update({ status }).eq("id", id);
-  revalidatePath("/");
+  revalidateHousehold();
 }
 
 export async function updateObjective(id: string, formData: FormData) {
@@ -694,19 +683,31 @@ export async function updateObjective(id: string, formData: FormData) {
     .from("objectives")
     .update({ name, status, start_date, end_date, notes, linked_account_id, image_url })
     .eq("id", id);
-  revalidatePath("/");
+  revalidateHousehold();
 }
 
 export async function updateObjectiveLinkedAccount(id: string, linked_account_id: string | null) {
   const supabase = await createClient();
   await supabase.from("objectives").update({ linked_account_id }).eq("id", id);
-  revalidatePath("/");
+  revalidateHousehold();
 }
 
+// Soft delete so a stray tap can be undone — same pattern as
+// deleteTransaction below, filtered out of getObjectives via
+// `deleted_at is null`.
 export async function deleteObjective(id: string) {
   const supabase = await createClient();
-  await supabase.from("objectives").delete().eq("id", id);
-  revalidatePath("/");
+  await supabase
+    .from("objectives")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", id);
+  revalidateHousehold();
+}
+
+export async function restoreObjective(id: string) {
+  const supabase = await createClient();
+  await supabase.from("objectives").update({ deleted_at: null }).eq("id", id);
+  revalidateHousehold();
 }
 
 // Soft delete so a stray tap can be undone — hard-deleted nowhere, just
@@ -717,9 +718,7 @@ export async function deleteTransaction(id: string) {
     .from("transactions")
     .update({ deleted_at: new Date().toISOString() })
     .eq("id", id);
-  revalidatePath("/transactions");
-  revalidatePath("/accounts");
-  revalidatePath("/");
+  revalidateHousehold();
 }
 
 // Bulk versions of delete/update for the transactions table's row-selection
@@ -734,9 +733,7 @@ export async function bulkDeleteTransactions(
     .update({ deleted_at: new Date().toISOString() })
     .in("id", ids);
   if (error) return { ok: false, error: error.message };
-  revalidatePath("/transactions");
-  revalidatePath("/accounts");
-  revalidatePath("/");
+  revalidateHousehold();
   return { ok: true };
 }
 
@@ -748,44 +745,14 @@ export async function bulkUpdateTransactions(
   const supabase = await createClient();
   const { error } = await supabase.from("transactions").update(patch).in("id", ids);
   if (error) return { ok: false, error: error.message };
-  revalidatePath("/transactions");
-  revalidatePath("/accounts");
-  revalidatePath("/");
+  revalidateHousehold();
   return { ok: true };
 }
 
 export async function restoreTransaction(id: string) {
   const supabase = await createClient();
   await supabase.from("transactions").update({ deleted_at: null }).eq("id", id);
-  revalidatePath("/transactions");
-  revalidatePath("/accounts");
-  revalidatePath("/");
-}
-
-// Backs the "Created by" dropdown in the transaction detail modal — reassign
-// attribution to whichever household member actually logged it, instead of
-// only being able to "claim" it as whoever's currently signed in. Scoped to
-// one transaction at a time, same as before.
-export async function updateTransactionCreator(
-  id: string,
-  created_by: string | null,
-  created_by_email: string | null,
-): Promise<{ ok: boolean; error?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "Not signed in." };
-
-  const { error } = await supabase
-    .from("transactions")
-    .update({ created_by, created_by_email })
-    .eq("id", id);
-  if (error) return { ok: false, error: error.message };
-
-  revalidatePath("/transactions");
-  revalidatePath("/");
-  return { ok: true };
+  revalidateHousehold();
 }
 
 // Copies every planned amount from one period's budget onto another,
@@ -827,9 +794,7 @@ export async function copyBudgetForward(
     if (error) return { ok: false, error: error.message };
   }
 
-  revalidatePath("/transactions");
-  revalidatePath("/budgets");
-  revalidatePath("/");
+  revalidateHousehold();
   return { ok: true, copied: rows.length };
 }
 
@@ -840,16 +805,16 @@ export async function copyBudgetForward(
 export async function toggleRecurringActive(id: string, is_active: boolean) {
   const supabase = await createClient();
   await supabase.from("recurring_transactions").update({ is_active }).eq("id", id);
-  revalidatePath("/transactions");
+  revalidateHousehold();
 }
 
 // Server Action wrapper around the plain query version (which the
 // Transactions page also calls directly during its own render, where
 // revalidatePath isn't allowed) — kept for any explicit manual trigger.
 export async function generateRecurringForPeriod(periodId: string) {
-  await generateRecurringForPeriodQuery(periodId);
-  revalidatePath("/transactions");
-  revalidatePath("/");
+  const posted = await postRecurringForPeriod(periodId);
+  if (posted > 0) revalidateHousehold(["transactions"]);
+  return posted;
 }
 
 // Creates a parent transaction with no single category (category_id null)
@@ -911,8 +876,7 @@ export async function createSplitTransaction(
     return { ok: false, error: splitsError.message };
   }
 
-  revalidatePath("/transactions");
-  revalidatePath("/");
+  revalidateHousehold();
   return { ok: true };
 }
 
@@ -956,14 +920,14 @@ export async function createApiToken(label: string): Promise<string> {
   });
   if (error) throw error;
 
-  revalidatePath("/settings");
+  revalidateHousehold();
   return raw;
 }
 
 export async function revokeApiToken(id: string) {
   const supabase = await createClient();
   await supabase.from("api_tokens").update({ revoked_at: new Date().toISOString() }).eq("id", id);
-  revalidatePath("/settings");
+  revalidateHousehold();
 }
 
 export async function updateMyProfile(formData: FormData): Promise<{ ok: boolean; error?: string }> {
@@ -983,7 +947,7 @@ export async function updateMyProfile(formData: FormData): Promise<{ ok: boolean
     return { ok: false, error: error.message };
   }
 
-  revalidatePath("/");
+  revalidateHousehold();
   return { ok: true };
 }
 
@@ -1032,7 +996,7 @@ export async function uploadAvatar(
     return { ok: false, error: error.message };
   }
 
-  revalidatePath("/");
+  revalidateHousehold();
   return { ok: true, url: avatar_url };
 }
 

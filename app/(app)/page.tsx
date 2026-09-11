@@ -6,25 +6,31 @@ import {
   getAccountsWithBalances,
   getBalanceHistory,
   getCategories,
+  getCategoryAnomalies,
   getCategoryProgressForRange,
   getNetWorthHistory,
   getObjectives,
   getPeriodSummaryForRange,
   getSavingsTransferTotal,
+  getSplitsByTransaction,
   getTransactions,
   getTransactionsForRange,
+  getUndeclaredRecurring,
 } from "@/lib/queries";
 import { AnimatedMoney } from "@/app/(app)/animated-number";
 import { GreetingHeader } from "@/app/(app)/greeting-header";
 import { formatMoney, firstNameFromEmail } from "@/lib/format";
 import { BudgetCategoriesCard } from "@/app/(app)/budget-categories";
-import { GoalBanner } from "@/app/(app)/goal-banner";
+import { WeeklyRecap } from "@/app/(app)/weekly-recap";
 import { NewTransactionButton } from "@/app/(app)/new-transaction-button";
 import { EmptyState } from "@/app/(app)/empty-state";
 import { Sparkline } from "@/app/(app)/sparkline";
 import { RecentTransactionsList } from "@/app/(app)/recent-transactions-list";
 import { DashboardEqualHeightRow } from "@/app/(app)/dashboard-equal-height-row";
 import { AccountsGlanceCard } from "@/app/(app)/accounts-glance-card";
+import { CooliconPaths } from "@/app/(app)/coolicon";
+import { GoalsCard } from "@/app/(app)/goals-card";
+import { InsightsCard } from "@/app/(app)/insights-card";
 
 type Trend = { pct: number; good: boolean } | null;
 
@@ -55,6 +61,19 @@ export default async function DashboardPage({
   const range = resolveRange(requestedRange, customStart, customEnd);
   const previousRange = getPreviousRange(range.start, range.end);
 
+  // Calendar-month bounds for the Insights card — deliberately not tied to
+  // `range` (which can be a multi-month or custom span) or to `periods`
+  // (fetched in the same batch below, so using it here would mean awaiting
+  // periods first instead of firing every query at once) — "is this month
+  // unusual" always means the actual current calendar month.
+  const now = new Date();
+  const thisMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+    .toISOString()
+    .slice(0, 10);
+  const thisMonthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0))
+    .toISOString()
+    .slice(0, 10);
+
   // getCurrentSession() reads the JWT from cookies with no network call,
   // unlike getUser() — the layout above (and proxy.ts's middleware before
   // that) already did the real, network-validated auth check for this
@@ -76,9 +95,11 @@ export default async function DashboardPage({
     transactions,
     netWorthHistory,
     balanceHistory,
-    objectives,
     savingsTransfers,
     previousSavingsTransfers,
+    objectives,
+    categoryAnomalies,
+    undeclaredRecurring,
   ] = await Promise.all([
     getCurrentSession(),
     getPeriods(),
@@ -90,9 +111,11 @@ export default async function DashboardPage({
     getTransactionsForRange(range.start, range.end),
     getNetWorthHistory(),
     getBalanceHistory(90),
-    getObjectives(),
     getSavingsTransferTotal(range.start, range.end),
     getSavingsTransferTotal(previousRange.start, previousRange.end),
+    getObjectives(),
+    getCategoryAnomalies(thisMonthStart, thisMonthEnd),
+    getUndeclaredRecurring(),
   ]);
   const user = session?.user ?? null;
   const profile = user ? await getCurrentUserProfile(user.id) : null;
@@ -116,6 +139,20 @@ export default async function DashboardPage({
       (p) => p.start_date === range.start && p.end_date === range.end,
     ) ?? null;
 
+  // Days elapsed vs. total, so the Budget card can project "at this rate,
+  // you'll land at $X" instead of just showing actual-vs-planned with no
+  // sense of how much of the month is even over yet — only meaningful for
+  // the period actually in progress right now, not a past or future one.
+  const today = new Date().toISOString().slice(0, 10);
+  const isCurrentPeriod =
+    !!editablePeriod && editablePeriod.start_date <= today && editablePeriod.end_date >= today;
+  const pace = isCurrentPeriod
+    ? {
+        daysElapsed: Number(today.slice(8, 10)),
+        daysTotal: Number(editablePeriod!.end_date.slice(8, 10)),
+      }
+    : null;
+
   // The Transactions page shows whatever's tagged with a period's id, not
   // whatever falls within its calendar dates — the two usually agree, but a
   // transaction can be manually assigned to a different period than its own
@@ -132,6 +169,11 @@ export default async function DashboardPage({
   // More than would ever fit visibly — the card trims itself to whatever
   // height matches the Budget card next to it.
   const recentTransactions = recentTransactionsSource.slice(0, 30);
+  // So the detail panel can tell a split transaction apart from a plain
+  // uncategorized one — see TransactionDetailModal's `splits` prop.
+  const splitsByTransaction = await getSplitsByTransaction(
+    recentTransactions.filter((t) => t.category_id === null).map((t) => t.id),
+  );
 
   // Net worth = every active account's balance summed together, not budget
   // remaining — compared against last month's end-of-period snapshot
@@ -169,27 +211,6 @@ export default async function DashboardPage({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <GreetingHeader firstName={firstName} />
         <div className="flex shrink-0 items-center gap-3">
-          <Link
-            href="/transactions"
-            aria-label="Transactions needing approval"
-            className="relative flex size-11 shrink-0 items-center justify-center rounded-full border border-border text-text-muted transition-colors hover:bg-bg hover:text-text"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M6 8a6 6 0 1 1 12 0c0 3.5 1 5 2 6H4c1-1 2-2.5 2-6Z"
-                stroke="currentColor"
-                strokeWidth={1.6}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <path
-                d="M10 20a2 2 0 0 0 4 0"
-                stroke="currentColor"
-                strokeWidth={1.6}
-                strokeLinecap="round"
-              />
-            </svg>
-          </Link>
           <NewTransactionButton
             variant="inline"
             menuAlign="right"
@@ -243,15 +264,7 @@ export default async function DashboardPage({
               index={1}
               iconBg="var(--positive-bg)"
               iconColor="var(--positive-strong)"
-              icon={
-                <path
-                  d="M3 17 9 11l4 4 8-8M21 7h-6m6 0v6"
-                  stroke="currentColor"
-                  strokeWidth={1.6}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              }
+              icon={<CooliconPaths name="Trending_Up" />}
               value={<AnimatedMoney value={summary.income} className="text-balance-display text-text" />}
               trendValue={incomeTrend}
             />
@@ -261,15 +274,7 @@ export default async function DashboardPage({
               index={2}
               iconBg="var(--negative-bg)"
               iconColor="var(--negative-strong)"
-              icon={
-                <path
-                  d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0v12a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V7m-6 4v5m4-5v5"
-                  stroke="currentColor"
-                  strokeWidth={1.6}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              }
+              icon={<CooliconPaths name="Trending_Down" />}
               value={<AnimatedMoney value={summary.expense} className="text-balance-display text-text" />}
               trendValue={expenseTrend}
             />
@@ -279,15 +284,7 @@ export default async function DashboardPage({
               index={3}
               iconBg="var(--projected-bg)"
               iconColor="var(--projected-strong)"
-              icon={
-                <path
-                  d="M12 2 3 7v6c0 5 4 8.5 9 9 5-.5 9-4 9-9V7l-9-5Zm-3.5 9.5 2 2 4.5-4.5"
-                  stroke="currentColor"
-                  strokeWidth={1.6}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              }
+              icon={<CooliconPaths name="Shield_Check" />}
               value={
                 <AnimatedMoney
                   value={savingsTransfers.net}
@@ -324,6 +321,7 @@ export default async function DashboardPage({
                 categoryProgress={categoryProgress}
                 editablePeriodId={editablePeriod?.id ?? null}
                 rangeIsSinglePeriod={Boolean(editablePeriod)}
+                pace={pace}
               />
             }
             recent={
@@ -351,6 +349,7 @@ export default async function DashboardPage({
                       accounts={accounts}
                       categories={categories}
                       maxRows={8}
+                      splitsByTransaction={splitsByTransaction}
                     />
                   </div>
                 )}
@@ -359,9 +358,11 @@ export default async function DashboardPage({
           />
         </div>
 
-        <div className="space-y-6 xl:sticky xl:top-6">
+        <div className="space-y-6">
           <AccountsGlanceCard accounts={activeAccounts} />
-          <GoalBanner objectives={objectives} accounts={accounts} />
+          <GoalsCard objectives={objectives} accounts={activeAccounts} />
+          <InsightsCard anomalies={categoryAnomalies} undeclaredRecurring={undeclaredRecurring} />
+          <WeeklyRecap />
         </div>
       </div>
     </div>
@@ -435,7 +436,7 @@ function MetricCard({
   if (icon) {
     return (
       <div
-        style={{ animationDelay: `${index * 60}ms` }}
+        style={{ animationDelay: `${index * 12}ms` }}
         className={`card card-hover animate-fade-in-up relative flex h-full flex-col justify-between ${className ?? ""}`}
       >
         {badge && <div className="absolute top-5 right-5 sm:top-6 sm:right-6">{badge}</div>}
@@ -458,7 +459,7 @@ function MetricCard({
 
   return (
     <div
-      style={{ animationDelay: `${index * 60}ms` }}
+      style={{ animationDelay: `${index * 12}ms` }}
       className={`card card-hover animate-fade-in-up flex h-full flex-col ${className ?? ""}`}
     >
       <p className="text-[13px] font-medium whitespace-nowrap text-text-muted">{label}</p>

@@ -84,9 +84,12 @@ export function ProfileModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="animate-modal-panel w-full max-w-sm rounded-xl border border-border bg-surface p-6 shadow-modal"
+        // dvh (not vh) so this actually shrinks when the on-screen keyboard
+        // opens, and overflow-y-auto so there's somewhere for the content
+        // to go instead of just running off-screen with Save unreachable.
+        className="animate-modal-panel max-h-[90dvh] w-full max-w-sm overflow-y-auto rounded-xl border border-border bg-surface shadow-modal"
       >
-        <div className="mb-4 flex items-start justify-between">
+        <div className="flex items-start justify-between border-b border-border px-5 py-4">
           <div>
             <h2 className="text-lg font-semibold text-text">Profile settings</h2>
             <p className="mt-0.5 text-sm text-text-muted">{userEmail}</p>
@@ -101,7 +104,7 @@ export function ProfileModal({
           </button>
         </div>
 
-        <form action={handleSubmit} className="space-y-4">
+        <form action={handleSubmit} className="space-y-4 p-5">
           <div className="flex items-center gap-3">
             <input
               ref={fileInputRef}
@@ -170,7 +173,10 @@ export function ProfileModal({
 
           {error && <p className="text-sm text-danger">{error}</p>}
 
-          <div className="flex gap-2 pt-1">
+          {/* Sticky, not just the last item — stays reachable at the
+              bottom of the scrollable panel instead of scrolling away
+              under the keyboard along with the rest of the form. */}
+          <div className="sticky bottom-0 -mx-5 -mb-5 flex gap-2 border-t border-border bg-surface px-5 py-4">
             <SubmitButton pendingText="Saving…">Save changes</SubmitButton>
             <button
               type="button"

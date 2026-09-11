@@ -10,7 +10,9 @@ import { MOBILE_LINKS } from "./sidebar";
 // desktop-only; see MOBILE_LINKS in sidebar.tsx.
 export function MobileTabBar() {
   const pathname = usePathname();
-  const activeIndex = MOBILE_LINKS.findIndex((link) => pathname.startsWith(link.href));
+  const activeIndex = MOBILE_LINKS.findIndex((link) =>
+    pathname.startsWith(link.href),
+  );
 
   return (
     <nav
@@ -26,17 +28,31 @@ export function MobileTabBar() {
           style={{ left: `${activeIndex * (100 / 3)}%`, width: `${100 / 3}%` }}
         />
       )}
-      {MOBILE_LINKS.map((link) => {
+      {MOBILE_LINKS.map((link, i) => {
         const active = pathname.startsWith(link.href);
         return (
           <Link
             key={link.href}
             href={link.href}
-            className={`relative flex flex-col items-center justify-center gap-1 py-3 text-[11px] font-medium transition-colors ${
-              active ? "text-accent-bright" : "text-hero-text-muted hover:text-hero-text"
+            prefetch={true}
+            transitionTypes={
+              activeIndex === -1 || activeIndex === i
+                ? undefined
+                : [i > activeIndex ? "nav-forward" : "nav-back"]
+            }
+            className={`relative flex flex-col items-center justify-center gap-1.5 py-4 text-xs font-medium transition-colors ${
+              active
+                ? "text-accent-bright"
+                : "text-hero-text-muted hover:text-hero-text"
             }`}
           >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className="shrink-0">
+            <svg
+              width="27"
+              height="27"
+              viewBox="0 0 24 24"
+              fill="none"
+              className="shrink-0"
+            >
               {link.icon}
             </svg>
             <span className="truncate">{link.label}</span>

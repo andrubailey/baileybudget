@@ -73,8 +73,16 @@ export function RowFlags({
   return (
     <>
       {t.recurring_transaction_id && (
-        <span className="shrink-0 text-xs" title="Recurring" aria-label="Recurring">
-          🔁
+        <span className="shrink-0 text-text-faint" title="Recurring" aria-label="Recurring">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path
+              d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3M18 3v4h-4M6 21v-4h4"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
         </span>
       )}
       {t.pending_approval &&
@@ -106,6 +114,8 @@ type RowProps = {
   // Optional replacement for the category slot (e.g. a "Split (3)" pill).
   categorySlot?: React.ReactNode;
   onClick?: () => void;
+  // Right-click menu (see transaction-menu.tsx).
+  onContextMenu?: (e: React.MouseEvent) => void;
   onApprove?: () => void;
   // Which secondary facts to show under the description. Defaults to all.
   meta?: { date?: boolean; account?: boolean; category?: boolean };
@@ -123,6 +133,7 @@ export const TransactionRow = forwardRef<HTMLButtonElement, RowProps>(function T
     category,
     categorySlot,
     onClick,
+    onContextMenu,
     onApprove,
     meta,
     index = 0,
@@ -143,8 +154,9 @@ export const TransactionRow = forwardRef<HTMLButtonElement, RowProps>(function T
       ref={ref}
       type="button"
       onClick={onClick}
+      onContextMenu={onContextMenu}
       disabled={!onClick}
-      style={{ animationDelay: `${index * 35}ms` }}
+      style={{ animationDelay: `${index * 12}ms` }}
       className={`animate-fade-in-up flex w-full items-center gap-3 text-left transition-colors ${
         bare ? "" : "rounded-lg px-3 py-3 hover:bg-bg disabled:hover:bg-transparent"
       } ${className}`}

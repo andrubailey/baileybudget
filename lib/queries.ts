@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
+import { snapshotClient } from "@/lib/snapshot";
 import type {
   Account,
   BudgetLine,
@@ -16,41 +17,32 @@ type SplitRow = {
   amount: number;
 };
 
-// Creates one transaction per active recurring entry for the given period,
-// dated on its day_of_month within that period's month. Skips entries that
-// already have a transaction generated for this period (tracked via
-// recurring_transaction_id) so re-running never double-creates. Plain query
-// (no revalidatePath) so it's safe to call from a Server Component's own
-// render, not just from a Server Action.
-export async function generateRecurringForPeriod(periodId: string) {
-  const supabase = await createClient();
+// Recurring bills due for a period that haven't been posted yet. Pure read
+// against the cached snapshot — the insert lives in postRecurringForPeriod
+// (called from a Server Action, since a write during render couldn't
+// invalidate the cache). Skips entries that already have a transaction
+// generated for this period (tracked via recurring_transaction_id).
+export async function getDueRecurringRows(periodId: string) {
+  const supabase = snapshotClient();
+  const [{ data: period }, { data: recurring }, { data: existing }] = await Promise.all([
+    supabase.from("periods").select("*").eq("id", periodId).single(),
+    supabase.from("recurring_transactions").select("*").eq("is_active", true),
+    supabase
+      .from("transactions")
+      .select("recurring_transaction_id")
+      .eq("period_id", periodId)
+      .not("recurring_transaction_id", "is", null),
+  ]);
+  if (!period || !recurring || recurring.length === 0) return [];
 
-  // getSession() reads the JWT straight from cookies with no network call,
-  // unlike getUser() which re-validates against the auth server — safe here
-  // (unlike a Server Action) because this only runs mid-render on a request
-  // the proxy middleware has already put through that same revalidation, and
-  // the result only feeds attribution columns on an insert already scoped by
-  // RLS, not a security decision.
-  const [{ data: period }, { data: recurring }, { data: existing }, { data: { session } }] =
-    await Promise.all([
-      supabase.from("periods").select("*").eq("id", periodId).single(),
-      supabase.from("recurring_transactions").select("*").eq("is_active", true),
-      supabase
-        .from("transactions")
-        .select("recurring_transaction_id")
-        .eq("period_id", periodId)
-        .not("recurring_transaction_id", "is", null),
-      supabase.auth.getSession(),
-    ]);
-
-  if (!period || !recurring || recurring.length === 0) return;
-
-  const alreadyGenerated = new Set((existing ?? []).map((t) => t.recurring_transaction_id));
+  const alreadyGenerated = new Set(
+    (existing ?? []).map((t: { recurring_transaction_id: string }) => t.recurring_transaction_id),
+  );
   const periodStart = new Date(period.start_date + "T00:00:00");
   const year = periodStart.getFullYear();
   const month = periodStart.getMonth();
 
-  const rows = recurring
+  return (recurring as RecurringTransaction[])
     .filter((r) => !alreadyGenerated.has(r.id))
     .map((r) => {
       const day = String(r.day_of_month).padStart(2, "0");
@@ -64,14 +56,28 @@ export async function generateRecurringForPeriod(periodId: string) {
         category_id: r.category_id,
         period_id: periodId,
         recurring_transaction_id: r.id,
-        created_by: session?.user.id ?? null,
-        created_by_email: session?.user.email ?? null,
       };
     });
+}
 
-  if (rows.length > 0) {
-    await supabase.from("transactions").insert(rows);
-  }
+// Inserts whatever getDueRecurringRows says is due. Only ever called from
+// the generateRecurringForPeriod Server Action (which invalidates the
+// snapshot afterward); re-running never double-creates.
+export async function postRecurringForPeriod(periodId: string): Promise<number> {
+  const rows = await getDueRecurringRows(periodId);
+  if (rows.length === 0) return 0;
+  const supabase = await createClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  await supabase.from("transactions").insert(
+    rows.map((r) => ({
+      ...r,
+      created_by: session?.user.id ?? null,
+      created_by_email: session?.user.email ?? null,
+    })),
+  );
+  return rows.length;
 }
 
 // Splits belong to transactions whose own category_id is null (the parent
@@ -82,7 +88,7 @@ async function applySplits(
   actualByCategory: Map<string, number>,
 ) {
   if (transactionIds.length === 0) return;
-  const supabase = await createClient();
+  const supabase = snapshotClient();
   const { data: splits } = await supabase
     .from("transaction_splits")
     .select("transaction_id, category_id, amount")
@@ -115,7 +121,7 @@ const PAGE_SIZE = 1000;
 // Promise.all). Without this they'd each independently re-fetch — and for
 // transactions, re-paginate through — the exact same rows every time.
 const getAllAccountsRaw = cache(async () => {
-  const supabase = await createClient();
+  const supabase = snapshotClient();
   const { data, error } = await supabase
     .from("accounts")
     .select("*")
@@ -138,7 +144,7 @@ export async function getAccounts(): Promise<Account[]> {
 // ran their own `.from("categories").select(...)`, which meant a single
 // Reports page load fired 3 separate full-table category fetches.
 const getAllCategoriesRaw = cache(async (): Promise<Category[]> => {
-  const supabase = await createClient();
+  const supabase = snapshotClient();
   const { data, error } = await supabase.from("categories").select("*");
   if (error) throw error;
   return data ?? [];
@@ -153,7 +159,7 @@ const fetchAllTransactionRows = cache(async (): Promise<
     txn_date: string;
   }[]
 > => {
-  const supabase = await createClient();
+  const supabase = snapshotClient();
   const rows: {
     account_id: string | null;
     to_account_id: string | null;
@@ -263,7 +269,7 @@ function reclassifyKind(
 export async function getPeriodSummary(
   periodId: string,
 ): Promise<PeriodSummary> {
-  const supabase = await createClient();
+  const supabase = snapshotClient();
   const [{ data }, debtAccountIds] = await Promise.all([
     supabase
       .from("transactions")
@@ -306,7 +312,7 @@ export type CategoryProgress = Category & {
 export async function getCategoryProgress(
   periodId: string,
 ): Promise<CategoryProgress[]> {
-  const supabase = await createClient();
+  const supabase = snapshotClient();
 
   const [
     { data: period },
@@ -403,7 +409,7 @@ async function getRolloverAmounts(
   const result = new Map<string, number>();
   if (!period || rolloverCategories.length === 0) return result;
 
-  const supabase = await createClient();
+  const supabase = snapshotClient();
   const { data: prevPeriod } = await supabase
     .from("periods")
     .select("*")
@@ -478,7 +484,7 @@ export async function getSavingsTransferTotal(
   start: string,
   end: string,
 ): Promise<SavingsTransferTotal> {
-  const supabase = await createClient();
+  const supabase = snapshotClient();
   const [accounts, { data: transactions }] = await Promise.all([
     getAllAccountsRaw(),
     supabase
@@ -507,7 +513,7 @@ export async function getPeriodSummaryForRange(
   start: string,
   end: string,
 ): Promise<PeriodSummary> {
-  const supabase = await createClient();
+  const supabase = snapshotClient();
   const [{ data }, debtAccountIds] = await Promise.all([
     supabase
       .from("transactions")
@@ -542,7 +548,7 @@ export async function getCategoryProgressForRange(
   start: string,
   end: string,
 ): Promise<CategoryProgress[]> {
-  const supabase = await createClient();
+  const supabase = snapshotClient();
 
   const [
     { data: categories },
@@ -632,7 +638,7 @@ export async function getTransactionsForRange(
   start: string,
   end: string,
 ): Promise<Transaction[]> {
-  const supabase = await createClient();
+  const supabase = snapshotClient();
   // Paginated — callers can pass a wide range (a full year via the reports
   // "custom" picker, say), and this household's transaction count is
   // already past PostgREST's 1000-row default cap, which would otherwise
@@ -665,7 +671,7 @@ export async function getMonthlyTotals(
   start: string,
   end: string,
 ): Promise<MonthlyTotal[]> {
-  const supabase = await createClient();
+  const supabase = snapshotClient();
   const [{ data, error }, debtAccountIds] = await Promise.all([
     supabase
       .from("transactions")
@@ -703,6 +709,54 @@ export async function getMonthlyTotals(
   return months;
 }
 
+export type MonthlyCashFlow = MonthlyTotal & { transfers: number };
+
+// Income, spending, and transfer volume per calendar month in [start, end],
+// zero-filled like getMonthlyTotals, for the Reports page's tabs.
+export async function getMonthlyCashFlow(
+  start: string,
+  end: string,
+): Promise<MonthlyCashFlow[]> {
+  const supabase = snapshotClient();
+  const [{ data, error }, debtAccountIds] = await Promise.all([
+    supabase
+      .from("transactions")
+      .select("kind, amount, txn_date, account_id")
+      .gte("txn_date", start)
+      .lte("txn_date", end)
+      .is("deleted_at", null),
+    getDebtAccountIds(),
+  ]);
+  if (error) throw error;
+
+  const byMonth = new Map<string, { income: number; expense: number; transfers: number }>();
+  for (const t of data ?? []) {
+    const month = t.txn_date.slice(0, 7);
+    const bucket = byMonth.get(month) ?? { income: 0, expense: 0, transfers: 0 };
+    if (t.kind === "transfer") {
+      bucket.transfers += t.amount;
+    } else {
+      const kind = reclassifyKind(t.kind, t.account_id, debtAccountIds);
+      if (kind === "income") bucket.income += t.amount;
+      else if (kind === "expense") bucket.expense += t.amount;
+    }
+    byMonth.set(month, bucket);
+  }
+
+  const months: MonthlyCashFlow[] = [];
+  const cursor = new Date(`${start.slice(0, 7)}-01T00:00:00Z`);
+  const endCursor = new Date(`${end.slice(0, 7)}-01T00:00:00Z`);
+  while (cursor <= endCursor) {
+    const key = cursor.toISOString().slice(0, 7);
+    months.push({
+      month: key,
+      ...(byMonth.get(key) ?? { income: 0, expense: 0, transfers: 0 }),
+    });
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+  }
+  return months;
+}
+
 export type RecurringVsOther = { recurring: number; other: number };
 
 // Splits each month's expense total into "recurring" (linked to a
@@ -712,7 +766,7 @@ export async function getRecurringVsOtherByMonth(
   start: string,
   end: string,
 ): Promise<Map<string, RecurringVsOther>> {
-  const supabase = await createClient();
+  const supabase = snapshotClient();
   const [{ data, error }, debtAccountIds] = await Promise.all([
     supabase
       .from("transactions")
@@ -743,7 +797,7 @@ export async function getPlannedTotalsByPeriod(
   periodIds: string[],
 ): Promise<Map<string, number>> {
   if (periodIds.length === 0) return new Map();
-  const supabase = await createClient();
+  const supabase = snapshotClient();
   const [{ data: lines, error }, categories] = await Promise.all([
     supabase
       .from("budget_lines")
@@ -772,7 +826,7 @@ export async function getPlannedTotalsByPeriod(
 // specific debt account changes that account's own balance even though it
 // doesn't move total household net worth.
 export async function getDebtBalanceHistory(): Promise<NetWorthPoint[]> {
-  const supabase = await createClient();
+  const supabase = snapshotClient();
   const [accounts, { data: periods }, transactions] = await Promise.all([
     getAllAccountsRaw(),
     supabase
@@ -860,7 +914,7 @@ export async function getTopCategoryByMonth(
   start: string,
   end: string,
 ): Promise<Map<string, TopCategoryByMonth>> {
-  const supabase = await createClient();
+  const supabase = snapshotClient();
   const [{ data: rows, error }, categories, debtAccountIds] = await Promise.all([
     supabase
       .from("transactions")
@@ -926,7 +980,7 @@ export async function getCategoryHistory(
   categoryId: string,
   months = 6,
 ): Promise<CategoryMonthSpend[]> {
-  const supabase = await createClient();
+  const supabase = snapshotClient();
   const now = new Date();
   const startDate = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (months - 1), 1),
@@ -973,10 +1027,11 @@ export async function getCategories(): Promise<Category[]> {
 }
 
 export async function getObjectives(): Promise<Objective[]> {
-  const supabase = await createClient();
+  const supabase = snapshotClient();
   const { data, error } = await supabase
     .from("objectives")
     .select("*")
+    .is("deleted_at", null)
     .order("start_date", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: false });
   if (error) throw error;
@@ -992,7 +1047,7 @@ export async function getSplitsByTransaction(
   transactionIds: string[],
 ): Promise<Map<string, SplitDetail[]>> {
   if (transactionIds.length === 0) return new Map();
-  const supabase = await createClient();
+  const supabase = snapshotClient();
   const { data, error } = await supabase
     .from("transaction_splits")
     .select("transaction_id, category_id, amount")
@@ -1011,7 +1066,7 @@ export async function getSplitsByTransaction(
 export async function getTransactions(
   periodId: string,
 ): Promise<Transaction[]> {
-  const supabase = await createClient();
+  const supabase = snapshotClient();
   const { data } = await supabase
     .from("transactions")
     .select("*")
@@ -1037,7 +1092,7 @@ export async function findPossibleDuplicateTransactions(
   >[]
 > {
   if (!account_id || !amount || !txn_date) return [];
-  const supabase = await createClient();
+  const supabase = snapshotClient();
 
   const center = new Date(`${txn_date}T00:00:00Z`);
   const before = new Date(center);
@@ -1182,7 +1237,7 @@ export async function searchTransactions(
 export async function getRecurringTransactions(): Promise<
   RecurringTransaction[]
 > {
-  const supabase = await createClient();
+  const supabase = snapshotClient();
   const { data, error } = await supabase
     .from("recurring_transactions")
     .select("*")
@@ -1197,7 +1252,7 @@ export async function getRecurringTransactions(): Promise<
 export async function getPostedRecurringIds(
   periodId: string,
 ): Promise<Set<string>> {
-  const supabase = await createClient();
+  const supabase = snapshotClient();
   const { data, error } = await supabase
     .from("transactions")
     .select("recurring_transaction_id")
@@ -1218,7 +1273,7 @@ export type NetWorthPoint = {
 // Cumulative balance across all accounts as of the end of each period,
 // oldest first, for a balance-over-time chart.
 export async function getNetWorthHistory(): Promise<NetWorthPoint[]> {
-  const supabase = await createClient();
+  const supabase = snapshotClient();
   const [accounts, { data: periods }, transactions] = await Promise.all([
     getAllAccountsRaw(),
     supabase
@@ -1366,7 +1421,7 @@ export type BudgetGridRow = {
 export async function getBudgetGrid(
   periodIds: string[],
 ): Promise<BudgetGridRow[]> {
-  const supabase = await createClient();
+  const supabase = snapshotClient();
   const [{ data: categories }, { data: budgetLines }] = await Promise.all([
     supabase.from("categories").select("*").eq("kind", "expense").order("name"),
     periodIds.length
@@ -1394,7 +1449,7 @@ export async function suggestCategoryForDescription(
 ): Promise<string | null> {
   const trimmed = description.trim();
   if (!trimmed) return null;
-  const supabase = await createClient();
+  const supabase = snapshotClient();
   const { data } = await supabase
     .from("transactions")
     .select("category_id")
@@ -1427,7 +1482,7 @@ export async function suggestCategoryForDescription(
 // generated a transaction this period, so already-posted bills (already
 // reflected in `actual`) aren't subtracted twice.
 export async function getSafeToSpend(periodId: string): Promise<number> {
-  const supabase = await createClient();
+  const supabase = snapshotClient();
   const [categoryProgress, { data: period }] = await Promise.all([
     getCategoryProgress(periodId),
     supabase.from("periods").select("*").eq("id", periodId).single(),
@@ -1478,7 +1533,7 @@ export type UpcomingBill = {
 export async function getUpcomingBills(
   periodId: string,
 ): Promise<UpcomingBill[]> {
-  const supabase = await createClient();
+  const supabase = snapshotClient();
   const todayDay = Number(new Date().toISOString().slice(8, 10));
   const [{ data: recurring }, postedIds] = await Promise.all([
     supabase
@@ -1506,7 +1561,7 @@ export type RecurringPricePoint = { txn_date: string; amount: number };
 export async function getRecurringPriceHistory(
   recurringId: string,
 ): Promise<RecurringPricePoint[]> {
-  const supabase = await createClient();
+  const supabase = snapshotClient();
   const { data } = await supabase
     .from("transactions")
     .select("txn_date, amount")
@@ -1519,7 +1574,7 @@ export async function getRecurringPriceHistory(
 export async function getTransactionHistory(
   transactionId: string,
 ): Promise<TransactionHistoryEntry[]> {
-  const supabase = await createClient();
+  const supabase = snapshotClient();
   const { data, error } = await supabase
     .from("transaction_history")
     .select("*")
@@ -1540,7 +1595,7 @@ export type MonthlyFlowPoint = {
 // chart — separate from getNetWorthHistory, which tracks cumulative balance
 // rather than each month's flow.
 export async function getMonthlyFlow(limit = 12): Promise<MonthlyFlowPoint[]> {
-  const supabase = await createClient();
+  const supabase = snapshotClient();
   const { data: periods } = await supabase
     .from("periods")
     .select("id, name, start_date")
@@ -1582,4 +1637,203 @@ export async function getMonthlyFlow(limit = 12): Promise<MonthlyFlowPoint[]> {
     income: byPeriod.get(p.id)?.income ?? 0,
     expense: byPeriod.get(p.id)?.expense ?? 0,
   }));
+}
+
+export type CategoryAnomaly = {
+  categoryId: string;
+  name: string;
+  icon: string | null;
+  actual: number;
+  average: number;
+  pctAboveAverage: number;
+};
+
+// A category is charged 4 months (0 the other 2), a trailing average zero-
+// filled to 6 months would always read as "unusual" the moment it's used at
+// all — averaging only over the months it actually saw spending answers "is
+// this month bigger than usual for this category" instead of "is this
+// category used more than every other month."
+const ANOMALY_TRAILING_MONTHS = 6;
+const ANOMALY_MIN_MONTHS_WITH_DATA = 3;
+const ANOMALY_MIN_AVERAGE = 20;
+const ANOMALY_THRESHOLD = 1.4;
+
+// Flags expense categories running well above their own recent pattern this
+// period — not above a budget number someone may have typed in once and
+// never revisited, but above what this household has actually spent in that
+// category the last several months. Split-transaction amounts (parent row
+// has category_id: null) aren't attributed to any single category here,
+// same simplification getCategoryHistory makes.
+export async function getCategoryAnomalies(
+  periodStart: string,
+  periodEnd: string,
+): Promise<CategoryAnomaly[]> {
+  const supabase = snapshotClient();
+  const periodStartDate = new Date(`${periodStart}T00:00:00Z`);
+  const trailingStart = new Date(
+    Date.UTC(
+      periodStartDate.getUTCFullYear(),
+      periodStartDate.getUTCMonth() - ANOMALY_TRAILING_MONTHS,
+      1,
+    ),
+  )
+    .toISOString()
+    .slice(0, 10);
+
+  const [{ data, error }, debtAccountIds, categories] = await Promise.all([
+    supabase
+      .from("transactions")
+      .select("category_id, amount, txn_date, account_id, kind")
+      .gte("txn_date", trailingStart)
+      .lte("txn_date", periodEnd)
+      .is("deleted_at", null),
+    getDebtAccountIds(),
+    getAllCategoriesRaw(),
+  ]);
+  if (error) throw error;
+
+  const categoryById = new Map(categories.map((c) => [c.id, c]));
+  const currentByCategory = new Map<string, number>();
+  const priorMonthlyByCategory = new Map<string, Map<string, number>>();
+
+  for (const t of data ?? []) {
+    if (reclassifyKind(t.kind, t.account_id, debtAccountIds) !== "expense") continue;
+    if (!t.category_id) continue;
+    if (t.txn_date >= periodStart && t.txn_date <= periodEnd) {
+      currentByCategory.set(t.category_id, (currentByCategory.get(t.category_id) ?? 0) + t.amount);
+    } else {
+      const month = t.txn_date.slice(0, 7);
+      const monthly = priorMonthlyByCategory.get(t.category_id) ?? new Map<string, number>();
+      monthly.set(month, (monthly.get(month) ?? 0) + t.amount);
+      priorMonthlyByCategory.set(t.category_id, monthly);
+    }
+  }
+
+  const results: CategoryAnomaly[] = [];
+  for (const [categoryId, actual] of currentByCategory) {
+    const category = categoryById.get(categoryId);
+    if (!category) continue;
+    const monthly = priorMonthlyByCategory.get(categoryId);
+    if (!monthly || monthly.size < ANOMALY_MIN_MONTHS_WITH_DATA) continue;
+    const values = [...monthly.values()];
+    const average = values.reduce((sum, v) => sum + v, 0) / values.length;
+    if (average < ANOMALY_MIN_AVERAGE) continue;
+    if (actual < average * ANOMALY_THRESHOLD) continue;
+    results.push({
+      categoryId,
+      name: category.name,
+      icon: category.icon,
+      actual,
+      average,
+      pctAboveAverage: Math.round(((actual - average) / average) * 100),
+    });
+  }
+
+  return results.sort((a, b) => b.pctAboveAverage - a.pctAboveAverage);
+}
+
+export type UndeclaredRecurringGroup = {
+  key: string;
+  description: string;
+  accountId: string | null;
+  kind: "income" | "expense";
+  occurrenceCount: number;
+  averageAmount: number;
+  lastAmount: number;
+  lastDate: string;
+  // The most recent occurrence's transaction id — createRecurringFromTransaction
+  // uses it to seed a real recurring rule (description/amount/account/day
+  // all derived from that one row) when the user confirms.
+  lastTransactionId: string;
+};
+
+const RECURRING_LOOKBACK_MONTHS = 5;
+const RECURRING_MIN_OCCURRENCES = 3;
+const RECURRING_AMOUNT_TOLERANCE = 0.2;
+const RECURRING_STALE_AFTER_DAYS = 45;
+
+// Same-merchant, same-account charges that have landed 3+ separate months
+// in a row at roughly the same amount, with no recurring_transactions rule
+// behind them — the "we're quietly paying for this every month and never
+// formally flagged it" list, distinct from (and not a subset of) whatever
+// was manually marked recurring via the "Make this recurring" checkbox.
+export async function getUndeclaredRecurring(): Promise<UndeclaredRecurringGroup[]> {
+  const supabase = snapshotClient();
+  const now = new Date();
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - RECURRING_LOOKBACK_MONTHS, 1))
+    .toISOString()
+    .slice(0, 10);
+
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("id, description, amount, txn_date, account_id, kind")
+    .in("kind", ["income", "expense"])
+    .gte("txn_date", start)
+    .is("recurring_transaction_id", null)
+    .is("deleted_at", null)
+    .order("txn_date", { ascending: true });
+  if (error) throw error;
+
+  const groups = new Map<
+    string,
+    {
+      description: string;
+      accountId: string | null;
+      kind: "income" | "expense";
+      rows: { id: string; txn_date: string; amount: number }[];
+    }
+  >();
+  for (const t of (data ?? []) as {
+    id: string;
+    description: string;
+    amount: number;
+    txn_date: string;
+    account_id: string | null;
+    kind: "income" | "expense";
+  }[]) {
+    const key = `${t.kind}|${t.account_id ?? ""}|${t.description.trim().toLowerCase()}`;
+    const group = groups.get(key) ?? {
+      description: t.description,
+      accountId: t.account_id,
+      kind: t.kind,
+      rows: [],
+    };
+    group.rows.push({ id: t.id, txn_date: t.txn_date, amount: t.amount });
+    groups.set(key, group);
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const results: UndeclaredRecurringGroup[] = [];
+  for (const [key, group] of groups) {
+    if (group.rows.length < RECURRING_MIN_OCCURRENCES) continue;
+    const months = new Set(group.rows.map((r) => r.txn_date.slice(0, 7)));
+    if (months.size < RECURRING_MIN_OCCURRENCES) continue;
+
+    const amounts = group.rows.map((r) => r.amount);
+    const average = amounts.reduce((sum, v) => sum + v, 0) / amounts.length;
+    const withinTolerance = amounts.every(
+      (a) => Math.abs(a - average) <= average * RECURRING_AMOUNT_TOLERANCE + 1,
+    );
+    if (!withinTolerance) continue;
+
+    const last = group.rows[group.rows.length - 1];
+    const daysSinceLast =
+      (new Date(`${today}T00:00:00Z`).getTime() - new Date(`${last.txn_date}T00:00:00Z`).getTime()) /
+      86_400_000;
+    if (daysSinceLast > RECURRING_STALE_AFTER_DAYS) continue;
+
+    results.push({
+      key,
+      description: group.description,
+      accountId: group.accountId,
+      kind: group.kind,
+      occurrenceCount: group.rows.length,
+      averageAmount: average,
+      lastAmount: last.amount,
+      lastDate: last.txn_date,
+      lastTransactionId: last.id,
+    });
+  }
+
+  return results.sort((a, b) => b.occurrenceCount - a.occurrenceCount);
 }

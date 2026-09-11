@@ -101,7 +101,7 @@ export function AccountsGlanceCard({ accounts }: { accounts: AccountWithBalance[
                   return (
                     <div
                       key={a.id}
-                      style={{ animationDelay: `${i * 35}ms` }}
+                      style={{ animationDelay: `${i * 12}ms` }}
                       className="animate-fade-in-up flex items-center gap-3 py-3 first:pt-0 last:pb-0"
                     >
                       {a.logo_url ? (

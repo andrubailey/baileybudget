@@ -1,5 +1,10 @@
 "use client";
 
+import { DatePicker } from "@/app/(app)/date-picker";
+
+import { Dropdown } from "@/app/(app)/dropdown";
+import { accountChoices } from "@/app/(app)/dropdown-options";
+
 import { useState } from "react";
 import { createTransfer } from "@/app/actions";
 import type { Account } from "@/lib/types";
@@ -26,11 +31,9 @@ export function QuickAddTransferButton({
   async function handleSubmit(formData: FormData) {
     const fromId = String(formData.get("from_account_id") ?? "") || null;
     const toId = String(formData.get("to_account_id") ?? "") || null;
-    const fromName = accounts.find((a) => a.id === fromId)?.name ?? "account";
-    const toName = accounts.find((a) => a.id === toId)?.name ?? "account";
     const pendingId = announcePendingTransaction({
       kind: "transfer",
-      description: `From ${fromName} to ${toName}`,
+      description: "Transfer",
       amount: Number(formData.get("amount") ?? 0),
       txn_date: String(formData.get("txn_date") ?? new Date().toISOString().slice(0, 10)),
       account_id: fromId,
@@ -87,9 +90,14 @@ export function QuickAddTransferButton({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="animate-modal-panel max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-surface p-6 shadow-modal"
+            // dvh (not vh) so this actually shrinks when the on-screen
+            // keyboard opens — vh stays pinned to the full, un-keyboarded
+            // screen height on iOS Safari, which let this panel keep
+            // centering/sizing itself against space that wasn't visible
+            // anymore and pushed the Save button below the keyboard.
+            className="animate-modal-panel max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-surface shadow-modal"
           >
-            <div className="mb-4 flex items-start justify-between">
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
               <h2 className="text-lg font-semibold text-text">Add transfer</h2>
               <button
                 type="button"
@@ -101,7 +109,7 @@ export function QuickAddTransferButton({
               </button>
             </div>
 
-            <form action={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <form action={handleSubmit} className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2">
               <input type="hidden" name="period_id" value={periodId} />
 
               <div className="space-y-1.5">
@@ -118,37 +126,27 @@ export function QuickAddTransferButton({
 
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-text">Date</label>
-                <input
-                  type="date"
-                  name="txn_date"
-                  required
-                  defaultValue={new Date().toISOString().slice(0, 10)}
-                  className={fieldClass}
-                />
+                <DatePicker name="txn_date" required defaultValue={new Date().toISOString().slice(0, 10)} />
               </div>
 
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-text">From account</label>
-                <select name="from_account_id" required className={fieldClass}>
-                  <option value="">—</option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
+                <Dropdown
+                  name="from_account_id"
+                  required
+                  placeholder="—"
+                  options={accountChoices(accounts)}
+                />
               </div>
 
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-text">To account</label>
-                <select name="to_account_id" required className={fieldClass}>
-                  <option value="">—</option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
+                <Dropdown
+                  name="to_account_id"
+                  required
+                  placeholder="—"
+                  options={accountChoices(accounts)}
+                />
               </div>
 
               <div className="space-y-1.5 sm:col-span-2">
@@ -162,7 +160,10 @@ export function QuickAddTransferButton({
                 />
               </div>
 
-              <div className="flex items-center gap-3 sm:col-span-2">
+              {/* Sticky, not just the last grid item — stays reachable at
+                  the bottom of the scrollable panel instead of scrolling
+                  away under the keyboard along with the rest of the form. */}
+              <div className="sticky bottom-0 -mx-5 -mb-5 flex items-center gap-3 border-t border-border bg-surface px-5 py-4 sm:col-span-2">
                 <SubmitButton pendingText="Saving…">Add transfer</SubmitButton>
                 <button
                   type="button"

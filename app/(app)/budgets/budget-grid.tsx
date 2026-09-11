@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment } from "react";
-import { getCategoryIcon } from "@/lib/category-icons";
+import { CategoryIcon } from "@/app/(app)/category-icon";
 import type { Period } from "@/lib/types";
 import type { BudgetGridRow } from "@/lib/queries";
 import { GridCell } from "./grid-cell";
@@ -61,7 +61,7 @@ export function BudgetGrid({
                 <tr className="group h-14 border-b border-border transition-colors last:border-b-0 hover:bg-bg even:bg-bg/40">
                   <td className="sticky left-0 z-10 bg-surface px-4 py-3 transition-colors group-hover:bg-bg">
                     <div className="flex items-center gap-2 whitespace-nowrap text-sm font-medium text-text">
-                      <span>{getCategoryIcon(row.category.name, row.category.icon)}</span>
+                      <CategoryIcon name={row.category.name} icon={row.category.icon} size={16} className="text-text-muted" />
                       {row.category.name}
                     </div>
                   </td>

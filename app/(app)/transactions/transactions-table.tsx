@@ -1,6 +1,11 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { DatePicker } from "@/app/(app)/date-picker";
+
+import { Dropdown } from "@/app/(app)/dropdown";
+import { accountChoices, categoryChoices } from "@/app/(app)/dropdown-options";
+
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   bulkDeleteTransactions,
   bulkUpdateTransactions,
@@ -8,6 +13,8 @@ import {
   restoreTransaction,
   toggleTransactionPendingApproval,
 } from "@/app/actions";
+import { useContextMenu, type ContextMenuItem } from "@/app/(app)/context-menu";
+import { transactionMenuItems, useTransactionQuickActions } from "@/app/(app)/transaction-menu";
 import { formatMoney, formatDate } from "@/lib/format";
 import type { Account, Category, Period, Transaction } from "@/lib/types";
 import type { SplitDetail } from "@/lib/queries";
@@ -26,11 +33,11 @@ import {
   TransactionRow,
 } from "@/app/(app)/transaction-row";
 
-// The ✓ and action columns stay pinned first/last — reordering a checkbox
-// away from the row's edge, or the row's action buttons into the middle,
-// isn't a layout anyone actually wants. Everything between is drag-to-reorder
-// and drag-to-resize.
-const REORDERABLE_COLUMNS = [
+// The ✓ and action columns stay pinned first/last — everything between is
+// this fixed set, in this order. (This used to be drag-to-reorder and
+// drag-to-resize; neither ever got used, so it's just a plain fixed layout
+// now — see COLUMN_WIDTHS below.)
+const TABLE_COLUMNS = [
   "description",
   "category",
   "account",
@@ -39,7 +46,7 @@ const REORDERABLE_COLUMNS = [
   "amount",
   "notes",
 ] as const;
-type ColumnKey = (typeof REORDERABLE_COLUMNS)[number];
+type ColumnKey = (typeof TABLE_COLUMNS)[number];
 const COLUMN_LABELS: Record<ColumnKey, string> = {
   description: "Description",
   category: "Category",
@@ -49,7 +56,7 @@ const COLUMN_LABELS: Record<ColumnKey, string> = {
   amount: "Amount",
   notes: "Notes",
 };
-const DEFAULT_WIDTHS: Record<ColumnKey, number> = {
+const COLUMN_WIDTHS: Record<ColumnKey, number> = {
   description: 260,
   category: 160,
   account: 220,
@@ -58,9 +65,9 @@ const DEFAULT_WIDTHS: Record<ColumnKey, number> = {
   amount: 120,
   notes: 180,
 };
-// Columns whose values can't be meaningfully sorted/compared (drag handles,
-// selection, etc. aren't in this list at all — this is just for excluding
-// "Notes" from the sortable set, since free text has no natural order).
+// Columns whose values can't be meaningfully sorted/compared — this is just
+// for excluding "Notes" from the sortable set, since free text has no
+// natural order.
 const SORTABLE_COLUMNS = new Set<ColumnKey>([
   "description",
   "category",
@@ -73,17 +80,6 @@ const SORTABLE_COLUMNS = new Set<ColumnKey>([
 // and the top filter bar already cover description/account, and per-column
 // filtering the rest just added clutter nobody used.
 const FILTERABLE_COLUMNS = new Set<ColumnKey>(["category", "amount"]);
-const MIN_COLUMN_WIDTH = 48;
-const COLUMN_ORDER_KEY = "transactions-table-column-order";
-const COLUMN_WIDTHS_KEY = "transactions-table-column-widths";
-
-function isColumnOrder(value: unknown): value is ColumnKey[] {
-  return (
-    Array.isArray(value) &&
-    value.length === REORDERABLE_COLUMNS.length &&
-    REORDERABLE_COLUMNS.every((c) => value.includes(c))
-  );
-}
 
 function creatorInitial(email: string | null) {
   if (!email) return null;
@@ -254,10 +250,12 @@ export function TransactionsTable({
   }
   function closeDetail() {
     setDetailClosing(true);
+    // Matches .animate-drawer-out's duration (see globals.css) — the panel
+    // is a right-edge slide-over now, not the old centered modal.
     setTimeout(() => {
       setEditingId(null);
       setDetailClosing(false);
-    }, 150);
+    }, 160);
   }
 
   // Row-selection for the bulk action bar (delete / change account / change
@@ -277,99 +275,6 @@ export function TransactionsTable({
   // vanishes on the next render.
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
 
-  // Column order/widths persist per-browser (localStorage), same pattern as
-  // the sidebar's collapsed state and the finances chat's width.
-  const [columnOrder, setColumnOrder] = useState<ColumnKey[]>([
-    ...REORDERABLE_COLUMNS,
-  ]);
-  const [columnWidths, setColumnWidths] =
-    useState<Record<ColumnKey, number>>(DEFAULT_WIDTHS);
-  const [draggedColumn, setDraggedColumn] = useState<ColumnKey | null>(null);
-  const [resizingColumn, setResizingColumn] = useState<ColumnKey | null>(null);
-  const resizeStart = useRef<{ x: number; width: number } | null>(null);
-
-  useEffect(() => {
-    try {
-      const savedOrder = JSON.parse(
-        localStorage.getItem(COLUMN_ORDER_KEY) ?? "null",
-      );
-      if (isColumnOrder(savedOrder)) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing with localStorage, an external system, after mount
-        setColumnOrder(savedOrder);
-      }
-    } catch {
-      // ignore — localStorage unavailable or value corrupted
-    }
-    try {
-      const savedWidths = JSON.parse(
-        localStorage.getItem(COLUMN_WIDTHS_KEY) ?? "null",
-      );
-      if (savedWidths && typeof savedWidths === "object") {
-        setColumnWidths((prev) => ({ ...prev, ...savedWidths }));
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!resizingColumn) return;
-
-    function handleMove(e: MouseEvent) {
-      if (!resizeStart.current || !resizingColumn) return;
-      const delta = e.clientX - resizeStart.current.x;
-      const next = Math.max(MIN_COLUMN_WIDTH, resizeStart.current.width + delta);
-      setColumnWidths((prev) => ({ ...prev, [resizingColumn]: next }));
-    }
-    function handleUp() {
-      setResizingColumn(null);
-      resizeStart.current = null;
-      setColumnWidths((current) => {
-        try {
-          localStorage.setItem(COLUMN_WIDTHS_KEY, JSON.stringify(current));
-        } catch {
-          // ignore
-        }
-        return current;
-      });
-    }
-
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-    window.addEventListener("mousemove", handleMove);
-    window.addEventListener("mouseup", handleUp);
-    return () => {
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      window.removeEventListener("mousemove", handleMove);
-      window.removeEventListener("mouseup", handleUp);
-    };
-  }, [resizingColumn]);
-
-  function startResize(column: ColumnKey, startX: number) {
-    resizeStart.current = { x: startX, width: columnWidths[column] };
-    setResizingColumn(column);
-  }
-
-  function handleColumnDrop(target: ColumnKey) {
-    if (!draggedColumn || draggedColumn === target) {
-      setDraggedColumn(null);
-      return;
-    }
-    setColumnOrder((current) => {
-      const next = current.filter((c) => c !== draggedColumn);
-      const targetIndex = next.indexOf(target);
-      next.splice(targetIndex, 0, draggedColumn);
-      try {
-        localStorage.setItem(COLUMN_ORDER_KEY, JSON.stringify(next));
-      } catch {
-        // ignore
-      }
-      return next;
-    });
-    setDraggedColumn(null);
-  }
-
   const accountById = useMemo(
     () => new Map(accounts.map((a) => [a.id, a.name])),
     [accounts],
@@ -388,21 +293,22 @@ export function TransactionsTable({
     [categories],
   );
 
-  const effectiveTransactions = usePendingTransactions(transactions);
-
-  // Every distinct person who's logged a transaction in this list — backs
-  // the detail modal's "Created by" dropdown so reassigning attribution
-  // means picking from who's actually used this household's data, not
-  // typing an email by hand.
-  const knownCreators = useMemo(() => {
-    const byEmail = new Map<string, { id: string | null; email: string }>();
-    for (const t of transactions) {
-      if (t.created_by_email) {
-        byEmail.set(t.created_by_email, { id: t.created_by, email: t.created_by_email });
-      }
-    }
-    return Array.from(byEmail.values());
-  }, [transactions]);
+  // Edits from the detail panel, shown the instant it closes. Dropped as
+  // soon as the refreshed `transactions` arrive (which include the edit).
+  const [localEdits, setLocalEdits] = useState<Record<string, Partial<Transaction>>>({});
+  const [lastEditBase, setLastEditBase] = useState(transactions);
+  if (transactions !== lastEditBase) {
+    setLastEditBase(transactions);
+    if (Object.keys(localEdits).length > 0) setLocalEdits({});
+  }
+  const withPending = usePendingTransactions(transactions);
+  const effectiveTransactions = useMemo(
+    () =>
+      Object.keys(localEdits).length === 0
+        ? withPending
+        : withPending.map((t) => (localEdits[t.id] ? { ...t, ...localEdits[t.id] } : t)),
+    [withPending, localEdits],
+  );
 
   // Was a plain `.filter()` in the render body — a new array on every
   // render regardless of whether any of these actually changed, which also
@@ -495,6 +401,7 @@ export function TransactionsTable({
   }, [filtered, sortColumn, sortDirection]);
 
   async function handleDelete(t: Transaction) {
+    if (deletingIds.has(t.id)) return;
     setDeletingIds((current) => new Set(current).add(t.id));
     await deleteTransaction(t.id);
     showToast("Transaction deleted");
@@ -514,6 +421,33 @@ export function TransactionsTable({
       return next;
     });
     setUndoRow(null);
+  }
+
+  // Right-click menu for a row — replaces the old always-visible Delete
+  // column. Shared with the Overview's Recent Transactions card.
+  const contextMenu = useContextMenu();
+  const setLocalEdit = useCallback((id: string, patch: Partial<Transaction> | null) => {
+    setLocalEdits((prev) => {
+      const next = { ...prev };
+      if (patch) next[id] = { ...prev[id], ...patch };
+      else delete next[id];
+      return next;
+    });
+  }, []);
+  const quickActions = useTransactionQuickActions(setLocalEdit);
+
+  function rowMenuItems(t: Transaction): ContextMenuItem[] {
+    return transactionMenuItems(t, {
+      accountsById,
+      accounts,
+      categories,
+      isSplit: !!splitsByTransaction?.get(t.id)?.length,
+      isDeleting: deletingIds.has(t.id),
+      onOpen: () => openDetail(t.id),
+      onDelete: () => handleDelete(t),
+      selection: { selected: selectedIds.has(t.id), toggle: () => toggleSelect(t.id) },
+      actions: quickActions,
+    });
   }
 
   function toggleSelect(id: string) {
@@ -656,39 +590,32 @@ export function TransactionsTable({
           >
             Delete all
           </button>
-          <select
+          <Dropdown
+            variant="compact"
+            className="w-44"
             value=""
+            placeholder="Change account to…"
             disabled={bulkBusy}
-            onChange={(e) => handleBulkAccountChange(e.target.value)}
-            className="rounded-lg border border-border bg-surface px-2 py-1.5 text-xs text-text outline-none focus:border-accent disabled:opacity-50"
-          >
-            <option value="">Change account to…</option>
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
-          <input
-            type="date"
-            value={bulkDate}
-            disabled={bulkBusy}
-            onChange={(e) => handleBulkDateChange(e.target.value)}
-            className="rounded-lg border border-border bg-surface px-2 py-1.5 text-xs text-text outline-none focus:border-accent disabled:opacity-50"
+            onChange={handleBulkAccountChange}
+            options={accountChoices(accounts)}
           />
-          <select
-            value=""
+          <DatePicker
+            variant="compact"
+            className="w-40"
+            value={bulkDate}
+            placeholder="Change date to…"
             disabled={bulkBusy}
-            onChange={(e) => handleBulkCategoryChange(e.target.value)}
-            className="rounded-lg border border-border bg-surface px-2 py-1.5 text-xs text-text outline-none focus:border-accent disabled:opacity-50"
-          >
-            <option value="">Change category to…</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+            onChange={handleBulkDateChange}
+          />
+          <Dropdown
+            variant="compact"
+            className="w-44"
+            value=""
+            placeholder="Change category to…"
+            disabled={bulkBusy}
+            onChange={handleBulkCategoryChange}
+            options={categoryChoices(categories)}
+          />
           <button
             type="button"
             onClick={() => setSelectedIds(new Set())}
@@ -743,7 +670,12 @@ export function TransactionsTable({
       {/* Mobile: swipeable cards. Desktop: full table. A table row can't be
           reliably transform-animated for swipe gestures across browsers, so
           small screens get their own list instead of a squeezed table. */}
-      <div key={kindFilter} className="animate-fade-in-up space-y-2 sm:hidden">
+      {/* Distinct keys: these two are siblings, and sharing `kindFilter` as a
+          key made React unable to tell them apart, so it threw away and
+          rebuilt the desktop table (replaying its fade-in) on every re-render
+          — opening a row, sorting, selecting. Keying on the tab still
+          replays the entrance when the Income/Expenses/Transfers tab changes. */}
+      <div key={`mobile-${kindFilter}`} className="animate-fade-in-up space-y-2 sm:hidden">
         {sortedFiltered.map((t, i) => (
           <MobileTransactionCard
             key={t.id}
@@ -772,8 +704,8 @@ export function TransactionsTable({
       )}
 
       <div
-        key={kindFilter}
-        className="animate-fade-in-up hidden overflow-x-auto rounded-xl border border-border bg-surface shadow-card sm:block"
+        key={`desktop-${kindFilter}`}
+        className="animate-fade-in-up card-flush hidden overflow-x-auto sm:block"
       >
         <table className="w-full text-left [table-layout:fixed]">
           <thead>
@@ -790,18 +722,14 @@ export function TransactionsTable({
                   className="h-4 w-4 accent-[var(--accent)]"
                 />
               </th>
-              {columnOrder.map((col) => (
+              {TABLE_COLUMNS.map((col) => (
                 <th
                   key={col}
-                  draggable
-                  onDragStart={() => setDraggedColumn(col)}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={() => handleColumnDrop(col)}
-                  style={{ width: columnWidths[col] }}
-                  className={`sticky top-0 z-10 cursor-grab bg-bg px-4 py-2 text-xs font-medium text-text-muted select-none active:cursor-grabbing ${
+                  style={{ width: COLUMN_WIDTHS[col] }}
+                  className={`sticky top-0 z-10 bg-bg px-4 py-2 text-xs font-medium text-text-muted select-none ${
                     col === "amount" ? "text-right" : ""
-                  } ${draggedColumn === col ? "opacity-40" : ""}`}
-                  title={SORTABLE_COLUMNS.has(col) ? "Click to sort, drag to reorder" : "Drag to reorder"}
+                  }`}
+                  title={SORTABLE_COLUMNS.has(col) ? "Click to sort" : undefined}
                 >
                   <span
                     className={`relative flex items-center gap-1 ${
@@ -827,8 +755,6 @@ export function TransactionsTable({
                     {FILTERABLE_COLUMNS.has(col) && (
                       <button
                         type="button"
-                        draggable={false}
-                        onDragStart={(e) => e.preventDefault()}
                         onClick={(e) => {
                           e.stopPropagation();
                           setOpenFilterCol((current) => (current === col ? null : col));
@@ -848,32 +774,19 @@ export function TransactionsTable({
                         </svg>
                       </button>
                     )}
-                    <span
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        startResize(col, e.clientX);
-                      }}
-                      className="absolute inset-y-0 -right-4 z-20 w-2 cursor-col-resize touch-none hover:bg-accent-border active:bg-accent"
-                    />
                     {openFilterCol === col && (
                       <div
                         onClick={(e) => e.stopPropagation()}
                         className="animate-modal-panel absolute top-full left-0 z-30 mt-1 w-48 cursor-auto rounded-lg border border-border bg-surface p-2 font-normal normal-case shadow-modal"
                       >
                         {col === "category" && (
-                          <select
+                          <Dropdown
+                            variant="compact"
+                            className="w-full"
                             value={categoryFilter}
-                            onChange={(e) => setCategoryFilter(e.target.value)}
-                            className="w-full rounded border border-border bg-bg px-1.5 py-1 text-xs text-text outline-none focus:border-accent"
-                          >
-                            <option value="">All</option>
-                            {categories.map((c) => (
-                              <option key={c.id} value={c.id}>
-                                {c.name}
-                              </option>
-                            ))}
-                          </select>
+                            onChange={setCategoryFilter}
+                            options={categoryChoices(categories, "All")}
+                          />
                         )}
                         {col === "amount" && (
                           <div className="flex flex-col gap-1">
@@ -907,7 +820,6 @@ export function TransactionsTable({
                   </span>
                 </th>
               ))}
-              <th style={{ width: 150 }} className="sticky top-0 z-10 bg-bg px-4 py-2" />
             </tr>
           </thead>
           <tbody>
@@ -922,7 +834,8 @@ export function TransactionsTable({
                       else rowRefs.current.delete(t.id);
                     }}
                     onClick={() => openDetail(t.id)}
-                    className={`h-14 cursor-pointer overflow-hidden border-b border-border transition-[opacity,background-color] duration-300 last:border-b-0 hover:bg-bg even:bg-bg/40 ${
+                    onContextMenu={(e) => contextMenu.open(e, rowMenuItems(t))}
+                    className={`h-16 cursor-pointer overflow-hidden border-b border-border transition-[opacity,background-color] duration-300 last:border-b-0 hover:bg-bg even:bg-bg/40 ${
                       deletingIds.has(t.id) ? "opacity-0" : "opacity-100"
                     } ${isPendingTransaction(t) ? "animate-pulse pointer-events-none opacity-60" : ""} ${newIds.has(t.id) ? "animate-row-highlight" : ""} ${
                       selectedIds.has(t.id) ? "bg-accent-soft/60" : ""
@@ -937,10 +850,10 @@ export function TransactionsTable({
                         className="h-4 w-4 accent-[var(--accent)]"
                       />
                     </td>
-                    {columnOrder.map((col) => (
+                    {TABLE_COLUMNS.map((col) => (
                       <td
                         key={col}
-                        style={{ width: columnWidths[col] }}
+                        style={{ width: COLUMN_WIDTHS[col] }}
                         className={
                           col === "amount"
                             ? "overflow-hidden px-4 py-3 text-right text-sm font-medium"
@@ -1036,22 +949,13 @@ export function TransactionsTable({
                         )}
                       </td>
                     ))}
-                    <td className="px-4 py-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(t)}
-                        className="inline-block py-2 text-xs text-text-faint transition-colors hover:text-negative"
-                      >
-                        Delete
-                      </button>
-                    </td>
                   </tr>
                 </Fragment>
                 );
               })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-6 py-4">
+                <td colSpan={8} className="px-6 py-4">
                   <EmptyState
                     message={
                       transactions.length === 0
@@ -1090,6 +994,7 @@ export function TransactionsTable({
         </table>
       </div>
 
+      {contextMenu.menu}
       {editingId &&
         (() => {
           const detailTransaction = effectiveTransactions.find((t) => t.id === editingId);
@@ -1099,7 +1004,7 @@ export function TransactionsTable({
               transaction={detailTransaction}
               accounts={accounts}
               categories={categories}
-              knownCreators={knownCreators}
+              splits={splitsByTransaction?.get(detailTransaction.id)}
               accountName={
                 detailTransaction.account_id
                   ? (accountById.get(detailTransaction.account_id) ?? "—")
@@ -1112,6 +1017,7 @@ export function TransactionsTable({
               }
               closing={detailClosing}
               onClose={closeDetail}
+              onSave={(patch) => setLocalEdits((prev) => ({ ...prev, [detailTransaction.id]: patch }))}
             />
           );
         })()}

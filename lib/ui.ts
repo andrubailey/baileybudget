@@ -20,3 +20,13 @@ export const COMPACT_FIELD_CLASS =
 // so it doesn't stretch to fill its <td>.
 export const COMPACT_NUMERIC_CELL_CLASS =
   "tabular w-24 rounded-md border border-border bg-bg px-2 py-1 text-sm text-text outline-none transition-colors focus:border-accent";
+
+// "Boxed field" — a label sitting above its value inside one shared bordered
+// row, used by the Transaction and Account side panels (see PanelField).
+// One border around label+value together, instead of a separate label above
+// a separately-bordered input like FIELD_CLASS.
+export const PANEL_FIELD_WRAPPER_CLASS =
+  "block rounded-lg border border-border bg-surface px-3 py-2 transition-colors focus-within:border-accent";
+export const PANEL_FIELD_LABEL_CLASS = "block text-xs font-medium text-text-muted";
+export const PANEL_FIELD_INPUT_CLASS =
+  "mt-0.5 w-full border-0 bg-transparent p-0 text-sm text-text outline-none";

@@ -130,13 +130,17 @@
   --tile-3-text: var(--text);
 }
 
-/* Dark mode — follows the OS/browser preference (no in-app toggle yet).
-   Only the main-content surface/text tokens change; the sidebar's "hero"
-   tokens are already dark in both themes, and small colored icon/status
-   chips (inline hex in components) intentionally stay the same bright
-   pastel-on-tint treatment in both themes rather than being redefined here. */
+/* Dark mode — follows the OS/browser preference by default, overridable by
+   an explicit choice in Settings (see ThemeToggle, which sets data-theme on
+   <html> and persists it to localStorage; a small inline script in
+   app/layout.tsx applies it before first paint to avoid a flash of the
+   wrong theme). Only the main-content surface/text tokens change; the
+   sidebar's "hero" tokens are already dark in both themes, and small
+   colored icon/status chips (inline hex in components) intentionally stay
+   the same bright pastel-on-tint treatment in both themes rather than
+   being redefined here. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #0f1614;
     --surface: #182420;
     --border: #263631;
@@ -147,6 +151,17 @@
     --accent-soft: rgba(154, 230, 0, 0.14);
     --accent-border: rgba(154, 230, 0, 0.35);
   }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1614;
+  --surface: #182420;
+  --border: #263631;
+  --text: #f3f5f2;
+  --text-2: #cbd5cf;
+  --text-muted: #93a49b;
+  --text-faint: #718377;
+  --accent-soft: rgba(154, 230, 0, 0.14);
+  --accent-border: rgba(154, 230, 0, 0.35);
 }
 
 @theme inline {
@@ -426,6 +441,22 @@ body {
   outline-offset: 2px;
 }
 
+/* Text fields across the app (search/chat bar, every form input, table
+   cell editors, ...) show focus their own way — turning the field's own
+   border (or its wrapper's, for the chat bar) accent-colored instead —
+   and opt out of the generic ring above with Tailwind's `outline-none`.
+   That utility can't actually win on its own, though: it lives in
+   Tailwind's utilities layer, and any unlayered rule (the bare
+   :focus-visible above included) always beats a layered one regardless of
+   specificity or source order. Without this, every one of those fields
+   got a square 2px outline on top of (or crossing the rounded corners of)
+   its own border-color focus state — looking like a rendering glitch, not
+   a focus ring. This targets every element already carrying `outline-none`
+   as a real fix, in plain CSS so it can actually win. */
+.outline-none:focus-visible {
+  outline: none;
+}
+
 /* Hides the native up/down spinner on number inputs styled with their own
    `$`-prefixed layout — the browser spinner clips into the prefix and looks
    like a stray control next to the app's otherwise custom inputs. */
@@ -591,7 +622,58 @@ body {
   /* Short enough that page-to-page navigation (PageTransition remounts this
      on every route change) reads as snappy, not sluggish, while still
      giving a soft entrance instead of a hard cut. */
-  animation: fade-in-up 180ms ease-out backwards;
+  animation: fade-in-up 120ms ease-out backwards;
+}
+
+/* Page transitions — see PageTransition. Browser View Transitions: the old
+   page and the new one animate together as snapshots. Forward in the menu
+   slides content left (new page arrives from the right); back slides it
+   right. The old page leaves quickly so it doesn't compete with the new one. */
+::view-transition {
+  /* Keep clicks during the animation reaching the live page. */
+  pointer-events: none;
+}
+/* No slide — every navigation is the same short crossfade. The server
+   answers in ~40ms, so anything longer than a blink reads as waiting.
+   The nav-forward/nav-back transition types the links still set just
+   resolve to the same fade. */
+::view-transition-old(.nav-forward),
+::view-transition-old(.nav-back) {
+  animation: 80ms ease-in both vt-fade reverse;
+}
+::view-transition-new(.nav-forward),
+::view-transition-new(.nav-back) {
+  animation: 120ms ease-out both vt-fade;
+}
+::view-transition-old(.page-fade) {
+  animation: 80ms ease-in both vt-fade reverse;
+}
+::view-transition-new(.page-fade) {
+  animation: 120ms ease-out both vt-fade;
+}
+@keyframes vt-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes vt-slide {
+  from {
+    translate: var(--slide-offset);
+  }
+  to {
+    translate: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(*),
+  ::view-transition-new(*),
+  ::view-transition-group(*) {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+  }
 }
 
 /* Confetti burst — see Celebration component. Each piece drifts/rotates by
@@ -627,6 +709,28 @@ body {
 .animate-bar-grow-x {
   transform-origin: left;
   animation: bar-grow-in-x 700ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+/* SegmentedProgress's individual pills, not a continuous bar — each one is
+   only ~4px wide and fully rounded, so animating it with bar-grow-in-x's
+   scaleX(0)->scaleX(1) barely reads as "growing" (there's almost no width
+   to grow across) and, worse, painting a `transform` on such a tiny rounded
+   shape leaves visibly uneven anti-aliasing on the rounded corners while
+   the animation is staggering in — different pills mid-flight at any given
+   moment end up looking like different widths even though their layout box
+   is identical. A plain opacity fade sidesteps this entirely: no transform,
+   no box-level change to anti-alias inconsistently, same left-to-right
+   sweep via the same per-pill animationDelay stagger. */
+@keyframes pill-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-pill-fade {
+  animation: pill-fade-in 300ms ease-out backwards;
 }
 
 /* Draws an SVG line/area path in instead of it appearing fully rendered —
@@ -698,6 +802,7 @@ body {
   .animate-bar-grow,
   .animate-bar-grow-top,
   .animate-bar-grow-x,
+  .animate-pill-fade,
   .animate-draw-line,
   .animate-donut-slice,
   .animate-fade-in-up,

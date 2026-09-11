@@ -9,7 +9,19 @@ import { CategoryDetailPanel } from "@/app/(app)/category-detail-panel";
 import { EmptyState } from "@/app/(app)/empty-state";
 import { useToast } from "@/app/(app)/toast";
 import { SegmentedProgress } from "@/app/(app)/segmented-progress";
+import { useContextMenu } from "@/app/(app)/context-menu";
+import { categoryMenuItems, useCategoryQuickActions } from "@/app/(app)/category-menu";
 import type { CategoryProgress } from "@/lib/queries";
+
+// Straight-line projection: whatever pace spend has run at through today
+// carried across the rest of the period. Deliberately simple (no weighting
+// for "rent posts on the 1st" front-loading, say) — the point is a
+// ballpark of where this category lands if nothing changes, not a forecast
+// precise enough to argue with.
+function projectedTotal(actual: number, pace: { daysElapsed: number; daysTotal: number }): number {
+  if (pace.daysElapsed <= 0) return actual;
+  return (actual / pace.daysElapsed) * pace.daysTotal;
+}
 
 // Small checkmark that fades in on a successful save and back out a moment
 // later — the planned-amount edit otherwise had zero acknowledgment beyond
@@ -35,11 +47,14 @@ function SavedCheck({ show }: { show: boolean }) {
   );
 }
 
+export type BudgetPace = { daysElapsed: number; daysTotal: number };
+
 export function BudgetCategoriesCard({
   categoryProgress,
   editablePeriodId,
   rangeIsSinglePeriod,
   limit,
+  pace,
 }: {
   categoryProgress: CategoryProgress[];
   editablePeriodId: string | null;
@@ -48,9 +63,41 @@ export function BudgetCategoriesCard({
   // card to match a sibling panel's height instead of listing every
   // budgeted category.
   limit?: number;
+  // Set only when the visible period is the one actually in progress right
+  // now — lets each row project "at this rate you'll land at $X" instead of
+  // just showing actual-vs-planned with no sense of how much of the month
+  // is even over yet.
+  pace?: BudgetPace | null;
 }) {
   // Which category's detail panel is open, if any.
   const [detailId, setDetailId] = useState<string | null>(null);
+
+  // Right-click menu, shared with the Spending breakdown's category tables.
+  const contextMenu = useContextMenu();
+  const categoryActions = useCategoryQuickActions();
+  function openMenu(e: React.MouseEvent, c: CategoryProgress) {
+    contextMenu.open(
+      e,
+      categoryMenuItems(c, {
+        periodId: editablePeriodId,
+        onOpen: () => setDetailId(c.id),
+        // Jump straight into this row's amount field (desktop table or
+        // phone card, whichever is showing); fall back to the panel.
+        onSetBudget: () => {
+          const input = [...document.querySelectorAll<HTMLInputElement>(`[data-planned-input="${c.id}"]`)].find(
+            (el) => el.offsetParent !== null,
+          );
+          if (input) {
+            input.focus();
+            input.select();
+          } else {
+            setDetailId(c.id);
+          }
+        },
+        actions: categoryActions,
+      }),
+    );
+  }
 
   // The full month's budget: every category that actually has money
   // attached (planned or spent) rather than every category the household
@@ -69,7 +116,7 @@ export function BudgetCategoriesCard({
 
   return (
     <div className="card flex min-w-0 flex-col overflow-hidden">
-      <div className="mb-1 flex items-center justify-between gap-3">
+      <div className="mb-4 flex items-center justify-between gap-3">
         <h2 className="text-heading text-text">Budget</h2>
         <Link
           href="/transactions?view=categories"
@@ -90,7 +137,7 @@ export function BudgetCategoriesCard({
           compact
           action={
             <Link
-              href="/budgets"
+              href="/spending/breakdown?edit=1"
               className="text-xs font-medium text-accent underline underline-offset-2"
             >
               Set up your budget
@@ -107,7 +154,9 @@ export function BudgetCategoriesCard({
                 category={c}
                 editablePeriodId={editablePeriodId}
                 index={i}
+                pace={pace}
                 onOpen={() => setDetailId(c.id)}
+                onContextMenu={(e) => openMenu(e, c)}
               />
             ))}
             <div className="flex items-center justify-between rounded-lg bg-bg px-3 py-2 text-xs font-semibold text-text">
@@ -149,7 +198,9 @@ export function BudgetCategoriesCard({
                     category={c}
                     editablePeriodId={editablePeriodId}
                     index={i}
+                    pace={pace}
                     onOpen={() => setDetailId(c.id)}
+                    onContextMenu={(e) => openMenu(e, c)}
                   />
                 ))}
               </tbody>
@@ -172,6 +223,7 @@ export function BudgetCategoriesCard({
         </>
       )}
 
+      {contextMenu.menu}
       {detailCategory && (
         <CategoryDetailPanel
           key={detailCategory.id}
@@ -188,12 +240,16 @@ function MobileCategoryCard({
   category: c,
   editablePeriodId,
   index = 0,
+  pace,
   onOpen,
+  onContextMenu,
 }: {
   category: CategoryProgress;
   editablePeriodId: string | null;
   index?: number;
+  pace?: { daysElapsed: number; daysTotal: number } | null;
   onOpen: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }) {
   const [plannedInput, setPlannedInput] = useState(String(c.planned));
   // A save elsewhere (e.g. the detail panel) revalidates and hands this a
@@ -206,13 +262,9 @@ function MobileCategoryCard({
   const [, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
   const showToast = useToast();
-  const pct =
-    c.planned > 0
-      ? Math.min(100, (c.actual / c.planned) * 100)
-      : c.actual > 0
-        ? 100
-        : 0;
   const isUnbudgeted = c.planned === 0 && c.actual === 0;
+  const projected =
+    pace && c.planned > 0 && !isUnbudgeted ? projectedTotal(c.actual, pace) : null;
 
   useEffect(() => {
     if (!saved) return;
@@ -239,6 +291,7 @@ function MobileCategoryCard({
       role="button"
       tabIndex={0}
       onClick={onOpen}
+      onContextMenu={onContextMenu}
       onKeyDown={(e) => {
         if (e.target !== e.currentTarget) return;
         if (e.key === "Enter" || e.key === " ") {
@@ -246,7 +299,7 @@ function MobileCategoryCard({
           onOpen();
         }
       }}
-      style={{ animationDelay: `${index * 35}ms` }}
+      style={{ animationDelay: `${index * 12}ms` }}
       className={`animate-fade-in-up block cursor-pointer rounded-xl border border-border bg-surface p-3 shadow-card transition-colors ${
         isUnbudgeted ? "opacity-60" : ""
       }`}
@@ -260,35 +313,54 @@ function MobileCategoryCard({
           className="shrink-0 text-sm font-semibold"
         />
       </div>
-      <div className="mt-2 flex items-center gap-2">
-        <SegmentedProgress pct={pct} overBudget={c.overBudget} className="min-w-0 flex-1" />
-        {editablePeriodId ? (
-          <label
-            className="relative shrink-0"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <span className="pointer-events-none absolute top-1/2 left-1.5 -translate-y-1/2 text-xs text-text-faint">
-              $
-            </span>
-            <input
-              type="number"
-              step="0.01"
-              value={plannedInput}
-              onChange={(e) => setPlannedInput(e.target.value)}
-              onBlur={save}
-              onKeyDown={(e) => {
-                e.stopPropagation();
-                if (e.key === "Enter") e.currentTarget.blur();
-              }}
-              className="tabular no-spinner w-16 rounded-md border border-border bg-bg py-0.5 pr-1.5 pl-3.5 text-right text-xs text-text outline-none focus:border-accent"
-            />
-          </label>
-        ) : null}
+      {/* No progress bar here — Planned vs. Actual side by side reads
+          faster on a phone than a bar you have to interpret, and the
+          Remaining figure above already carries the over-budget signal. */}
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-xs text-text-faint">
+          Planned
+          {editablePeriodId ? (
+            <label className="relative" onClick={(e) => e.stopPropagation()}>
+              <span className="pointer-events-none absolute top-1/2 left-1.5 -translate-y-1/2 text-xs text-text-faint">
+                $
+              </span>
+              <input
+                data-planned-input={c.id}
+                type="number"
+                step="0.01"
+                value={plannedInput}
+                onChange={(e) => setPlannedInput(e.target.value)}
+                onBlur={save}
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === "Enter") e.currentTarget.blur();
+                }}
+                className="tabular no-spinner w-16 rounded-md border border-border bg-bg py-0.5 pr-1.5 pl-3.5 text-right text-xs text-text outline-none focus:border-accent"
+              />
+            </label>
+          ) : (
+            <Money amount={c.planned} className="text-xs font-medium text-text" />
+          )}
+        </span>
+        <span className="flex shrink-0 items-center gap-1.5 text-xs text-text-faint">
+          Actual
+          <Money
+            amount={c.actual}
+            tone={c.overBudget ? "negative" : "neutral"}
+            className="text-xs font-medium"
+          />
+        </span>
         {editablePeriodId && <SavedCheck show={saved} />}
-        {!editablePeriodId && (
-          <Money amount={c.planned} className="shrink-0 text-xs text-text-faint" />
-        )}
       </div>
+      {projected !== null && (
+        <p
+          className={`mt-1.5 text-xs ${
+            projected > c.planned ? "text-negative" : "text-text-faint"
+          }`}
+        >
+          On pace for <Money amount={projected} className="text-xs font-medium" />
+        </p>
+      )}
     </div>
   );
 }
@@ -297,12 +369,16 @@ function CategoryRow({
   category: c,
   editablePeriodId,
   index = 0,
+  pace,
   onOpen,
+  onContextMenu,
 }: {
   category: CategoryProgress;
   editablePeriodId: string | null;
   index?: number;
+  pace?: { daysElapsed: number; daysTotal: number } | null;
   onOpen: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }) {
   const [plannedInput, setPlannedInput] = useState(String(c.planned));
   // A save elsewhere (e.g. the detail panel) revalidates and hands this a
@@ -321,6 +397,9 @@ function CategoryRow({
       : c.actual > 0
         ? 100
         : 0;
+  const isUnbudgeted = c.planned === 0 && c.actual === 0;
+  const projected =
+    pace && c.planned > 0 && !isUnbudgeted ? projectedTotal(c.actual, pace) : null;
 
   useEffect(() => {
     if (!saved) return;
@@ -342,11 +421,10 @@ function CategoryRow({
     });
   }
 
-  const isUnbudgeted = c.planned === 0 && c.actual === 0;
-
   return (
     <tr
       onClick={onOpen}
+      onContextMenu={onContextMenu}
       onKeyDown={(e) => {
         // Only react when the row itself is focused, not a descendant
         // (the planned-amount input already handles its own Enter key) —
@@ -361,7 +439,7 @@ function CategoryRow({
       role="button"
       tabIndex={0}
       aria-label={`${c.name} details`}
-      style={{ animationDelay: `${index * 35}ms` }}
+      style={{ animationDelay: `${index * 12}ms` }}
       className={`animate-fade-in-up cursor-pointer border-b border-border transition-colors last:border-b-0 hover:bg-bg even:bg-bg/40 ${
         isUnbudgeted ? "opacity-60" : ""
       }`}
@@ -382,6 +460,7 @@ function CategoryRow({
               $
             </span>
             <input
+              data-planned-input={c.id}
               type="number"
               step="0.01"
               value={plannedInput}
@@ -405,20 +484,25 @@ function CategoryRow({
       </td>
       <td className="py-3 pr-4 pl-8">
         <div className="flex items-center justify-end gap-3">
-          {/* Fixed width that ends exactly on a whole pill (10 pills × 4px +
-              9 gaps × 3px = 67px) and still fits the Progress column at the
-              table's 640px minimum — a flexible bar got squeezed into
-              whatever was left and clipped mid-pill. */}
-          <div className="w-[67px] shrink-0">
-            <SegmentedProgress pct={pct} overBudget={c.overBudget} />
+          <SegmentedProgress pct={pct} overBudget={c.overBudget} className="min-w-0 flex-1" />
+          <div className="w-24 shrink-0 text-right">
+            <span
+              className={`text-xs font-medium whitespace-nowrap ${
+                c.overBudget ? "text-negative" : "text-text-muted"
+              }`}
+            >
+              <Money amount={c.remaining} /> {c.remaining >= 0 ? "left" : "over"}
+            </span>
+            {projected !== null && (
+              <p
+                className={`text-[11px] whitespace-nowrap ${
+                  projected > c.planned ? "text-negative" : "text-text-faint"
+                }`}
+              >
+                Pace: <Money amount={projected} className="text-[11px]" />
+              </p>
+            )}
           </div>
-          <span
-            className={`w-20 shrink-0 text-right text-xs font-medium whitespace-nowrap ${
-              c.overBudget ? "text-negative" : "text-text-muted"
-            }`}
-          >
-            <Money amount={c.remaining} /> {c.remaining >= 0 ? "left" : "over"}
-          </span>
         </div>
       </td>
     </tr>

@@ -31,7 +31,7 @@ export function ApiTokensSection({ tokens }: { tokens: ApiTokenSummary[] }) {
   }
 
   return (
-    <div className="space-y-6 rounded-xl border border-border bg-surface p-6 shadow-card">
+    <div className="card space-y-6">
       <div>
         <h2 className="text-heading text-text">iOS Shortcuts access</h2>
         <p className="mt-1 text-sm text-text-muted">

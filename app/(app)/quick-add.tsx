@@ -1,5 +1,10 @@
 "use client";
 
+import { DatePicker } from "@/app/(app)/date-picker";
+
+import { Dropdown } from "@/app/(app)/dropdown";
+import { accountChoices } from "@/app/(app)/dropdown-options";
+
 import { useEffect, useRef, useState } from "react";
 import {
   checkDuplicateTransaction,
@@ -287,9 +292,14 @@ export function QuickAddButton({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="animate-modal-panel max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-surface p-6 shadow-modal"
+            // dvh (not vh) so this actually shrinks when the on-screen
+            // keyboard opens — vh stays pinned to the full, un-keyboarded
+            // screen height on iOS Safari, which let this panel keep
+            // centering/sizing itself against space that wasn't visible
+            // anymore and pushed the Save button below the keyboard.
+            className="animate-modal-panel max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-surface shadow-modal"
           >
-            <div className="mb-4 flex items-start justify-between">
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
               <h2 className="text-lg font-semibold text-text">{title}</h2>
               <button
                 type="button"
@@ -301,7 +311,7 @@ export function QuickAddButton({
               </button>
             </div>
 
-            <form action={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <form action={handleSubmit} className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2">
               <input type="hidden" name="period_id" value={periodId} />
               <input type="hidden" name="kind" value={effectiveKind} />
 
@@ -331,35 +341,22 @@ export function QuickAddButton({
 
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-text">Date</label>
-                <input
-                  type="date"
-                  name="txn_date"
-                  required
-                  defaultValue={new Date().toISOString().slice(0, 10)}
-                  className={fieldClass}
-                />
+                <DatePicker name="txn_date" required defaultValue={new Date().toISOString().slice(0, 10)} />
               </div>
 
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-text">Account</label>
-                <select
+                <Dropdown
                   name="account_id"
                   value={accountId}
-                  onChange={(e) => {
-                    setAccountId(e.target.value);
-                    if (e.target.value && accounts.find((a) => a.id === e.target.value)?.is_debt) {
+                  onChange={(next) => {
+                    setAccountId(next);
+                    if (next && accounts.find((a) => a.id === next)?.is_debt) {
                       setSplit(false);
                     }
                   }}
-                  className={fieldClass}
-                >
-                  <option value="">—</option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
+                  options={accountChoices(accounts, "—")}
+                />
                 {isDebtAccount && (
                   <p className="text-xs text-text-faint">
                     This is a debt account — this will be logged as a {actionLabel}.
@@ -514,7 +511,10 @@ export function QuickAddButton({
                 </label>
               </div>
 
-              <div className="flex items-center gap-3 sm:col-span-2">
+              {/* Sticky, not just the last grid item — stays reachable at
+                  the bottom of the scrollable panel instead of scrolling
+                  away under the keyboard along with the rest of the form. */}
+              <div className="sticky bottom-0 -mx-5 -mb-5 flex items-center gap-3 border-t border-border bg-surface px-5 py-4 sm:col-span-2">
                 <SubmitButton pendingText="Saving…">
                   Add {actionLabel}
                 </SubmitButton>

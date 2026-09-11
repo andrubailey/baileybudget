@@ -8,6 +8,7 @@ import { PresenceIndicator } from "@/app/(app)/presence-indicator";
 import { ProfileModal } from "@/app/(app)/profile-modal";
 import { NewTransactionButton } from "@/app/(app)/new-transaction-button";
 import { getAvatarColors } from "@/lib/avatar-colors";
+import { CooliconPaths } from "@/app/(app)/coolicon";
 
 function initialsFor(name: string) {
   return name.trim()[0]?.toUpperCase() ?? "?";
@@ -17,90 +18,32 @@ const PRIMARY_LINKS = [
   {
     href: "/",
     label: "Overview",
-    icon: (
-      <path
-        d="M4 12h6V4H4v8Zm0 8h6v-6H4v6Zm10 0h6v-8h-6v8Zm0-16v6h6V4h-6Z"
-        stroke="currentColor"
-        strokeWidth={1.6}
-        strokeLinejoin="round"
-      />
-    ),
+    icon: <CooliconPaths name="Custom_Dashboard" />,
   },
   {
     href: "/accounts",
     label: "Accounts",
-    icon: (
-      <path
-        d="M3 10h18M6 6h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z"
-        stroke="currentColor"
-        strokeWidth={1.6}
-        strokeLinejoin="round"
-      />
-    ),
+    icon: <CooliconPaths name="Custom_Building" />,
   },
   {
-    href: "/transactions",
-    label: "Transactions",
-    icon: (
-      <path
-        d="M7 7h13M7 7l3-3M7 7l3 3M17 17H4M17 17l-3 3M17 17l-3-3"
-        stroke="currentColor"
-        strokeWidth={1.6}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    ),
-  },
-  {
-    href: "/budgets",
-    label: "Budget",
-    icon: (
-      <path
-        d="M4 4h16v16H4V4Zm0 6h16M9 4v16"
-        stroke="currentColor"
-        strokeWidth={1.6}
-        strokeLinejoin="round"
-      />
-    ),
-  },
-  {
-    href: "/goals",
-    label: "Goals",
-    icon: (
-      <path
-        d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-4a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0-4a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"
-        stroke="currentColor"
-        strokeWidth={1.6}
-        strokeLinejoin="round"
-      />
-    ),
-  },
-  {
-    href: "/reports",
-    label: "Reports",
-    icon: (
-      <path
-        d="M4 19V5m5 14V9m5 10V13m5 6V7"
-        stroke="currentColor"
-        strokeWidth={1.6}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    ),
-  },
-  {
-    href: "/settings",
-    label: "Settings",
-    icon: (
-      <path
-        d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm7.4-3a7.4 7.4 0 0 1-.1 1.2l2 1.6-2 3.4-2.4-1a7.4 7.4 0 0 1-2 1.2l-.4 2.6h-4l-.4-2.6a7.4 7.4 0 0 1-2-1.2l-2.4 1-2-3.4 2-1.6a7.4 7.4 0 0 1 0-2.4l-2-1.6 2-3.4 2.4 1a7.4 7.4 0 0 1 2-1.2L9.6 3h4l.4 2.6a7.4 7.4 0 0 1 2 1.2l2.4-1 2 3.4-2 1.6c.1.4.1.8.1 1.2Z"
-        stroke="currentColor"
-        strokeWidth={1.3}
-        strokeLinejoin="round"
-      />
-    ),
+    href: "/spending",
+    label: "Spending",
+    icon: <CooliconPaths name="Credit_Card_01" />,
   },
 ];
+
+// The Spending item covers all of its tabs — the overview at /spending, the
+// breakdown & budget view at /spending/breakdown (which replaced the old
+// standalone Budget page), and the full table at /transactions.
+function isActiveLink(href: string, pathname: string) {
+  if (href === "/") return pathname === "/";
+  if (href === "/spending") {
+    return (
+      pathname.startsWith("/spending") || pathname.startsWith("/transactions")
+    );
+  }
+  return pathname.startsWith(href);
+}
 
 export const NAV_GROUPS: {
   label: string | null;
@@ -133,38 +76,17 @@ export const MOBILE_LINKS = [
   {
     href: "/add",
     label: "Add",
-    icon: (
-      <path
-        d="M12 5v14M5 12h14"
-        stroke="currentColor"
-        strokeWidth={1.8}
-        strokeLinecap="round"
-      />
-    ),
+    icon: <CooliconPaths name="Add_Plus_Circle" />,
   },
   {
     href: "/budget",
     label: "Budget",
-    icon: (
-      <path
-        d="M4 4h16v16H4V4Zm0 6h16M9 4v16"
-        stroke="currentColor"
-        strokeWidth={1.6}
-        strokeLinejoin="round"
-      />
-    ),
+    icon: <CooliconPaths name="Chart_Pie" />,
   },
   {
     href: "/balances",
     label: "Balances",
-    icon: (
-      <path
-        d="M3 10h18M6 6h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z"
-        stroke="currentColor"
-        strokeWidth={1.6}
-        strokeLinejoin="round"
-      />
-    ),
+    icon: <CooliconPaths name="Credit_Card_01" />,
   },
 ];
 
@@ -260,15 +182,23 @@ export function Sidebar({
   // Active-page highlight slides between dock buttons instead of just
   // swapping instantly — measured off the actual rendered buttons.
   const linkRefs = useRef(new Map<string, HTMLAnchorElement>());
-  const [pill, setPill] = useState<{ left: number; width: number } | null>(null);
+  const [pill, setPill] = useState<{ left: number; width: number } | null>(
+    null,
+  );
 
   useEffect(() => {
     const activeLink = PRIMARY_LINKS.find((link) =>
-      link.href === "/" ? pathname === "/" : pathname.startsWith(link.href),
+      isActiveLink(link.href, pathname),
     );
     const el = activeLink ? linkRefs.current.get(activeLink.href) : undefined;
     setPill(el ? { left: el.offsetLeft, width: el.offsetWidth } : null);
   }, [pathname]);
+
+  // Which dock item is current, so each link can tag its navigation as
+  // forward or back for the page slide (see PageTransition).
+  const activeIndex = PRIMARY_LINKS.findIndex((link) =>
+    isActiveLink(link.href, pathname),
+  );
 
   const avatar = userEmail
     ? getAvatarColors(userEmail)
@@ -289,8 +219,7 @@ export function Sidebar({
             />
           )}
           {PRIMARY_LINKS.map((link, i) => {
-            const active =
-              link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
+            const active = isActiveLink(link.href, pathname);
             const count = counts?.[link.href] ?? 0;
             return (
               <Link
@@ -300,13 +229,27 @@ export function Sidebar({
                   else linkRefs.current.delete(link.href);
                 }}
                 href={link.href}
+                prefetch={true}
+                transitionTypes={
+                  activeIndex === -1 || activeIndex === i
+                    ? undefined
+                    : [i > activeIndex ? "nav-forward" : "nav-back"]
+                }
                 aria-label={link.label}
                 aria-current={active ? "page" : undefined}
                 className={`group relative z-10 flex size-10 items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-accent-bright/60 focus-visible:outline-none ${
-                  active ? "text-hero-text" : "text-hero-text-muted hover:text-hero-text"
+                  active
+                    ? "text-hero-text"
+                    : "text-hero-text-muted hover:text-hero-text"
                 }`}
               >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  aria-hidden="true"
+                >
                   {link.icon}
                 </svg>
                 {count > 0 && (
@@ -326,11 +269,19 @@ export function Sidebar({
         {/* Opens the ⌘K search/chat panel — same as pressing the shortcut. */}
         <button
           type="button"
-          onClick={() => window.dispatchEvent(new CustomEvent("budgetapp:open-chat"))}
+          onClick={() =>
+            window.dispatchEvent(new CustomEvent("budgetapp:open-chat"))
+          }
           aria-label="Search"
           className="group relative flex size-10 items-center justify-center rounded-full text-hero-text-muted transition-colors hover:bg-hero-bg-2/60 hover:text-hero-text focus-visible:ring-2 focus-visible:ring-accent-bright/60 focus-visible:outline-none"
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-hidden="true"
+          >
             <path
               d="M21 21l-4.35-4.35M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"
               stroke="currentColor"
@@ -357,7 +308,11 @@ export function Sidebar({
           >
             {avatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element -- arbitrary user-supplied URL, not a local/known-domain asset
-              <img src={avatarUrl} alt="" className="size-8 rounded-full object-cover" />
+              <img
+                src={avatarUrl}
+                alt=""
+                className="size-8 rounded-full object-cover"
+              />
             ) : (
               <span
                 className="flex size-8 items-center justify-center rounded-full text-xs font-semibold"
@@ -379,7 +334,9 @@ export function Sidebar({
                   <p className="truncate text-sm font-medium text-hero-text">
                     {displayName || userEmail.split("@")[0]}
                   </p>
-                  <p className="truncate text-xs text-hero-text-muted">{userEmail}</p>
+                  <p className="truncate text-xs text-hero-text-muted">
+                    {userEmail}
+                  </p>
                 </div>
               )}
               {userEmail && (
@@ -392,7 +349,13 @@ export function Sidebar({
                   }}
                   className="mt-1 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-hero-text-muted transition-colors hover:bg-hero-bg-2/60 hover:text-hero-text"
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden="true"
+                  >
                     <path
                       d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0"
                       stroke="currentColor"
@@ -409,7 +372,13 @@ export function Sidebar({
                   role="menuitem"
                   className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-hero-text-muted transition-colors hover:bg-hero-bg-2/60 hover:text-hero-text"
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden="true"
+                  >
                     <path
                       d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"
                       stroke="currentColor"

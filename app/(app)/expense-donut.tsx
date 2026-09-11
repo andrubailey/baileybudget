@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { formatMoney } from "@/lib/format";
-import { getCategoryIcon } from "@/lib/category-icons";
+import { CategoryIcon } from "@/app/(app)/category-icon";
 
 type SegmentTransaction = {
   id: string;
@@ -112,7 +112,7 @@ export function ExpenseDonutChart({ segments }: { segments: DonutSegment[] }) {
               style={{ backgroundColor: a.color }}
             />
             <span className="flex flex-1 items-center gap-1.5 truncate text-[15px] text-text">
-              <span className="shrink-0">{getCategoryIcon(a.name)}</span>
+              <CategoryIcon name={a.name} size={15} className="text-text-muted" />
               <span className="truncate">{a.name}</span>
             </span>
             <span className="tabular text-[15px] text-text-faint">
@@ -133,8 +133,9 @@ export function ExpenseDonutChart({ segments }: { segments: DonutSegment[] }) {
           >
             <div className="mb-4 flex items-start justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-text">
-                  {getCategoryIcon(selected.name)} {selected.name}
+                <h2 className="flex items-center gap-2 text-lg font-semibold text-text">
+                  <CategoryIcon name={selected.name} size={18} className="text-text-muted" />
+                  {selected.name}
                 </h2>
                 <p className="text-sm text-text-muted">
                   {formatMoney(selected.actual)} · {selected.pct.toFixed(1)}% of
