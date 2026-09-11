@@ -26,6 +26,25 @@ export function formatDate(iso: string): string {
   });
 }
 
+// "Updated 3 days ago" for the mobile Accounts screen's reconcile
+// timestamps — coarse on purpose (days, not hours/minutes), since the whole
+// point is "is this stale enough to distrust," not a precise duration.
+export function formatRelativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  const diffMs = Date.now() - then;
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min${minutes === 1 ? "" : "s"} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} day${days === 1 ? "" : "s"} ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months} month${months === 1 ? "" : "s"} ago`;
+  const years = Math.floor(months / 12);
+  return `${years} year${years === 1 ? "" : "s"} ago`;
+}
+
 // Red under a third of the way to goal, amber in the middle third, green in the final third.
 export function progressColor(pct: number): string {
   if (pct < 33) return "var(--negative)";

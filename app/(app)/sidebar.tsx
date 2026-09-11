@@ -65,19 +65,16 @@ const DIGIT_CODES = [
   "Digit7",
 ];
 
-// Mobile gets its own, much smaller set of destinations — not a subset of
-// PRIMARY_LINKS. The idea is a phone is for quick capture and a glance at
-// where things stand, not full account/transaction/budget management, so
-// the bottom tab bar only has these three: log something, check the
-// budget, check balances. Everything else (Transactions, Goals, Reports,
-// Settings) stays desktop-only — reachable by URL/search if truly needed,
-// but not part of the mobile chrome.
+// Mobile is scoped to four jobs — view the budget, add a transaction, check
+// balances, see recent activity — not a subset of PRIMARY_LINKS. Everything
+// else (the full Transactions table, Spending breakdown, Recurring,
+// Reports, Goals, Settings) stays desktop-only, reachable by direct link if
+// truly needed but not part of the mobile chrome. Add is the highest-
+// frequency action by a wide margin, so it isn't one of these three flat
+// tabs — MobileTabBar renders it as a raised button dead-center of the bar
+// instead, reachable from either thumb regardless of which of these three
+// tabs you're on.
 export const MOBILE_LINKS = [
-  {
-    href: "/add",
-    label: "Add",
-    icon: <CooliconPaths name="Add_Plus_Circle" />,
-  },
   {
     href: "/budget",
     label: "Budget",
@@ -85,10 +82,21 @@ export const MOBILE_LINKS = [
   },
   {
     href: "/balances",
-    label: "Balances",
+    label: "Accounts",
     icon: <CooliconPaths name="Credit_Card_01" />,
   },
+  {
+    href: "/recent",
+    label: "Recent",
+    icon: <CooliconPaths name="File_Document" />,
+  },
 ];
+
+export const MOBILE_ADD_LINK = {
+  href: "/add",
+  label: "Add",
+  icon: <CooliconPaths name="Add_Plus_Circle" />,
+};
 
 // Label that fades in above a dock button on hover/keyboard focus — the dock
 // is icons only, so this is how you tell what each one is.

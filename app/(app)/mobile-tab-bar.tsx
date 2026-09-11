@@ -2,12 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { MOBILE_LINKS } from "./sidebar";
+import { MOBILE_LINKS, MOBILE_ADD_LINK } from "./sidebar";
 
-// Native-app-style bottom tab bar for mobile — just the three things mobile
-// is actually for (log something, check the budget, check balances), not a
-// subset of the desktop sidebar's full page list. Everything else stays
-// desktop-only; see MOBILE_LINKS in sidebar.tsx.
+// Native-app-style bottom tab bar for mobile, scoped to the four jobs
+// mobile is for: Budget, Accounts, Add, Recent. Add — the highest-frequency
+// action by a wide margin — isn't a fourth flat tab; it's a raised, accent
+// button dead-center of the bar, overlapping the gap between Accounts and
+// Recent, reachable from either thumb regardless of which of the three flat
+// tabs is currently open. Everything else stays desktop-only; see
+// MOBILE_LINKS/MOBILE_ADD_LINK in sidebar.tsx.
 export function MobileTabBar() {
   const pathname = usePathname();
   const activeIndex = MOBILE_LINKS.findIndex((link) =>
@@ -16,49 +19,57 @@ export function MobileTabBar() {
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-3 border-t border-hero-border bg-hero-bg lg:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 lg:hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
-      {/* Slides between tabs instead of the active state just swapping
-          color instantly — same idea as the desktop sidebar's active pill. */}
-      {activeIndex !== -1 && (
-        <div
-          aria-hidden="true"
-          className="absolute top-0 h-0.5 bg-accent-bright transition-[left] duration-200 ease-out"
-          style={{ left: `${activeIndex * (100 / 3)}%`, width: `${100 / 3}%` }}
-        />
-      )}
-      {MOBILE_LINKS.map((link, i) => {
-        const active = pathname.startsWith(link.href);
-        return (
-          <Link
-            key={link.href}
-            href={link.href}
-            prefetch={true}
-            transitionTypes={
-              activeIndex === -1 || activeIndex === i
-                ? undefined
-                : [i > activeIndex ? "nav-forward" : "nav-back"]
-            }
-            className={`relative flex flex-col items-center justify-center gap-1.5 py-4 text-xs font-medium transition-colors ${
-              active
-                ? "text-accent-bright"
-                : "text-hero-text-muted hover:text-hero-text"
-            }`}
-          >
-            <svg
-              width="27"
-              height="27"
-              viewBox="0 0 24 24"
-              fill="none"
-              className="shrink-0"
-            >
-              {link.icon}
-            </svg>
-            <span className="truncate">{link.label}</span>
-          </Link>
-        );
-      })}
+      <div className="relative border-t border-hero-border bg-hero-bg">
+        {/* Slides between tabs instead of the active state just swapping
+            color instantly — same idea as the desktop sidebar's active pill. */}
+        {activeIndex !== -1 && (
+          <div
+            aria-hidden="true"
+            className="absolute top-0 h-0.5 bg-accent-bright transition-[left] duration-200 ease-out"
+            style={{ left: `${activeIndex * (100 / 3)}%`, width: `${100 / 3}%` }}
+          />
+        )}
+        <div className="grid grid-cols-3">
+          {MOBILE_LINKS.map((link, i) => {
+            const active = pathname.startsWith(link.href);
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                prefetch={true}
+                transitionTypes={
+                  activeIndex === -1 || activeIndex === i
+                    ? undefined
+                    : [i > activeIndex ? "nav-forward" : "nav-back"]
+                }
+                className={`relative flex flex-col items-center justify-center gap-1.5 py-4 text-xs font-medium transition-colors ${
+                  active
+                    ? "text-accent-bright"
+                    : "text-hero-text-muted hover:text-hero-text"
+                }`}
+              >
+                <svg width="27" height="27" viewBox="0 0 24 24" fill="none" className="shrink-0">
+                  {link.icon}
+                </svg>
+                <span className="truncate">{link.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+
+        <Link
+          href={MOBILE_ADD_LINK.href}
+          aria-label={MOBILE_ADD_LINK.label}
+          className="absolute left-1/2 -top-6 flex size-14 -translate-x-1/2 items-center justify-center rounded-full bg-accent text-white shadow-modal ring-4 ring-hero-bg transition-transform active:scale-95"
+        >
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" className="shrink-0">
+            {MOBILE_ADD_LINK.icon}
+          </svg>
+        </Link>
+      </div>
     </nav>
   );
 }

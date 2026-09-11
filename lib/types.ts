@@ -23,6 +23,11 @@ export type Account = {
   // by account_type.
   is_business: boolean;
   created_at: string;
+  // Stamped by the mobile Accounts screen's reconcile action every time
+  // someone confirms or corrects a balance against their real bank app —
+  // null until the first reconcile. Not touched by ordinary transaction
+  // entry, since logging a transaction isn't the same as checking a balance.
+  balance_checked_at: string | null;
 };
 
 export const ACCOUNT_TYPES = [

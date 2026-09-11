@@ -550,6 +550,32 @@ body {
   animation: modal-panel-out 120ms ease-in forwards;
 }
 
+/* True slide-up-from-the-bottom-edge, for the mobile Add sheet — a much
+   bigger motion than modal-panel-in's subtle 4px settle, since this panel
+   is meant to read as a physical sheet being pulled up over the screen. */
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes sheet-out {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+.animate-sheet-in {
+  animation: sheet-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.animate-sheet-out {
+  animation: sheet-out 160ms ease-in forwards;
+}
+
 .animate-toast-in {
   animation: toast-in 150ms ease-out;
 }
@@ -808,6 +834,8 @@ body {
   .animate-fade-in-up,
   .animate-pulse-glow,
   .animate-row-highlight,
+  .animate-sheet-in,
+  .animate-sheet-out,
   .card-hover {
     animation: none;
     transition: none;

@@ -634,6 +634,50 @@ export async function getCategoryProgressForRange(
   });
 }
 
+export type IncomeCategoryTotal = {
+  id: string;
+  name: string;
+  icon: string | null;
+  actual: number;
+};
+
+// Income has no "planned" concept in this app (budget_lines are only ever
+// written for expense categories), so this is a much lighter sibling of
+// getCategoryProgressForRange — just this range's actual total per income
+// category, for a "share of income" bar rather than a "share of plan" one.
+export async function getIncomeCategoryProgressForRange(
+  start: string,
+  end: string,
+): Promise<IncomeCategoryTotal[]> {
+  const supabase = snapshotClient();
+
+  const [{ data: categories }, { data: transactions }, debtAccountIds] = await Promise.all([
+    supabase.from("categories").select("*").eq("kind", "income").order("name"),
+    supabase
+      .from("transactions")
+      .select("category_id, amount, account_id, kind")
+      .in("kind", ["income", "expense"])
+      .gte("txn_date", start)
+      .lte("txn_date", end)
+      .is("deleted_at", null),
+    getDebtAccountIds(),
+  ]);
+
+  const actualByCategory = new Map<string, number>();
+  for (const t of (transactions ?? []) as Pick<Transaction, "category_id" | "amount" | "account_id" | "kind">[]) {
+    if (reclassifyKind(t.kind, t.account_id, debtAccountIds) !== "income") continue;
+    if (!t.category_id) continue;
+    actualByCategory.set(t.category_id, (actualByCategory.get(t.category_id) ?? 0) + t.amount);
+  }
+
+  return ((categories ?? []) as Category[]).map((c) => ({
+    id: c.id,
+    name: c.name,
+    icon: c.icon,
+    actual: actualByCategory.get(c.id) ?? 0,
+  }));
+}
+
 export async function getTransactionsForRange(
   start: string,
   end: string,
