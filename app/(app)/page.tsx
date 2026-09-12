@@ -19,7 +19,6 @@ import { AnimatedMoney } from "@/app/(app)/animated-number";
 import { GreetingHeader } from "@/app/(app)/greeting-header";
 import { formatMoney, firstNameFromEmail } from "@/lib/format";
 import { BudgetCategoriesCard } from "@/app/(app)/budget-categories";
-import { WeeklyRecap } from "@/app/(app)/weekly-recap";
 import { NewTransactionButton } from "@/app/(app)/new-transaction-button";
 import { EmptyState } from "@/app/(app)/empty-state";
 import { Sparkline } from "@/app/(app)/sparkline";
@@ -366,7 +365,6 @@ export default async function DashboardPage({
         <div className="space-y-6">
           <AccountsGlanceCard accounts={activeAccounts} />
           <GoalsCard objectives={objectives} accounts={activeAccounts} />
-          <WeeklyRecap />
         </div>
       </div>
     </div>

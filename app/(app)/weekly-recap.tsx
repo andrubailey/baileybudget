@@ -5,7 +5,7 @@ import {
   getPeriodSummaryForRange,
   getTransactionsForRange,
 } from "@/lib/queries";
-import { WeeklyRecapCard, type RecapData } from "@/app/(app)/weekly-recap-card";
+import type { RecapData } from "@/app/(app)/weekly-recap-card";
 
 const DAY_MS = 86_400_000;
 const DAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
@@ -32,7 +32,10 @@ function monthName(d: Date, month: "long" | "short") {
 // On Saturday itself it's this week's (today inclusive); Sunday through
 // Friday it's still last Saturday's, until the next one replaces it. The
 // card's dismissal is keyed by week, so dismissing one never hides the next.
-export async function WeeklyRecap() {
+// Currently unused — kept building the data as plain RecapData (rather than
+// its own component) after the WeeklyRecapCard component it used to render
+// was removed; nothing wires this back up yet.
+export async function getWeeklyRecapData(): Promise<RecapData> {
   const today = new Date(`${iso(new Date())}T00:00:00Z`);
   const end = addDays(today, -((today.getUTCDay() + 1) % 7));
   const start = addDays(end, -6);
@@ -100,5 +103,5 @@ export async function WeeklyRecap() {
     transactionCount: transactions.length,
   };
 
-  return <WeeklyRecapCard data={data} />;
+  return data;
 }
