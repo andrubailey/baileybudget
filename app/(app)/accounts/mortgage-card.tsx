@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Image, { type StaticImageData } from "next/image";
 import { Coolicon } from "@/app/(app)/coolicon";
+import { CurrencyInput } from "@/app/(app)/currency-input";
 import { DatePicker } from "@/app/(app)/date-picker";
 import { Money } from "@/app/(app)/money";
 import { PanelField } from "@/app/(app)/panel-field";
@@ -371,26 +372,23 @@ function StatementModal({ summary: s, onClose }: { summary: LoanSummary; onClose
             </p>
             <div className="grid grid-cols-2 gap-3">
               <PanelField label="Principal balance">
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
+                <CurrencyInput
                   name="principal_balance"
                   required
                   defaultValue={s.balance}
-                  className={PANEL_FIELD_INPUT_CLASS}
+                  className={`${PANEL_FIELD_INPUT_CLASS} pl-4`}
+                  dollarPosition="left-0"
                 />
               </PanelField>
               <PanelField label="Balance as of">
                 <DatePicker variant="panel" name="balance_as_of" required defaultValue={s.loan.balance_as_of} />
               </PanelField>
               <PanelField label="Escrow balance" optional>
-                <input
-                  type="number"
-                  step="0.01"
+                <CurrencyInput
                   name="escrow_balance"
                   defaultValue={s.loan.escrow_balance !== null ? Number(s.loan.escrow_balance).toFixed(2) : ""}
-                  className={PANEL_FIELD_INPUT_CLASS}
+                  className={`${PANEL_FIELD_INPUT_CLASS} pl-4`}
+                  dollarPosition="left-0"
                 />
               </PanelField>
               <PanelField label="Next payment due">
@@ -398,14 +396,12 @@ function StatementModal({ summary: s, onClose }: { summary: LoanSummary; onClose
               </PanelField>
               <div className="col-span-2">
                 <PanelField label="Monthly payment (incl. escrow)">
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
+                  <CurrencyInput
                     name="monthly_payment"
                     required
                     defaultValue={Number(s.loan.monthly_payment).toFixed(2)}
-                    className={PANEL_FIELD_INPUT_CLASS}
+                    className={`${PANEL_FIELD_INPUT_CLASS} pl-4`}
+                    dollarPosition="left-0"
                   />
                 </PanelField>
               </div>

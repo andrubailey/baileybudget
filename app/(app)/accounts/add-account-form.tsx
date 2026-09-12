@@ -2,6 +2,7 @@
 
 import { Dropdown } from "@/app/(app)/dropdown";
 import { accountTypeChoices, bankChoices } from "@/app/(app)/dropdown-options";
+import { ToggleSwitch } from "@/app/(app)/toggle-switch";
 
 import { useState } from "react";
 import { createAccount } from "@/app/actions";
@@ -10,6 +11,7 @@ import { FIELD_CLASS as fieldClass } from "@/lib/ui";
 
 export function AddAccountForm() {
   const [open, setOpen] = useState(false);
+  const [isBusiness, setIsBusiness] = useState(false);
 
   if (!open) {
     return (
@@ -65,10 +67,11 @@ export function AddAccountForm() {
           options={accountTypeChoices("Unspecified")}
         />
       </div>
-      <label className="flex items-center gap-2 self-end pb-2.5 text-sm text-text sm:col-span-1">
-        <input type="checkbox" name="is_business" className="h-4 w-4 accent-[var(--accent)]" />
-        Business account
-      </label>
+      <div className="flex items-center justify-between gap-2 self-end pb-2.5 sm:col-span-1">
+        <span className="text-sm text-text">Business account</span>
+        <input type="hidden" name="is_business" value={isBusiness ? "on" : ""} />
+        <ToggleSwitch checked={isBusiness} onChange={setIsBusiness} label="Business account" />
+      </div>
       <div className="flex gap-2 sm:col-span-4">
         <button
           type="submit"

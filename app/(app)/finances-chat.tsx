@@ -7,6 +7,7 @@ import { searchTransactions } from "@/app/actions";
 import type { TransactionSearchResult } from "@/lib/queries";
 import { formatDate } from "@/lib/format";
 import { TransactionAmount, TransactionAvatar } from "@/app/(app)/transaction-row";
+import { SPARKLE_PATH } from "@/app/(app)/sparkle-icon";
 import { NAV_GROUPS } from "./sidebar";
 
 type DisplayMessage = { role: "user" | "assistant"; text: string };
@@ -19,12 +20,6 @@ type Match =
 
 const CHAT_ICON_PATH =
   "M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8-1.297 0-2.53-.242-3.643-.677L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8Z";
-
-// Four-point sparkle, y-shifted so its glyph is actually centered inside a
-// 24×24 box (the raw coolicons-style points spanned y 3..17 against a
-// viewBox centered at 12 — 2px too high, off-center inside its circular
-// badge — while x already spanned 5..19, correctly centered).
-const SPARKLE_PATH = "M12 5l1.8 5.2L19 12l-5.2 1.8L12 19l-1.8-5.2L5 12l5.2-1.8L12 5Z";
 
 const SUGGESTIONS = [
   "How much have I spent this month?",

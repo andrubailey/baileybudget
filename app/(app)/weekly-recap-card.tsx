@@ -6,6 +6,7 @@ import { formatDate, formatMoney } from "@/lib/format";
 import { CategoryIcon } from "@/app/(app)/category-icon";
 import { getLetterColors } from "@/lib/letter-colors";
 import { LogoMark } from "@/app/(app)/logo-mark";
+import { SparkleIcon } from "@/app/(app)/sparkle-icon";
 
 export type RecapData = {
   weekKey: string;
@@ -118,7 +119,10 @@ export function WeeklyRecapCard({ data }: { data: RecapData }) {
             onClick={() => setOpen(true)}
             className="block w-full px-5 pt-5 pb-3 text-left transition-colors hover:bg-white/10"
           >
-            <p className="text-heading text-white">Your weekly recap</p>
+            <p className="flex items-center gap-1.5 text-heading text-white">
+              <SparkleIcon size={16} />
+              Your weekly recap
+            </p>
             <p className="mt-1 text-xs font-medium text-white/75">{data.rangeLong}</p>
             <RecapMonthCalendar weekStart={data.weekKey} />
           </button>
@@ -327,7 +331,10 @@ function RecapStory({ data, onClose }: { data: RecapData; onClose: () => void })
 
           {isCover ? (
             <div className="animate-fade-in-up flex h-full flex-col items-center justify-center px-8 text-center text-white">
-              <p className="card-label text-white/70">Personal recap</p>
+              <span className="flex size-10 items-center justify-center rounded-full bg-white/15">
+                <SparkleIcon size={18} strokeWidth={1.8} />
+              </span>
+              <p className="mt-3 card-label text-white/70">Personal recap</p>
               <h2 className="mt-3 text-[34px] leading-[1.1] font-semibold tracking-tight">Your weekly recap</h2>
               <p className="mt-2 text-sm text-white/80">{data.rangeShort}</p>
               <p className="mt-10 text-xs text-white/60">Tap or press → to begin</p>

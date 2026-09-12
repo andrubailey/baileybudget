@@ -17,6 +17,7 @@ import { SubmitButton } from "@/app/(app)/submit-button";
 import { useToast } from "@/app/(app)/toast";
 import { CurrencyInput } from "@/app/(app)/currency-input";
 import { CategorySelect } from "@/app/(app)/category-select";
+import { ToggleSwitch } from "@/app/(app)/toggle-switch";
 import { formatMoney, formatDate } from "@/lib/format";
 import { FIELD_CLASS as fieldClass } from "@/lib/ui";
 import {
@@ -89,6 +90,7 @@ export function QuickAddButton({
   const [pendingFormData, setPendingFormData] = useState<FormData | null>(null);
   const [accountId, setAccountId] = useState("");
   const [keepOpen, setKeepOpen] = useState(false);
+  const [makeRecurring, setMakeRecurring] = useState(false);
   const [lastOpen, setLastOpen] = useState(open);
   const descriptionRef = useRef<HTMLInputElement>(null);
   const { bg, title, subtitle } = CONFIG[kind];
@@ -191,6 +193,10 @@ export function QuickAddButton({
     setSplitRows([{ category_id: "", amount: "" }]);
     setDuplicates(null);
     setPendingFormData(null);
+    // make_recurring used to be an uncontrolled checkbox, which form.reset()
+    // below cleared for free — now that it's a controlled ToggleSwitch (so
+    // it can render as one), that reset has to happen explicitly here too.
+    setMakeRecurring(false);
     descriptionRef.current?.form?.reset();
     descriptionRef.current?.focus();
   }
@@ -406,17 +412,13 @@ export function QuickAddButton({
               )}
 
               {kind === "expense" && !isDebtAccount && (
-                <div className="flex items-center gap-2 sm:col-span-2">
-                  <input
-                    type="checkbox"
-                    id="split-toggle"
+                <div className="flex items-center justify-between gap-3 sm:col-span-2">
+                  <span className="text-sm text-text">Split across multiple categories</span>
+                  <ToggleSwitch
                     checked={split}
-                    onChange={(e) => setSplit(e.target.checked)}
-                    className="h-4 w-4 accent-[var(--accent)]"
+                    onChange={setSplit}
+                    label="Split across multiple categories"
                   />
-                  <label htmlFor="split-toggle" className="text-sm text-text">
-                    Split across multiple categories
-                  </label>
                 </div>
               )}
 
@@ -476,16 +478,16 @@ export function QuickAddButton({
               </div>
 
               {!split && (
-                <div className="flex items-center gap-2 sm:col-span-2">
-                  <input
-                    type="checkbox"
-                    id="make-recurring-toggle"
-                    name="make_recurring"
-                    className="h-4 w-4 accent-[var(--accent)]"
-                  />
-                  <label htmlFor="make-recurring-toggle" className="text-sm text-text-muted">
+                <div className="flex items-center justify-between gap-3 sm:col-span-2">
+                  <span className="text-sm text-text-muted">
                     Make this recurring — automatically log it again every month
-                  </label>
+                  </span>
+                  <input type="hidden" name="make_recurring" value={makeRecurring ? "on" : ""} />
+                  <ToggleSwitch
+                    checked={makeRecurring}
+                    onChange={setMakeRecurring}
+                    label="Make this recurring"
+                  />
                 </div>
               )}
 
@@ -523,17 +525,9 @@ export function QuickAddButton({
                 </div>
               )}
 
-              <div className="flex items-center gap-2 sm:col-span-2">
-                <input
-                  type="checkbox"
-                  id="keep-open-toggle"
-                  checked={keepOpen}
-                  onChange={(e) => setKeepOpen(e.target.checked)}
-                  className="h-4 w-4 accent-[var(--accent)]"
-                />
-                <label htmlFor="keep-open-toggle" className="text-sm text-text-muted">
-                  Keep open to add another
-                </label>
+              <div className="flex items-center justify-between gap-3 sm:col-span-2">
+                <span className="text-sm text-text-muted">Keep open to add another</span>
+                <ToggleSwitch checked={keepOpen} onChange={setKeepOpen} label="Keep open to add another" />
               </div>
 
               {/* Sticky, not just the last grid item — stays reachable at
