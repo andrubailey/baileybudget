@@ -2,20 +2,18 @@ import Link from "next/link";
 import { getPeriods, pickPeriod } from "@/lib/periods";
 import { resolveRange, getPreviousRange } from "@/lib/ranges";
 import { getCurrentSession, getCurrentUserProfile } from "@/lib/profile";
+import { getLoanSummaries } from "@/lib/loans";
 import {
   getAccountsWithBalances,
   getBalanceHistory,
   getCategories,
-  getCategoryAnomalies,
   getCategoryProgressForRange,
-  getNetWorthHistory,
   getObjectives,
   getPeriodSummaryForRange,
   getSavingsTransferTotal,
   getSplitsByTransaction,
   getTransactions,
   getTransactionsForRange,
-  getUndeclaredRecurring,
 } from "@/lib/queries";
 import { AnimatedMoney } from "@/app/(app)/animated-number";
 import { GreetingHeader } from "@/app/(app)/greeting-header";
@@ -30,7 +28,6 @@ import { DashboardEqualHeightRow } from "@/app/(app)/dashboard-equal-height-row"
 import { AccountsGlanceCard } from "@/app/(app)/accounts-glance-card";
 import { CooliconPaths } from "@/app/(app)/coolicon";
 import { GoalsCard } from "@/app/(app)/goals-card";
-import { InsightsCard } from "@/app/(app)/insights-card";
 
 type Trend = { pct: number; good: boolean } | null;
 
@@ -61,19 +58,6 @@ export default async function DashboardPage({
   const range = resolveRange(requestedRange, customStart, customEnd);
   const previousRange = getPreviousRange(range.start, range.end);
 
-  // Calendar-month bounds for the Insights card — deliberately not tied to
-  // `range` (which can be a multi-month or custom span) or to `periods`
-  // (fetched in the same batch below, so using it here would mean awaiting
-  // periods first instead of firing every query at once) — "is this month
-  // unusual" always means the actual current calendar month.
-  const now = new Date();
-  const thisMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
-    .toISOString()
-    .slice(0, 10);
-  const thisMonthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0))
-    .toISOString()
-    .slice(0, 10);
-
   // getCurrentSession() reads the JWT from cookies with no network call,
   // unlike getUser() — the layout above (and proxy.ts's middleware before
   // that) already did the real, network-validated auth check for this
@@ -93,13 +77,11 @@ export default async function DashboardPage({
     previousSummary,
     categoryProgress,
     transactions,
-    netWorthHistory,
     balanceHistory,
     savingsTransfers,
     previousSavingsTransfers,
     objectives,
-    categoryAnomalies,
-    undeclaredRecurring,
+    loans,
   ] = await Promise.all([
     getCurrentSession(),
     getPeriods(),
@@ -109,13 +91,11 @@ export default async function DashboardPage({
     getPeriodSummaryForRange(previousRange.start, previousRange.end),
     getCategoryProgressForRange(range.start, range.end),
     getTransactionsForRange(range.start, range.end),
-    getNetWorthHistory(),
     getBalanceHistory(90),
     getSavingsTransferTotal(range.start, range.end),
     getSavingsTransferTotal(previousRange.start, previousRange.end),
     getObjectives(),
-    getCategoryAnomalies(thisMonthStart, thisMonthEnd),
-    getUndeclaredRecurring(),
+    getLoanSummaries(),
   ]);
   const user = session?.user ?? null;
   const profile = user ? await getCurrentUserProfile(user.id) : null;
@@ -123,11 +103,7 @@ export default async function DashboardPage({
     profile?.display_name?.trim() ||
     (user?.email ? firstNameFromEmail(user.email) : "there");
 
-  // Only used to find the prior period for the balance trend comparison.
   const currentPeriod = pickPeriod(periods);
-  const previousPeriod = currentPeriod
-    ? periods[periods.findIndex((p) => p.id === currentPeriod.id) + 1]
-    : undefined;
 
   const activeAccounts = accounts.filter((a) => a.is_active);
 
@@ -139,19 +115,6 @@ export default async function DashboardPage({
       (p) => p.start_date === range.start && p.end_date === range.end,
     ) ?? null;
 
-  // Days elapsed vs. total, so the Budget card can project "at this rate,
-  // you'll land at $X" instead of just showing actual-vs-planned with no
-  // sense of how much of the month is even over yet — only meaningful for
-  // the period actually in progress right now, not a past or future one.
-  const today = new Date().toISOString().slice(0, 10);
-  const isCurrentPeriod =
-    !!editablePeriod && editablePeriod.start_date <= today && editablePeriod.end_date >= today;
-  const pace = isCurrentPeriod
-    ? {
-        daysElapsed: Number(today.slice(8, 10)),
-        daysTotal: Number(editablePeriod!.end_date.slice(8, 10)),
-      }
-    : null;
 
   // The Transactions page shows whatever's tagged with a period's id, not
   // whatever falls within its calendar dates — the two usually agree, but a
@@ -176,23 +139,51 @@ export default async function DashboardPage({
   );
 
   // Net worth = every active account's balance summed together, not budget
-  // remaining — compared against last month's end-of-period snapshot
-  // (transfers cancel out there, so it's the same total-across-accounts
-  // figure) to show whether that total is trending up or down. A debt
-  // account's `balance` is money owed, a liability — it subtracts here
-  // instead of adding, or a credit card balance would inflate this figure
-  // instead of reducing it.
+  // remaining. A debt account's `balance` is money owed, a liability — it
+  // subtracts here instead of adding, or a credit card balance would
+  // inflate this figure instead of reducing it.
   const netWorth = activeAccounts.reduce(
     (sum, a) => sum + (a.is_debt ? -a.balance : a.balance),
     0,
   );
-  const previousNetWorth = previousPeriod
-    ? (netWorthHistory.find((p) => p.periodId === previousPeriod.id)
-        ?.netWorth ?? null)
-    : null;
+  // Home equity (estimated value minus what's still owed on the mortgage) —
+  // null on a loan until someone sets an estimate, so those contribute 0
+  // rather than dragging the total down by the mortgage balance alone.
+  // getBalanceHistory (below) has no notion of home equity — it's a
+  // manually-set estimate with no historical time series, not something
+  // derived from transaction history the way every other balance is — so
+  // it's added on here rather than baked into that query. A loan's equity
+  // didn't exist at all before its purchase_date, so any
+  // date before that sees none of it (otherwise the month you actually
+  // bought the house would show as a flat comparison, or a graph with a
+  // phantom jump on a day nothing happened, instead of the real thing).
+  function equityAsOf(dateIso: string): number {
+    return loans.reduce((sum, s) => {
+      if (s.equity === null) return sum;
+      if (s.loan.purchase_date && dateIso < s.loan.purchase_date) return sum;
+      return sum + s.equity;
+    }, 0);
+  }
+  const totalEquity = equityAsOf(new Date().toISOString().slice(0, 10));
+  const netWorthWithEquity = netWorth + totalEquity;
+  // The sparkline is supposed to match the headline Net Worth figure it
+  // graphs (see getBalanceHistory's own comment) — without this, the line's
+  // right-most point silently disagreed with the big number above it by
+  // however much home equity was worth, and the hover tooltip showed the
+  // account-only total instead of the real one for that day.
+  const balanceHistoryWithEquity = balanceHistory.map((p) => ({
+    ...p,
+    balance: p.balance + equityAsOf(p.date),
+  }));
+  // The trend note used to compare against last calendar month regardless
+  // of what the graph next to it actually showed — a 90-day sparkline next
+  // to a "from last month" label describing a different window entirely.
+  // Comparing against the graph's own oldest point instead means the two
+  // always agree: whatever span the line covers is the span the percentage
+  // describes.
   const netWorthTrend =
-    previousNetWorth !== null
-      ? trend(netWorth, previousNetWorth)
+    balanceHistoryWithEquity.length > 1
+      ? trend(netWorthWithEquity, balanceHistoryWithEquity[0].balance)
       : null;
   const incomeTrend = trend(summary.income, previousSummary.income);
   const expenseTrend = trend(summary.expense, previousSummary.expense, {
@@ -216,6 +207,8 @@ export default async function DashboardPage({
             menuAlign="right"
             initialContext={{
               periodId: currentPeriod?.id ?? null,
+              periodStart: currentPeriod?.start_date ?? null,
+              periodEnd: currentPeriod?.end_date ?? null,
               accounts: activeAccounts,
               categories,
             }}
@@ -239,18 +232,31 @@ export default async function DashboardPage({
               className="2xl:col-span-2"
               value={
                 <AnimatedMoney
-                  value={netWorth}
-                  className={`text-balance-display ${netWorth >= 0 ? "text-text" : "text-negative"}`}
+                  value={netWorthWithEquity}
+                  className={`text-balance-display ${netWorthWithEquity >= 0 ? "text-text" : "text-negative"}`}
                 />
               }
               trendValue={netWorthTrend}
+              trendLabel="in the last 90 days"
+              badge={
+                totalEquity !== 0 && (
+                  <div className="text-right leading-tight">
+                    <p className="tabular text-[11px] whitespace-nowrap text-text-faint">
+                      Cash <span className="font-semibold text-text-muted">{formatMoney(netWorth)}</span>
+                    </p>
+                    <p className="tabular mt-0.5 text-[11px] whitespace-nowrap text-text-faint">
+                      Equity <span className="font-semibold text-text-muted">{formatMoney(totalEquity)}</span>
+                    </p>
+                  </div>
+                )
+              }
               graph={
-                balanceHistory.length > 1 && (
+                balanceHistoryWithEquity.length > 1 && (
                   <Sparkline
-                    points={balanceHistory}
+                    points={balanceHistoryWithEquity}
                     color={
-                      balanceHistory[balanceHistory.length - 1].balance >=
-                      balanceHistory[0].balance
+                      balanceHistoryWithEquity[balanceHistoryWithEquity.length - 1].balance >=
+                      balanceHistoryWithEquity[0].balance
                         ? "var(--positive)"
                         : "var(--negative)"
                     }
@@ -321,7 +327,6 @@ export default async function DashboardPage({
                 categoryProgress={categoryProgress}
                 editablePeriodId={editablePeriod?.id ?? null}
                 rangeIsSinglePeriod={Boolean(editablePeriod)}
-                pace={pace}
               />
             }
             recent={
@@ -361,7 +366,6 @@ export default async function DashboardPage({
         <div className="space-y-6">
           <AccountsGlanceCard accounts={activeAccounts} />
           <GoalsCard objectives={objectives} accounts={activeAccounts} />
-          <InsightsCard anomalies={categoryAnomalies} undeclaredRecurring={undeclaredRecurring} />
           <WeeklyRecap />
         </div>
       </div>
@@ -397,6 +401,7 @@ function MetricCard({
   iconColor,
   value,
   trendValue,
+  trendLabel = "from last month",
   graph,
   badge,
   className,
@@ -408,6 +413,12 @@ function MetricCard({
   iconColor?: string;
   value: React.ReactNode;
   trendValue: Trend;
+  // What the percentage is measured against — every card but Net Worth
+  // compares to the prior calendar period, so that's the default; Net Worth
+  // instead compares to the oldest point in its own 90-day graph, so its
+  // label needs to say that instead or the two would describe different
+  // windows next to each other.
+  trendLabel?: string;
   graph?: React.ReactNode;
   // Small pill pinned to the top-right corner of the card, for a called-out
   // fact that doesn't fit the label/value/trend shape (e.g. a savings
@@ -425,7 +436,7 @@ function MetricCard({
       }`}
     >
       <TrendArrow up={trendValue.pct >= 0} />
-      {Math.abs(trendValue.pct).toFixed(1)}% from last month
+      {Math.abs(trendValue.pct).toFixed(1)}% {trendLabel}
     </p>
   );
 
@@ -460,8 +471,9 @@ function MetricCard({
   return (
     <div
       style={{ animationDelay: `${index * 12}ms` }}
-      className={`card card-hover animate-fade-in-up flex h-full flex-col ${className ?? ""}`}
+      className={`card card-hover animate-fade-in-up relative flex h-full flex-col ${className ?? ""}`}
     >
+      {badge && <div className="absolute top-5 right-5 sm:top-6 sm:right-6">{badge}</div>}
       <p className="text-[13px] font-medium whitespace-nowrap text-text-muted">{label}</p>
       <div className="mt-5">{value}</div>
       {trendNote}
