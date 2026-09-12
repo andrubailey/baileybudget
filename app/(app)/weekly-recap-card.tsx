@@ -32,8 +32,6 @@ type Slide = {
   body: string[];
 };
 
-const DISMISS_KEY = "weekly-recap-dismissed";
-
 // Diagonal streaks of olive, moss and deep green, like light through leaves.
 // Shared by the Overview card and the recap's opening slide so opening the
 // card feels like stepping into it rather than switching to a new look.
@@ -65,184 +63,53 @@ function Chevron({ direction }: { direction: "left" | "right" }) {
   );
 }
 
+function CheckIcon({ size = 18, strokeWidth = 2.5 }: { size?: number; strokeWidth?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 const CONFIRM_MS = 4000;
 
-export function WeeklyRecapCard({ data }: { data: RecapData }) {
-  const [dismissed, setDismissed] = useState(false);
-  const [open, setOpen] = useState(false);
-  // "Reviewed" doesn't hide the card on the spot: it shows a confirmation
-  // with an Undo for a few seconds first, and only then saves the dismissal.
-  const [confirming, setConfirming] = useState(false);
-
-  useEffect(() => {
-    // `?recap=1` on the Overview forces the card back and opens the story
-    // straight away, ignoring a dismissal — for previewing a recap without
-    // waiting for Saturday.
-    const forced = new URLSearchParams(window.location.search).get("recap") === "1";
-    if (forced) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- reading the URL, an external system, after mount
-      setDismissed(false);
-      setOpen(true);
-      return;
-    }
-    try {
-      setDismissed(localStorage.getItem(DISMISS_KEY) === data.weekKey);
-    } catch {
-      // localStorage unavailable — just keep showing the card
-    }
-  }, [data.weekKey]);
-
-  useEffect(() => {
-    if (!confirming) return;
-    const timer = setTimeout(() => {
-      setDismissed(true);
-      try {
-        localStorage.setItem(DISMISS_KEY, data.weekKey);
-      } catch {
-        // ignore
-      }
-    }, CONFIRM_MS);
-    return () => clearTimeout(timer);
-  }, [confirming, data.weekKey]);
-
-  if (dismissed) return null;
-
-  return (
-    <>
-      <div
-        className="animate-fade-in-up relative overflow-hidden rounded-xl text-white shadow-card"
-        style={{ background: RECAP_BACKGROUND }}
-      >
-        <div className={`transition-opacity duration-200 ${confirming ? "pointer-events-none opacity-0" : ""}`}>
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            className="block w-full px-5 pt-5 pb-3 text-left transition-colors hover:bg-white/10"
-          >
-            <p className="flex items-center gap-1.5 text-heading text-white">
-              <SparkleIcon size={16} />
-              Your weekly recap
-            </p>
-            <p className="mt-1 text-xs font-medium text-white/75">{data.rangeLong}</p>
-            <RecapMonthCalendar weekStart={data.weekKey} />
-          </button>
-          {/* Its own row under the calendar — in the top corner it squeezed
-              the title onto two lines. */}
-          {/* Shaped like the Overview's New transaction button, full width, but
-              white with green text so it stands out on the green card. */}
-          <div className="px-5 pb-5">
-            <button
-              type="button"
-              onClick={() => setConfirming(true)}
-              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-accent transition-colors hover:bg-white/90"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              Reviewed
-            </button>
-          </div>
-        </div>
-
-        {confirming && (
-          <div
-            role="status"
-            className="animate-fade-in-up absolute inset-0 flex flex-col items-center justify-center gap-3 px-5 text-center"
-          >
-            <span className="flex size-10 items-center justify-center rounded-full bg-white/20">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </span>
-            <div>
-              <p className="text-sm font-semibold text-white">Marked as reviewed</p>
-              <p className="mt-0.5 text-xs text-white/75">Next recap arrives Saturday.</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setConfirming(false)}
-              className="rounded-full border border-white/50 px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-white/15"
-            >
-              Undo
-            </button>
-          </div>
-        )}
-      </div>
-      {open && <RecapStory data={data} onClose={() => setOpen(false)} />}
-    </>
-  );
-}
-
-const WEEKDAY_LETTERS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
-
-// A small month calendar with the recap's Sunday–Saturday row highlighted.
-// Shows the month the week ends in — a week that starts in one month and
-// ends in the next belongs to the newer one. No panel behind it: the recap
-// week is a soft pill with bright numbers, every other day is faded, and
-// days from the neighboring months fade further.
-function RecapMonthCalendar({ weekStart }: { weekStart: string }) {
-  const start = new Date(`${weekStart}T00:00:00Z`);
-  const end = new Date(start.getTime() + 6 * 86_400_000);
-  const year = end.getUTCFullYear();
-  const month = end.getUTCMonth();
-  const first = new Date(Date.UTC(year, month, 1));
-  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-  // Grid starts on the Sunday on or before the 1st.
-  const gridStart = new Date(first.getTime() - first.getUTCDay() * 86_400_000);
-  const weeks = Math.ceil((first.getUTCDay() + daysInMonth) / 7);
-  const startMs = start.getTime();
-  const monthLabel = end.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
-
-  return (
-    <div className="mt-4" aria-label={`${monthLabel}, recap week highlighted`}>
-      <div className="grid grid-cols-7 text-center text-[11px] font-medium text-white/70">
-        {WEEKDAY_LETTERS.map((l) => (
-          <span key={l} className="py-1">
-            {l}
-          </span>
-        ))}
-      </div>
-      <div className="mt-1 space-y-1">
-        {Array.from({ length: weeks }, (_, w) => {
-          const rowStart = gridStart.getTime() + w * 7 * 86_400_000;
-          const isRecapWeek = rowStart === startMs;
-          return (
-            <div
-              key={w}
-              className={`grid grid-cols-7 rounded-full text-center text-[12px] tabular-nums ${
-                isRecapWeek ? "bg-white/20 font-semibold text-white" : "text-white/40"
-              }`}
-            >
-              {Array.from({ length: 7 }, (_, d) => {
-                const date = new Date(rowStart + d * 86_400_000);
-                const inMonth = date.getUTCMonth() === month;
-                return (
-                  <span key={d} className={`py-1.5 ${inMonth ? "" : "opacity-60"}`}>
-                    {date.getUTCDate()}
-                  </span>
-                );
-              })}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function RecapStory({ data, onClose }: { data: RecapData; onClose: () => void }) {
+// A compact teaser rather than the card's own dashboard — a headline stat
+// or two, just enough to make opening the story feel worth a tap, with the
+// actual "mark as reviewed" step living at the end of the story rather than
+// on whatever surface links into it, so it can't be tapped away before ever
+// seeing the recap. Triggered from the top alerts bar (see
+// weekly-recap-alert.tsx), which owns the "have I reviewed this week's
+// recap yet" dismissal state — this component is just the story itself.
+export function RecapStory({
+  data,
+  onClose,
+  onReview,
+}: {
+  data: RecapData;
+  onClose: () => void;
+  // Only called once someone has actually stepped through to the end and
+  // confirmed — closing early (X, Escape, backdrop) never marks it reviewed,
+  // so the card comes back next time instead of quietly disappearing.
+  onReview: () => void;
+}) {
   const slides = buildSlides(data);
-  const total = slides.length + 1;
+  // Cover + every content slide + a final outro where reviewing happens.
+  const total = slides.length + 2;
   const [index, setIndex] = useState(0);
   const [closing, setClosing] = useState(false);
+  // The outro's own "confirming" state — shows a brief undo-able confirmation
+  // before actually persisting the dismissal, same grace period the card's
+  // front button used to give.
+  const [reviewing, setReviewing] = useState(false);
   const isCover = index === 0;
+  const isOutro = index === total - 1;
 
   function close() {
     setClosing(true);
     setTimeout(onClose, 150);
   }
   function next() {
-    if (index >= total - 1) close();
+    if (isOutro) setReviewing(true);
     else setIndex(index + 1);
   }
   function prev() {
@@ -250,8 +117,19 @@ function RecapStory({ data, onClose }: { data: RecapData; onClose: () => void })
   }
 
   useEffect(() => {
+    if (!reviewing) return;
+    const timer = setTimeout(() => {
+      onReview();
+      close();
+    }, CONFIRM_MS);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- close/onReview don't change while the story is open
+  }, [reviewing]);
+
+  useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") close();
+      else if (reviewing) return;
       else if (e.key === "ArrowRight") next();
       else if (e.key === "ArrowLeft") prev();
     }
@@ -284,18 +162,22 @@ function RecapStory({ data, onClose }: { data: RecapData; onClose: () => void })
           } ${closing ? "animate-modal-panel-out" : "animate-modal-panel"}`}
           style={isCover ? { background: RECAP_BACKGROUND } : undefined}
         >
-          <button
-            type="button"
-            aria-label="Previous slide"
-            onClick={prev}
-            className="absolute top-16 bottom-0 left-0 z-[5] w-1/3 sm:hidden"
-          />
-          <button
-            type="button"
-            aria-label="Next slide"
-            onClick={next}
-            className="absolute top-16 right-0 bottom-0 z-[5] w-2/3 sm:hidden"
-          />
+          {!reviewing && (
+            <>
+              <button
+                type="button"
+                aria-label="Previous slide"
+                onClick={prev}
+                className="absolute top-16 bottom-0 left-0 z-[5] w-1/3 sm:hidden"
+              />
+              <button
+                type="button"
+                aria-label="Next slide"
+                onClick={next}
+                className="absolute top-16 right-0 bottom-0 z-[5] w-2/3 sm:hidden"
+              />
+            </>
+          )}
 
           <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between gap-4 px-5 pt-5">
             <LogoMark size={28} />
@@ -339,15 +221,39 @@ function RecapStory({ data, onClose }: { data: RecapData; onClose: () => void })
               <p className="mt-2 text-sm text-white/80">{data.rangeShort}</p>
               <p className="mt-10 text-xs text-white/60">Tap or press → to begin</p>
             </div>
+          ) : isOutro ? (
+            <OutroView onMarkReviewed={() => setReviewing(true)} />
           ) : (
             <SlideView key={slides[index - 1].key} slide={slides[index - 1]} rangeShort={data.rangeShort} />
+          )}
+
+          {reviewing && (
+            <div
+              role="status"
+              className="animate-fade-in-up absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-bg px-5 text-center"
+            >
+              <span className="flex size-11 items-center justify-center rounded-full bg-accent-soft text-accent">
+                <CheckIcon size={20} />
+              </span>
+              <div>
+                <p className="text-sm font-semibold text-text">Marked as reviewed</p>
+                <p className="mt-0.5 text-xs text-text-faint">Next recap arrives Saturday.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReviewing(false)}
+                className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-text-muted transition-colors hover:bg-surface"
+              >
+                Undo
+              </button>
+            </div>
           )}
         </div>
 
         <button
           type="button"
           onClick={prev}
-          disabled={index === 0}
+          disabled={index === 0 || reviewing}
           aria-label="Previous slide"
           className="absolute top-1/2 -left-20 hidden size-12 -translate-y-1/2 items-center justify-center rounded-full bg-surface text-text shadow-card transition-opacity disabled:opacity-40 sm:flex"
         >
@@ -356,14 +262,39 @@ function RecapStory({ data, onClose }: { data: RecapData; onClose: () => void })
         <button
           type="button"
           onClick={next}
-          aria-label={index >= total - 1 ? "Finish recap" : "Next slide"}
-          className="absolute top-1/2 -right-20 hidden size-12 -translate-y-1/2 items-center justify-center rounded-full bg-surface text-text shadow-card sm:flex"
+          disabled={reviewing}
+          aria-label={isOutro ? "Mark as reviewed" : "Next slide"}
+          className="absolute top-1/2 -right-20 hidden size-12 -translate-y-1/2 items-center justify-center rounded-full bg-surface text-text shadow-card transition-opacity disabled:opacity-40 sm:flex"
         >
           <Chevron direction="right" />
         </button>
       </div>
     </div>,
     document.body,
+  );
+}
+
+// The story's last screen — where "reviewed" actually happens now, instead
+// of being a button sitting on the card before anyone's opened it at all.
+function OutroView({ onMarkReviewed }: { onMarkReviewed: () => void }) {
+  return (
+    <div className="animate-fade-in-up flex h-full flex-col items-center justify-center px-8 text-center">
+      <span className="flex size-12 items-center justify-center rounded-full bg-accent-soft text-accent">
+        <CheckIcon size={22} />
+      </span>
+      <h2 className="text-page-title mt-4 text-text">That&apos;s your week</h2>
+      <p className="mt-2 text-sm text-text-muted">
+        Come back Saturday for the next one.
+      </p>
+      <button
+        type="button"
+        onClick={onMarkReviewed}
+        className="mt-8 flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+      >
+        <CheckIcon size={16} />
+        Mark as reviewed
+      </button>
+    </div>
   );
 }
 
