@@ -8,6 +8,7 @@ import {
   findPossibleDuplicateTransactions,
   postRecurringForPeriod,
   getAccounts,
+  getAccountsWithBalances,
   getCategories,
   getTransactionHistory,
   searchTransactions as searchTransactionsQuery,
@@ -16,6 +17,23 @@ import {
 } from "@/lib/queries";
 import { getPeriods, pickPeriod } from "@/lib/periods";
 import { cleanMerchantDescription } from "@/lib/merchant-name";
+import { getCurrentSession } from "@/lib/profile";
+
+// A transaction amount is only ever entered through the app's own
+// CurrencyInput (which can't produce a minus sign) or an external caller
+// (AI assistant, Shortcuts) that must be trusted the same way regardless of
+// entry point. Rounding to the cent here means a stray extra decimal digit
+// from any of those callers can never make a stored amount silently drift
+// from the two-decimal figure every view of the app displays. Returns null
+// for anything that isn't a real, present number (missing, blank, NaN) —
+// callers decide how to report that; a bare 0 is a valid amount and passes
+// through.
+function parseAmount(raw: FormDataEntryValue | number | null | undefined): number | null {
+  if (raw === null || raw === undefined || raw === "") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  return Math.round(n * 100) / 100;
+}
 
 // Data the quick-add modals need, fetched client-side on demand since
 // (unlike the dashboard) they aren't already sitting in a server
@@ -36,6 +54,8 @@ export async function getQuickAddContext() {
   const period = pickPeriod(periods);
   return {
     periodId: period?.id ?? null,
+    periodStart: period?.start_date ?? null,
+    periodEnd: period?.end_date ?? null,
     accounts: accounts.filter((a) => a.is_active),
     categories,
   };
@@ -70,43 +90,97 @@ export async function createAccount(formData: FormData) {
   await supabase
     .from("accounts")
     .insert({ name, starting_balance, goal, bank, sort_order, account_type, is_business });
-  revalidateHousehold();
+  revalidateHousehold(["accounts"]);
 }
 
 export async function updateAccountType(id: string, account_type: string | null) {
   const supabase = await createClient();
   await supabase.from("accounts").update({ account_type }).eq("id", id);
-  revalidateHousehold();
+  revalidateHousehold(["accounts"]);
 }
 
 export async function updateAccountLoginUrl(id: string, login_url: string | null) {
   const supabase = await createClient();
   await supabase.from("accounts").update({ login_url }).eq("id", id);
-  revalidateHousehold();
+  revalidateHousehold(["accounts"]);
 }
 
 export async function updateAccountBank(id: string, bank: string | null) {
   const supabase = await createClient();
   await supabase.from("accounts").update({ bank }).eq("id", id);
-  revalidateHousehold();
+  revalidateHousehold(["accounts"]);
+}
+
+// The mobile Accounts screen's reconcile action. Balances are never stored
+// directly (always starting_balance + transaction history), so "correcting"
+// one means logging the difference as a same-day adjustment transaction
+// rather than overwriting a field — that way transaction history stays the
+// single source of truth and the adjustment shows up in the account's own
+// history like any other entry. category_id stays null (and no split rows
+// get created for it), which already keeps it out of every category/budget
+// total the same way an uncategorized transaction would. Always stamps
+// balance_checked_at, even when the entered figure matches exactly — a
+// confirmed-correct balance is worth recording too, not just a corrected one.
+export async function reconcileAccountBalance(
+  accountId: string,
+  actualBalance: number,
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+
+  const [accounts, periods] = await Promise.all([getAccountsWithBalances(), getPeriods()]);
+  const account = accounts.find((a) => a.id === accountId);
+  if (!account) return { ok: false, error: "Account not found." };
+
+  const period = pickPeriod(periods);
+  const diff = Math.round((actualBalance - account.balance) * 100) / 100;
+
+  if (diff !== 0) {
+    if (!period) {
+      return { ok: false, error: "Couldn't find a period to log the adjustment in." };
+    }
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const { error } = await supabase.from("transactions").insert({
+      kind: diff > 0 ? "income" : "expense",
+      description: "Balance adjustment",
+      amount: Math.abs(diff),
+      txn_date: new Date().toISOString().slice(0, 10),
+      account_id: accountId,
+      category_id: null,
+      period_id: period.id,
+      created_by: user?.id ?? null,
+      created_by_email: user?.email ?? null,
+    });
+    if (error) return { ok: false, error: error.message };
+  }
+
+  const { error: stampError } = await supabase
+    .from("accounts")
+    .update({ balance_checked_at: new Date().toISOString() })
+    .eq("id", accountId);
+  if (stampError) return { ok: false, error: stampError.message };
+
+  revalidateHousehold(["accounts", "transactions"]);
+  return { ok: true };
 }
 
 export async function updateAccountGoal(id: string, goal: number | null) {
   const supabase = await createClient();
   await supabase.from("accounts").update({ goal }).eq("id", id);
-  revalidateHousehold();
+  revalidateHousehold(["accounts"]);
 }
 
 export async function toggleAccountActive(id: string, is_active: boolean) {
   const supabase = await createClient();
   await supabase.from("accounts").update({ is_active }).eq("id", id);
-  revalidateHousehold();
+  revalidateHousehold(["accounts"]);
 }
 
 export async function updateAccountIsDebt(id: string, is_debt: boolean) {
   const supabase = await createClient();
   await supabase.from("accounts").update({ is_debt }).eq("id", id);
-  revalidateHousehold();
+  revalidateHousehold(["accounts"]);
 }
 
 export async function updateAccountLowBalanceAlert(
@@ -115,7 +189,7 @@ export async function updateAccountLowBalanceAlert(
 ) {
   const supabase = await createClient();
   await supabase.from("accounts").update({ low_balance_alert }).eq("id", id);
-  revalidateHousehold();
+  revalidateHousehold(["accounts"]);
 }
 
 // Single combined save for the account edit modal — one round trip instead
@@ -151,7 +225,7 @@ export async function updateAccountDetails(
       is_business: data.is_business,
     })
     .eq("id", id);
-  revalidateHousehold();
+  revalidateHousehold(["accounts"]);
 }
 
 // Backs the file-picker on an account card — uploads straight to the
@@ -163,9 +237,12 @@ export async function uploadAccountLogo(
   formData: FormData,
 ): Promise<{ ok: boolean; url?: string; error?: string }> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // getSession() decodes the cookie locally instead of round-tripping to
+  // the Auth server like getUser() does — safe here (unlike a page's own
+  // auth check) because proxy.ts's middleware already ran a real,
+  // network-validated check on this exact request before this action could
+  // even be invoked; this is only re-confirming what middleware guaranteed.
+  const user = (await getCurrentSession())?.user ?? null;
   if (!user) return { ok: false, error: "Not signed in." };
 
   const file = formData.get("logo_file");
@@ -197,14 +274,14 @@ export async function uploadAccountLogo(
     return { ok: false, error: error.message };
   }
 
-  revalidateHousehold();
+  revalidateHousehold(["accounts"]);
   return { ok: true, url: logo_url };
 }
 
 export async function removeAccountLogo(accountId: string) {
   const supabase = await createClient();
   await supabase.from("accounts").update({ logo_url: null }).eq("id", accountId);
-  revalidateHousehold();
+  revalidateHousehold(["accounts"]);
 }
 
 // Backs the "+ New category" quick-add affordance in the transaction
@@ -228,7 +305,7 @@ export async function quickCreateCategory(
     return { ok: false, error: error?.message ?? "Couldn't create category." };
   }
 
-  revalidateHousehold();
+  revalidateHousehold(["categories"]);
   return { ok: true, id: data.id };
 }
 
@@ -237,17 +314,21 @@ export async function upsertBudgetLine(
   period_id: string,
   planned_amount: number,
 ): Promise<{ ok: boolean; error?: string }> {
+  if (!Number.isFinite(planned_amount) || planned_amount < 0) {
+    return { ok: false, error: "Enter a valid, non-negative amount." };
+  }
+  const roundedAmount = Math.round(planned_amount * 100) / 100;
   const supabase = await createClient();
   const { error } = await supabase
     .from("budget_lines")
     .upsert(
-      { category_id, period_id, planned_amount },
+      { category_id, period_id, planned_amount: roundedAmount },
       { onConflict: "category_id,period_id" },
     );
   if (error) {
     return { ok: false, error: error.message };
   }
-  revalidateHousehold();
+  revalidateHousehold(["budget_lines"]);
   return { ok: true };
 }
 
@@ -268,7 +349,7 @@ export async function deleteBudgetLine(
   if (error) {
     return { ok: false, error: error.message };
   }
-  revalidateHousehold();
+  revalidateHousehold(["budget_lines"]);
   return { ok: true };
 }
 
@@ -287,7 +368,7 @@ export async function updateCategoryActive(
   if (error) {
     return { ok: false, error: error.message };
   }
-  revalidateHousehold();
+  revalidateHousehold(["categories"]);
   return { ok: true };
 }
 
@@ -308,7 +389,7 @@ export async function updateCategorySettings(
   if (error) {
     return { ok: false, error: error.message };
   }
-  revalidateHousehold();
+  revalidateHousehold(["categories"]);
   return { ok: true };
 }
 
@@ -326,7 +407,7 @@ export async function updateCategoryIcon(
   if (error) {
     return { ok: false, error: error.message };
   }
-  revalidateHousehold();
+  revalidateHousehold(["categories"]);
   return { ok: true };
 }
 
@@ -366,10 +447,14 @@ export async function bulkImportTransactions(
 ): Promise<CsvImportResult> {
   const supabase = await createClient();
 
-  const [{ data: periods }, { data: { user } }] = await Promise.all([
+  // getSession() (local cookie decode) instead of getUser() (a real round
+  // trip to the Auth server) — see the comment on the same swap in
+  // uploadAccountLogo above.
+  const [{ data: periods }, session] = await Promise.all([
     supabase.from("periods").select("id, start_date, end_date"),
-    supabase.auth.getUser(),
+    getCurrentSession(),
   ]);
+  const user = session?.user ?? null;
 
   const periodFor = (date: string) =>
     (periods ?? []).find((p) => p.start_date <= date && p.end_date >= date)?.id ?? null;
@@ -399,7 +484,7 @@ export async function bulkImportTransactions(
     await supabase.from("transactions").insert(toInsert);
   }
 
-  revalidateHousehold();
+  revalidateHousehold(["transactions"]);
 
   return { imported: toInsert.length, skippedNoPeriod };
 }
@@ -408,6 +493,12 @@ export async function bulkImportTransactions(
 // createRecurringFromTransaction (the detail modal's one-click version) —
 // day_of_month is derived from the transaction's own date rather than asked
 // for separately, since the whole point is "automatically set it up."
+// Returns the new rule's id so the caller can link the seed transaction
+// back to it via recurring_transaction_id — without that link, the "Repeats
+// monthly" toggle can never see that a rule already exists for this
+// transaction, which meant re-opening it and re-toggling it on created a
+// second (then a third...) identical rule, and toggling it back off had no
+// rule id to actually deactivate.
 async function insertRecurringRule(
   supabase: Awaited<ReturnType<typeof createClient>>,
   rule: {
@@ -420,14 +511,18 @@ async function insertRecurringRule(
   },
 ) {
   const day_of_month = Math.min(28, new Date(`${rule.txn_date}T00:00:00Z`).getUTCDate());
-  return supabase.from("recurring_transactions").insert({
-    kind: rule.kind,
-    description: rule.description,
-    amount: rule.amount,
-    account_id: rule.account_id,
-    category_id: rule.category_id,
-    day_of_month,
-  });
+  return supabase
+    .from("recurring_transactions")
+    .insert({
+      kind: rule.kind,
+      description: rule.description,
+      amount: rule.amount,
+      account_id: rule.account_id,
+      category_id: rule.category_id,
+      day_of_month,
+    })
+    .select("id")
+    .single();
 }
 
 export async function createTransaction(
@@ -439,7 +534,6 @@ export async function createTransaction(
     | "income"
     | "expense";
   const description = String(formData.get("description") ?? "").trim();
-  const amount = Number(formData.get("amount") ?? 0);
   const txn_date = String(formData.get("txn_date") ?? "");
   const account_id = String(formData.get("account_id") ?? "") || null;
   const category_id = String(formData.get("category_id") ?? "") || null;
@@ -448,37 +542,47 @@ export async function createTransaction(
   const pending_approval = formData.get("pending_approval") === "on";
   const make_recurring = formData.get("make_recurring") === "on";
 
-  if (!description || !amount || !txn_date || !period_id) {
+  if (!description || !txn_date || !period_id) {
     return { ok: false, error: "Missing required fields." };
   }
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const amount = parseAmount(formData.get("amount"));
+  if (amount === null) {
+    return { ok: false, error: "Enter a valid amount." };
+  }
+  if (amount < 0) {
+    return { ok: false, error: "Amount can't be negative." };
+  }
 
-  const { error } = await supabase.from("transactions").insert({
-    kind,
-    description,
-    amount,
-    txn_date,
-    account_id,
-    category_id,
-    period_id,
-    notes,
-    pending_approval,
-    created_by: user?.id ?? null,
-    created_by_email: user?.email ?? null,
-  });
+  const user = (await getCurrentSession())?.user ?? null;
 
-  if (error) {
-    return { ok: false, error: error.message };
+  const { data: inserted, error } = await supabase
+    .from("transactions")
+    .insert({
+      kind,
+      description,
+      amount,
+      txn_date,
+      account_id,
+      category_id,
+      period_id,
+      notes,
+      pending_approval,
+      created_by: user?.id ?? null,
+      created_by_email: user?.email ?? null,
+    })
+    .select("id")
+    .single();
+
+  if (error || !inserted) {
+    return { ok: false, error: error?.message };
   }
 
   if (make_recurring) {
     // Best-effort — the transaction itself already saved successfully, so a
     // hiccup setting up the recurring rule shouldn't be reported as the
     // whole save having failed.
-    const { error: recurringError } = await insertRecurringRule(supabase, {
+    const { data: rule, error: recurringError } = await insertRecurringRule(supabase, {
       kind,
       description,
       amount,
@@ -486,19 +590,27 @@ export async function createTransaction(
       category_id,
       txn_date,
     });
-    if (recurringError) {
+    if (recurringError || !rule) {
       console.error("Failed to auto-create recurring rule:", recurringError);
+    } else {
+      const { error: linkError } = await supabase
+        .from("transactions")
+        .update({ recurring_transaction_id: rule.id })
+        .eq("id", inserted.id);
+      if (linkError) {
+        console.error("Failed to link recurring rule to its seed transaction:", linkError);
+      }
     }
   }
 
-  revalidateHousehold();
+  revalidateHousehold(make_recurring ? ["transactions", "recurring_transactions"] : ["transactions"]);
   return { ok: true };
 }
 
 export async function toggleTransactionPendingApproval(id: string, pending_approval: boolean) {
   const supabase = await createClient();
   await supabase.from("transactions").update({ pending_approval }).eq("id", id);
-  revalidateHousehold();
+  revalidateHousehold(["transactions"]);
 }
 
 // The detail modal's one-click "Make recurring" — sets up a recurring rule
@@ -520,7 +632,7 @@ export async function createRecurringFromTransaction(
     return { ok: false, error: "Transfers can't be made recurring." };
   }
 
-  const { error } = await insertRecurringRule(supabase, {
+  const { data: rule, error } = await insertRecurringRule(supabase, {
     kind: t.kind as "income" | "expense",
     description: t.description,
     amount: t.amount,
@@ -528,46 +640,84 @@ export async function createRecurringFromTransaction(
     category_id: t.category_id,
     txn_date: t.txn_date,
   });
-  if (error) {
-    return { ok: false, error: error.message };
+  if (error || !rule) {
+    return { ok: false, error: error?.message ?? "Couldn't create recurring rule." };
   }
 
-  revalidateHousehold();
+  const { error: linkError } = await supabase
+    .from("transactions")
+    .update({ recurring_transaction_id: rule.id })
+    .eq("id", id);
+  if (linkError) {
+    console.error("Failed to link recurring rule to its seed transaction:", linkError);
+  }
+
+  revalidateHousehold(["transactions", "recurring_transactions"]);
   return { ok: true };
 }
 
-export async function updateTransaction(id: string, formData: FormData) {
+export async function updateTransaction(
+  id: string,
+  formData: FormData,
+  // The `updated_at` the editor loaded the transaction with. When another
+  // save has landed since then, `before.updated_at` (fetched fresh, below)
+  // won't match — that's the only signal available that a second edit would
+  // otherwise silently overwrite a first one with no warning to either
+  // person, so this is treated as a hard stop rather than proceeding anyway.
+  expectedUpdatedAt?: string,
+): Promise<{ ok: boolean; error?: string; conflict?: boolean }> {
   const supabase = await createClient();
 
   const kind = String(formData.get("kind") ?? "expense") as
     | "income"
     | "expense";
   const description = String(formData.get("description") ?? "").trim();
-  const amount = Number(formData.get("amount") ?? 0);
   const txn_date = String(formData.get("txn_date") ?? "");
   const account_id = String(formData.get("account_id") ?? "") || null;
   const category_id = String(formData.get("category_id") ?? "") || null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
 
-  if (!description || !amount || !txn_date) return;
+  if (!description || !txn_date) {
+    return { ok: false, error: "Missing required fields." };
+  }
 
-  const [{ data: before }, { data: { user } }] = await Promise.all([
+  const amount = parseAmount(formData.get("amount"));
+  if (amount === null) {
+    return { ok: false, error: "Enter a valid amount." };
+  }
+  if (amount < 0) {
+    return { ok: false, error: "Amount can't be negative." };
+  }
+
+  const [{ data: before }, session] = await Promise.all([
     supabase.from("transactions").select("*").eq("id", id).single(),
-    supabase.auth.getUser(),
+    getCurrentSession(),
   ]);
+  const user = session?.user ?? null;
+
+  if (!before) {
+    return { ok: false, error: "Transaction not found." };
+  }
+
+  if (expectedUpdatedAt && before.updated_at !== expectedUpdatedAt) {
+    return {
+      ok: false,
+      conflict: true,
+      error: "Someone else already changed this transaction. Reload to see the latest version.",
+    };
+  }
 
   // Snapshot the pre-edit state so two people sharing this data can see what
   // changed and who changed it, instead of an edit silently overwriting the
   // other person's version with no trace.
-  if (before) {
-    await supabase.from("transaction_history").insert({
-      transaction_id: id,
-      edited_by_email: user?.email ?? null,
-      snapshot: before,
-    });
-  }
+  await supabase.from("transaction_history").insert({
+    transaction_id: id,
+    edited_by_email: user?.email ?? null,
+    snapshot: before,
+  });
 
-  await supabase
+  const updated_at = new Date().toISOString();
+  const { error } = await supabase
     .from("transactions")
     .update({
       kind,
@@ -577,13 +727,19 @@ export async function updateTransaction(id: string, formData: FormData) {
       account_id,
       category_id,
       notes,
+      updated_at,
     })
     .eq("id", id);
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
 
   // An edit only changes these two tables — re-fetching every table (the
   // default) made each save's refresh several times slower than it needs
   // to be.
   revalidateHousehold(["transactions", "transaction_history"]);
+  return { ok: true };
 }
 
 export async function getHistoryForTransaction(transactionId: string) {
@@ -613,9 +769,7 @@ export async function createTransfer(
     return { ok: false, error: "Missing required fields." };
   }
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = (await getCurrentSession())?.user ?? null;
 
   // Every transfer is simply "Transfer" — the row already shows which two
   // accounts it moved between, so the description doesn't repeat them.
@@ -639,7 +793,7 @@ export async function createTransfer(
     return { ok: false, error: error.message };
   }
 
-  revalidateHousehold();
+  revalidateHousehold(["transactions"]);
   return { ok: true };
 }
 
@@ -658,13 +812,13 @@ export async function createObjective(formData: FormData) {
   await supabase
     .from("objectives")
     .insert({ name, status, start_date, end_date, notes, linked_account_id, image_url });
-  revalidateHousehold();
+  revalidateHousehold(["objectives"]);
 }
 
 export async function updateObjectiveStatus(id: string, status: string) {
   const supabase = await createClient();
   await supabase.from("objectives").update({ status }).eq("id", id);
-  revalidateHousehold();
+  revalidateHousehold(["objectives"]);
 }
 
 export async function updateObjective(id: string, formData: FormData) {
@@ -683,13 +837,13 @@ export async function updateObjective(id: string, formData: FormData) {
     .from("objectives")
     .update({ name, status, start_date, end_date, notes, linked_account_id, image_url })
     .eq("id", id);
-  revalidateHousehold();
+  revalidateHousehold(["objectives"]);
 }
 
 export async function updateObjectiveLinkedAccount(id: string, linked_account_id: string | null) {
   const supabase = await createClient();
   await supabase.from("objectives").update({ linked_account_id }).eq("id", id);
-  revalidateHousehold();
+  revalidateHousehold(["objectives"]);
 }
 
 // Soft delete so a stray tap can be undone — same pattern as
@@ -701,13 +855,13 @@ export async function deleteObjective(id: string) {
     .from("objectives")
     .update({ deleted_at: new Date().toISOString() })
     .eq("id", id);
-  revalidateHousehold();
+  revalidateHousehold(["objectives"]);
 }
 
 export async function restoreObjective(id: string) {
   const supabase = await createClient();
   await supabase.from("objectives").update({ deleted_at: null }).eq("id", id);
-  revalidateHousehold();
+  revalidateHousehold(["objectives"]);
 }
 
 // Soft delete so a stray tap can be undone — hard-deleted nowhere, just
@@ -718,7 +872,7 @@ export async function deleteTransaction(id: string) {
     .from("transactions")
     .update({ deleted_at: new Date().toISOString() })
     .eq("id", id);
-  revalidateHousehold();
+  revalidateHousehold(["transactions"]);
 }
 
 // Bulk versions of delete/update for the transactions table's row-selection
@@ -733,7 +887,7 @@ export async function bulkDeleteTransactions(
     .update({ deleted_at: new Date().toISOString() })
     .in("id", ids);
   if (error) return { ok: false, error: error.message };
-  revalidateHousehold();
+  revalidateHousehold(["transactions"]);
   return { ok: true };
 }
 
@@ -745,14 +899,14 @@ export async function bulkUpdateTransactions(
   const supabase = await createClient();
   const { error } = await supabase.from("transactions").update(patch).in("id", ids);
   if (error) return { ok: false, error: error.message };
-  revalidateHousehold();
+  revalidateHousehold(["transactions"]);
   return { ok: true };
 }
 
 export async function restoreTransaction(id: string) {
   const supabase = await createClient();
   await supabase.from("transactions").update({ deleted_at: null }).eq("id", id);
-  revalidateHousehold();
+  revalidateHousehold(["transactions"]);
 }
 
 // Copies every planned amount from one period's budget onto another,
@@ -794,7 +948,7 @@ export async function copyBudgetForward(
     if (error) return { ok: false, error: error.message };
   }
 
-  revalidateHousehold();
+  revalidateHousehold(["budget_lines"]);
   return { ok: true, copied: rows.length };
 }
 
@@ -805,7 +959,7 @@ export async function copyBudgetForward(
 export async function toggleRecurringActive(id: string, is_active: boolean) {
   const supabase = await createClient();
   await supabase.from("recurring_transactions").update({ is_active }).eq("id", id);
-  revalidateHousehold();
+  revalidateHousehold(["recurring_transactions"]);
 }
 
 // Server Action wrapper around the plain query version (which the
@@ -839,9 +993,7 @@ export async function createSplitTransaction(
     return { ok: false, error: "Missing required fields." };
   }
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = (await getCurrentSession())?.user ?? null;
 
   const { data: transaction, error } = await supabase
     .from("transactions")
@@ -873,10 +1025,35 @@ export async function createSplitTransaction(
   );
 
   if (splitsError) {
+    // The parent transaction row above already committed — without this,
+    // a failed splits insert would leave it sitting in the table with a
+    // real amount, category_id: null, and zero split rows, which renders
+    // as an ordinary uncategorized transaction with no sign anything went
+    // wrong. Two separate inserts can't be wrapped in one DB transaction
+    // through the REST client, so this deletes the orphan for real (not a
+    // soft delete — the user never got a success confirmation for it, so
+    // there's nothing to "undo") instead of leaving it to be discovered
+    // later as a mysteriously uncategorized expense.
+    const { error: cleanupError } = await supabase
+      .from("transactions")
+      .delete()
+      .eq("id", transaction.id);
+    if (cleanupError) {
+      console.error(
+        `createSplitTransaction: splits insert failed AND cleanup of orphaned transaction ${transaction.id} failed — it's still in the table with no splits.`,
+        cleanupError,
+      );
+      revalidateHousehold(["transactions"]);
+      return {
+        ok: false,
+        error: `Couldn't save the split, and couldn't undo the partial save either (${splitsError.message}). Check Transactions for a stray "${description}" entry.`,
+      };
+    }
+    revalidateHousehold(["transactions"]);
     return { ok: false, error: splitsError.message };
   }
 
-  revalidateHousehold();
+  revalidateHousehold(["transactions", "transaction_splits"]);
   return { ok: true };
 }
 
@@ -908,9 +1085,7 @@ export async function listApiTokens(): Promise<ApiTokenSummary[]> {
 // the only chance to see/copy it.
 export async function createApiToken(label: string): Promise<string> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = (await getCurrentSession())?.user ?? null;
 
   const raw = generateToken();
   const { error } = await supabase.from("api_tokens").insert({
@@ -920,21 +1095,22 @@ export async function createApiToken(label: string): Promise<string> {
   });
   if (error) throw error;
 
-  revalidateHousehold();
+  // api_tokens isn't a cached snapshot table (nothing reads it through
+  // snapshotClient()) — nothing to invalidate there, but revalidateHousehold
+  // still refreshes the Settings page's own live query via revalidatePath.
+  revalidateHousehold([]);
   return raw;
 }
 
 export async function revokeApiToken(id: string) {
   const supabase = await createClient();
   await supabase.from("api_tokens").update({ revoked_at: new Date().toISOString() }).eq("id", id);
-  revalidateHousehold();
+  revalidateHousehold([]);
 }
 
 export async function updateMyProfile(formData: FormData): Promise<{ ok: boolean; error?: string }> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = (await getCurrentSession())?.user ?? null;
   if (!user) return { ok: false, error: "Not signed in." };
 
   const display_name = String(formData.get("display_name") ?? "").trim() || null;
@@ -947,7 +1123,7 @@ export async function updateMyProfile(formData: FormData): Promise<{ ok: boolean
     return { ok: false, error: error.message };
   }
 
-  revalidateHousehold();
+  revalidateHousehold(["profiles"]);
   return { ok: true };
 }
 
@@ -960,9 +1136,7 @@ export async function uploadAvatar(
   formData: FormData,
 ): Promise<{ ok: boolean; url?: string; error?: string }> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = (await getCurrentSession())?.user ?? null;
   if (!user) return { ok: false, error: "Not signed in." };
 
   const file = formData.get("avatar_file");
@@ -996,7 +1170,7 @@ export async function uploadAvatar(
     return { ok: false, error: error.message };
   }
 
-  revalidateHousehold();
+  revalidateHousehold(["profiles"]);
   return { ok: true, url: avatar_url };
 }
 

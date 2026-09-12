@@ -107,6 +107,10 @@ create table if not exists transactions (
   -- it happens — separate from `cleared`, which is about bank reconciliation.
   pending_approval boolean not null default false,
   created_at timestamptz not null default now(),
+  -- Bumped by updateTransaction on every edit — the only way it can tell a
+  -- second concurrent editor apart from the state the first one started
+  -- from, so one save never silently overwrites another with no warning.
+  updated_at timestamptz not null default now(),
   -- A transfer moves money between accounts, it isn't spend against a
   -- budget category, so it can never carry a category_id.
   constraint transactions_transfer_no_category check (kind <> 'transfer' or category_id is null)

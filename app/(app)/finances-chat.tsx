@@ -20,7 +20,11 @@ type Match =
 const CHAT_ICON_PATH =
   "M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8-1.297 0-2.53-.242-3.643-.677L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8Z";
 
-const SPARKLE_PATH = "M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z";
+// Four-point sparkle, y-shifted so its glyph is actually centered inside a
+// 24×24 box (the raw coolicons-style points spanned y 3..17 against a
+// viewBox centered at 12 — 2px too high, off-center inside its circular
+// badge — while x already spanned 5..19, correctly centered).
+const SPARKLE_PATH = "M12 5l1.8 5.2L19 12l-5.2 1.8L12 19l-1.8-5.2L5 12l5.2-1.8L12 5Z";
 
 const SUGGESTIONS = [
   "How much have I spent this month?",
@@ -408,7 +412,7 @@ function AdvisorInput({
                 listening ? "bg-negative text-white" : "text-text-muted hover:bg-bg"
               }`}
             >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path
                   d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0M12 19v2"
                   stroke="currentColor"

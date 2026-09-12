@@ -6,7 +6,13 @@ import { QuickAddButton } from "./quick-add";
 import { QuickAddTransferButton } from "./quick-add-transfer";
 import type { Account, Category } from "@/lib/types";
 
-type Context = { periodId: string | null; accounts: Account[]; categories: Category[] };
+type Context = {
+  periodId: string | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  accounts: Account[];
+  categories: Category[];
+};
 type Kind = "expense" | "income" | "transfer";
 type PendingOpen = Kind | "picker";
 
@@ -244,6 +250,8 @@ export function NewTransactionButton({
           <QuickAddButton
             kind="expense"
             periodId={context.periodId!}
+            periodStart={context.periodStart}
+            periodEnd={context.periodEnd}
             accounts={context.accounts}
             categories={context.categories}
             renderTrigger={(open) => {
@@ -254,6 +262,8 @@ export function NewTransactionButton({
           <QuickAddButton
             kind="income"
             periodId={context.periodId!}
+            periodStart={context.periodStart}
+            periodEnd={context.periodEnd}
             accounts={context.accounts}
             categories={context.categories}
             renderTrigger={(open) => {
@@ -263,6 +273,8 @@ export function NewTransactionButton({
           />
           <QuickAddTransferButton
             periodId={context.periodId!}
+            periodStart={context.periodStart}
+            periodEnd={context.periodEnd}
             accounts={context.accounts}
             renderTrigger={(open) => {
               openers.current.transfer = open;

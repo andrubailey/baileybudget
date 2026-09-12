@@ -19,7 +19,6 @@ import { observeWidth } from "@/lib/shared-width-observer";
 const PILL_WIDTH = 4;
 const GAP = 4;
 const MIN_SEGMENTS = 4;
-const MAX_SEGMENTS = 32;
 
 export function SegmentedProgress({
   pct,
@@ -45,7 +44,7 @@ export function SegmentedProgress({
     if (!el) return;
     return observeWidth(el, (width) => {
       const fitted = Math.floor((width + GAP) / (PILL_WIDTH + GAP));
-      const clampedCount = Math.min(MAX_SEGMENTS, Math.max(MIN_SEGMENTS, fitted));
+      const clampedCount = Math.max(MIN_SEGMENTS, fitted);
       setSegmentCount((current) => (current === clampedCount ? current : clampedCount));
     });
   }, []);

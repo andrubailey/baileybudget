@@ -36,7 +36,8 @@ export function CategoryDetailDrawer({
 
   function close() {
     setClosing(true);
-    setTimeout(onClose, 150);
+    // Matches .animate-drawer-out's duration (see globals.css).
+    setTimeout(onClose, 160);
   }
 
   useEffect(() => {

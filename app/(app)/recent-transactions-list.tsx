@@ -11,6 +11,7 @@ import { deleteTransaction, restoreTransaction } from "@/app/actions";
 import { useContextMenu } from "@/app/(app)/context-menu";
 import { transactionMenuItems, useTransactionQuickActions } from "@/app/(app)/transaction-menu";
 import { useToast } from "@/app/(app)/toast";
+import { useExitingPanel } from "@/app/(app)/use-exiting-panel";
 
 // Client-side so a row click can open the same TransactionDetailModal the
 // full Transactions page uses, instead of the Overview page's Recent
@@ -32,8 +33,13 @@ export function RecentTransactionsList({
   // uncategorized transaction — see TransactionDetailModal's `splits` prop.
   splitsByTransaction?: Map<string, SplitDetail[]>;
 }) {
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [detailClosing, setDetailClosing] = useState(false);
+  // 160ms matches .animate-drawer-out (see globals.css) — the panel is a
+  // right-edge slide-over.
+  const detail = useExitingPanel<string>(160);
+  const editingId = detail.value;
+  const detailClosing = detail.closing;
+  const openDetail = detail.open;
+  const closeDetail = detail.close;
   const showToast = useToast();
 
   // Right-click menu — same options as the Transactions table (minus
@@ -127,16 +133,6 @@ export function RecentTransactionsList({
   const categoryById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
   const visibleTransactions = withPending.slice(0, visibleCount);
 
-  function closeDetail() {
-    setDetailClosing(true);
-    // Matches .animate-drawer-out's duration (see globals.css) — the panel
-    // is a right-edge slide-over now, not the old centered modal.
-    setTimeout(() => {
-      setEditingId(null);
-      setDetailClosing(false);
-    }, 160);
-  }
-
   const detailTransaction = editingId
     ? (withPending.find((t) => t.id === editingId) ?? null)
     : null;
@@ -167,7 +163,7 @@ export function RecentTransactionsList({
                 accountsById={accountsById}
                 category={category}
                 meta={{ date: true, account: true, category: false }}
-                onClick={isPendingTransaction(t) ? undefined : () => setEditingId(t.id)}
+                onClick={isPendingTransaction(t) ? undefined : () => openDetail(t.id)}
                 onContextMenu={
                   isPendingTransaction(t)
                     ? undefined
@@ -179,7 +175,7 @@ export function RecentTransactionsList({
                             accounts,
                             categories,
                             isSplit: !!splitsByTransaction?.get(t.id)?.length,
-                            onOpen: () => setEditingId(t.id),
+                            onOpen: () => openDetail(t.id),
                             onDelete: () => handleDelete(t),
                             actions: quickActions,
                           }),

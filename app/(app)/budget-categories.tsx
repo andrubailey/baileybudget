@@ -107,17 +107,23 @@ export function BudgetCategoriesCard({
     .filter((c) => c.planned !== 0 || c.actual !== 0)
     .sort((a, b) => a.name.localeCompare(b.name));
   const visible = limit ? sorted.slice(0, limit) : sorted;
-  // Subtotal is across every budgeted category this month, not just the
-  // ones actually rendered — `limit` only caps how many rows this card
+  // Total planned is across every budgeted category this month, not just
+  // the ones actually rendered — `limit` only caps how many rows this card
   // shows, it shouldn't make the total look smaller than it really is.
   const totalPlanned = sorted.reduce((sum, c) => sum + c.planned, 0);
-  const totalActual = sorted.reduce((sum, c) => sum + c.actual, 0);
   const detailCategory = detailId ? (sorted.find((c) => c.id === detailId) ?? null) : null;
 
   return (
     <div className="card flex min-w-0 flex-col overflow-hidden">
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="text-heading text-text">Budget</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-heading text-text">Budget</h2>
+          {sorted.length > 0 && (
+            <span className="tabular shrink-0 rounded-full bg-bg px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-text-muted">
+              <Money amount={totalPlanned} className="tabular" /> planned
+            </span>
+          )}
+        </div>
         <Link
           href="/transactions?view=categories"
           className="text-xs font-medium text-text-faint hover:text-text"
@@ -159,21 +165,14 @@ export function BudgetCategoriesCard({
                 onContextMenu={(e) => openMenu(e, c)}
               />
             ))}
-            <div className="flex items-center justify-between rounded-lg bg-bg px-3 py-2 text-xs font-semibold text-text">
-              <span>Subtotal</span>
-              <span className="flex items-center gap-1">
-                <Money amount={totalPlanned} className="tabular" /> planned ·
-                <Money amount={totalActual} className="tabular" /> actual
-              </span>
-            </div>
           </div>
 
           <div className="mt-3 hidden overflow-x-auto sm:block">
             {/* table-fixed with a share per column and ordinary padding —
                 every cell's content has to fit inside its own column, so
                 nothing (like the progress bar) can draw over a neighbor.
-                Planned and Actual are right-aligned so their figures line
-                up with the Subtotal row beneath them. */}
+                Planned and Actual are right-aligned so their figures form a
+                clean column. */}
             <table className="w-full min-w-[640px] table-fixed text-left">
               <thead>
                 <tr className="border-b border-border">
@@ -204,20 +203,6 @@ export function BudgetCategoriesCard({
                   />
                 ))}
               </tbody>
-              <tfoot>
-                <tr className="border-t border-border">
-                  <td className="px-4 py-2 text-xs font-semibold text-text">
-                    Subtotal
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    <Money amount={totalPlanned} className="tabular text-sm font-semibold text-text" />
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    <Money amount={totalActual} className="tabular text-sm font-semibold text-text" />
-                  </td>
-                  <td className="px-4 py-2" />
-                </tr>
-              </tfoot>
             </table>
           </div>
         </>
@@ -328,6 +313,7 @@ function MobileCategoryCard({
                 data-planned-input={c.id}
                 type="number"
                 step="0.01"
+                min="0"
                 value={plannedInput}
                 onChange={(e) => setPlannedInput(e.target.value)}
                 onBlur={save}
@@ -451,7 +437,7 @@ function CategoryRow({
         {editablePeriodId ? (
           // The checkmark floats outside the input's box (absolute, not in
           // flow) so it never reserves space and shifts the input off the
-          // column's right edge, where the Subtotal figure lines up.
+          // column's own right edge.
           <label
             className="relative inline-block"
             onClick={(e) => e.stopPropagation()}
@@ -463,6 +449,7 @@ function CategoryRow({
               data-planned-input={c.id}
               type="number"
               step="0.01"
+              min="0"
               value={plannedInput}
               onChange={(e) => setPlannedInput(e.target.value)}
               onBlur={save}

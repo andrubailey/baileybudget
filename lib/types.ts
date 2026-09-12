@@ -146,6 +146,7 @@ export type Transaction = {
   created_by_email: string | null;
   recurring_transaction_id: string | null;
   created_at: string;
+  updated_at: string;
 };
 
 export type Objective = {

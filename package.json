@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "profile:start": "PROFILE=1 next start -p 3100",
+    "profile:report": "node scripts/profile-report.mjs",
     "migrate:notion": "node scripts/migrate-notion.mjs",
     "migrate:notion-income": "node scripts/migrate-notion-income.mjs",
     "migrate:notion-planned": "node scripts/migrate-notion-planned.mjs"

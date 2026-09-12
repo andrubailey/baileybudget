@@ -1,4 +1,5 @@
 import { getAccountsWithBalances } from "@/lib/queries";
+import { BANK_OPTIONS } from "@/lib/types";
 import { EmptyState } from "@/app/(app)/empty-state";
 import { BankLogo } from "@/app/(app)/accounts/bank-logo";
 import { AccountReconcileRow } from "./account-reconcile-row";
@@ -26,10 +27,16 @@ export default async function BalancesPage() {
     const key = a.bank ?? "Other";
     groups.set(key, [...(groups.get(key) ?? []), a]);
   }
+  // Chase, CIT Bank, then Amex — BANK_OPTIONS is already in that order;
+  // a bank not in the list sorts after every known one, "Other" last of all.
+  const bankRank = (bank: string) => {
+    const i = (BANK_OPTIONS as readonly string[]).indexOf(bank);
+    return i === -1 ? BANK_OPTIONS.length : i;
+  };
   const sortedGroups = [...groups.entries()].sort(([a], [b]) => {
     if (a === "Other") return 1;
     if (b === "Other") return -1;
-    return a.localeCompare(b);
+    return bankRank(a) - bankRank(b) || a.localeCompare(b);
   });
 
   return (

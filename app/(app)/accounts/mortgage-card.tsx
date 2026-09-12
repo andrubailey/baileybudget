@@ -1,18 +1,24 @@
 "use client";
 
 import { useState } from "react";
+import Image, { type StaticImageData } from "next/image";
 import { Coolicon } from "@/app/(app)/coolicon";
 import { DatePicker } from "@/app/(app)/date-picker";
 import { Money } from "@/app/(app)/money";
 import { PanelField } from "@/app/(app)/panel-field";
 import { SegmentedProgress } from "@/app/(app)/segmented-progress";
-import { StatusPill } from "@/app/(app)/status-pill";
 import { SubmitButton } from "@/app/(app)/submit-button";
 import { useToast } from "@/app/(app)/toast";
 import { formatDate, formatMoney } from "@/lib/format";
 import type { LoanSummary } from "@/lib/loan-math";
 import { PANEL_FIELD_INPUT_CLASS } from "@/lib/ui";
-import { updateLoanFromStatement } from "./loan-actions";
+import { updateHomeValue, updateLoanFromStatement } from "./loan-actions";
+import warriorCourtPhoto from "./home-168-warrior-ct.jpg";
+
+// A photo of the property, keyed by the loan's last four digits.
+const HOME_PHOTOS: Record<string, StaticImageData> = {
+  "5053": warriorCourtPhoto,
+};
 
 function formatMonthYear(iso: string) {
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-US", {
@@ -30,8 +36,10 @@ function timeLeft(months: number) {
     .join(" ");
 }
 
-// The home mortgage on the Accounts page. Kept out of the account grid and
-// out of Net Worth on purpose; its balance comes down as payments are logged.
+// The home mortgage on the Accounts page. Kept out of the account grid — its
+// balance comes down as payments are logged, not from an account balance
+// edit — but its equity (home value minus this balance) does count toward
+// Net Worth once a home value estimate is set; see EquityBlock below.
 export function MortgageCard({ summary: s }: { summary: LoanSummary }) {
   const [editing, setEditing] = useState(false);
   const { loan } = s;
@@ -40,21 +48,42 @@ export function MortgageCard({ summary: s }: { summary: LoanSummary }) {
     .filter(Boolean)
     .join(" · ");
   const lastPayment = s.payments[0];
+  const photo = loan.loan_number_last4 ? HOME_PHOTOS[loan.loan_number_last4] : undefined;
 
   return (
     <section>
       <p className="text-section-label mb-3">Home</p>
-      <div className="card animate-fade-in-up">
+      <div className="card animate-fade-in-up overflow-hidden p-0">
+        {photo && (
+          <Image
+            src={photo}
+            alt={loan.property_address ?? "Home"}
+            placeholder="blur"
+            sizes="(min-width: 1280px) 400px, (min-width: 1024px) 360px, 100vw"
+            className="block h-auto w-full"
+          />
+        )}
+        <div className="p-5 sm:p-6">
         <div className="flex items-start gap-3">
-          <span className="flex size-14 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent">
-            <Coolicon name="House_01" size={24} />
-          </span>
+          {!photo && (
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent">
+              <Coolicon name="House_01" size={22} />
+            </span>
+          )}
           <div className="min-w-0 flex-1">
-            <p className="truncate font-semibold text-text">
-              {loan.name}
-              {street && <span className="font-normal text-text-muted"> · {street}</span>}
-            </p>
+            <p className="truncate font-semibold text-text">{loan.name}</p>
+            {street && <p className="mt-0.5 truncate text-sm text-text-muted">{street}</p>}
             {meta && <p className="mt-0.5 truncate text-xs text-text-faint">{meta}</p>}
+            {loan.login_url && (
+              <a
+                href={loan.login_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline"
+              >
+                Log in to {loan.lender ?? "lender"} ↗
+              </a>
+            )}
           </div>
           <button
             type="button"
@@ -62,12 +91,11 @@ export function MortgageCard({ summary: s }: { summary: LoanSummary }) {
             aria-label="Update from statement"
             className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-text-muted transition-colors hover:bg-bg hover:text-text"
           >
-            <span className="sm:hidden">Update</span>
-            <span className="hidden sm:inline">Update from statement</span>
+            Update
           </button>
         </div>
 
-        <div className="mt-5 space-y-5">
+        <div className="mt-4 space-y-4">
           <div>
             <p className="text-xs text-text-faint">Principal balance</p>
             <div className="mt-1 flex items-baseline gap-1.5">
@@ -90,53 +118,28 @@ export function MortgageCard({ summary: s }: { summary: LoanSummary }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <Stat
-              label="Next payment"
-              value={formatDate(s.nextDue)}
-              detail={
-                s.nextDueIsPast ? (
-                  <StatusPill variant="warning">Not logged yet</StatusPill>
-                ) : (
-                  formatMoney(loan.monthly_payment)
-                )
-              }
-            />
-            <Stat
-              label="Monthly payment"
-              value={formatMoney(loan.monthly_payment)}
-              detail={`Incl. ${formatMoney(s.escrowPerMonth)} escrow`}
-            />
-            <Stat
-              label="Next payment split"
-              value={`${formatMoney(s.nextPayment.principal)} principal`}
-              detail={`${formatMoney(s.nextPayment.interest)} interest`}
-            />
+          <EquityBlock summary={s} />
+
+          <div className="divide-y divide-border border-t border-border">
             <Stat
               label="Interest rate"
               value={`${Number(loan.interest_rate)}%`}
               detail={`${Math.round(s.termMonths / 12)}-year loan`}
             />
-            <Stat
-              label="Escrow balance"
-              value={loan.escrow_balance !== null ? formatMoney(loan.escrow_balance) : "—"}
-              detail={`As of ${formatDate(loan.balance_as_of)}`}
-            />
-            <Stat
-              label="Interest left"
-              value={formatMoney(s.interestRemaining)}
-              detail={`${formatMoney(s.interestPaid)} paid so far`}
-            />
           </div>
         </div>
 
-        <p className="mt-5 border-t border-border pt-4 text-xs text-text-faint">
+        <p
+          className="mt-5 border-t border-border pt-4 text-xs text-text-faint"
+          title="Logging a payment lowers the balance by its principal share; the full payment still counts as a budget expense."
+        >
           {lastPayment
-            ? `Last payment ${formatDate(lastPayment.txn_date)}: ${formatMoney(lastPayment.principal)} to principal, ${formatMoney(lastPayment.interest)} interest, ${formatMoney(lastPayment.escrow)} escrow. `
-            : `Balance is from the statement (payments through ${formatDate(loan.balance_as_of)}). `}
-          Logging a{loan.payment_match ? ` “${loan.lender ?? loan.payment_match}”` : ""} payment lowers it automatically;
-          the full payment still counts as a budget expense. Not included in Net Worth.
+            ? `Last payment ${formatDate(lastPayment.txn_date)}: ${formatMoney(lastPayment.principal)} to principal.`
+            : `Balance as of ${formatDate(loan.balance_as_of)} statement.`}{" "}
+          Balance updates as payments are logged
+          {s.equity !== null ? "; equity counts toward Net Worth." : "."}
         </p>
+        </div>
       </div>
 
       {editing && <StatementModal summary={s} onClose={() => setEditing(false)} />}
@@ -144,12 +147,177 @@ export function MortgageCard({ summary: s }: { summary: LoanSummary }) {
   );
 }
 
+// Home value has no bank-synced source the way every other balance in this
+// app does — someone types in a Zillow estimate or an appraisal, so this is
+// a standing "current estimate" rather than a statement anchored to a date.
+// Equity (value minus the mortgage balance above) is the one piece of this
+// card that counts toward Net Worth; the raw mortgage balance doesn't.
+function EquityBlock({ summary: s }: { summary: LoanSummary }) {
+  const [editing, setEditing] = useState(false);
+  const showToast = useToast();
+  const { loan } = s;
+
+  if (editing) {
+    return (
+      <HomeValueEditor
+        loanId={loan.id}
+        defaultValue={loan.estimated_home_value ?? undefined}
+        defaultPurchaseDate={loan.purchase_date ?? undefined}
+        onDone={(saved) => {
+          setEditing(false);
+          if (saved) showToast("Home value updated");
+        }}
+      />
+    );
+  }
+
+  if (s.equity === null) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="w-full rounded-lg border border-dashed border-border px-3 py-2.5 text-left text-sm text-text-muted transition-colors hover:bg-bg"
+      >
+        + Add your home&apos;s estimated value to see your equity
+      </button>
+    );
+  }
+
+  return (
+    <div className="rounded-lg bg-bg px-3 py-2.5">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-text-faint">Home equity</p>
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="text-xs font-medium text-text-faint transition-colors hover:text-text"
+        >
+          Edit estimate
+        </button>
+      </div>
+      <Money
+        amount={s.equity}
+        variant="balance"
+        signDisplay="auto"
+        tone={s.equity < 0 ? "negative" : undefined}
+        className="tabular text-balance-sm mt-0.5 block text-text"
+      />
+      <p className="tabular mt-0.5 text-xs text-text-faint">
+        {formatMoney(Number(loan.estimated_home_value))} value − {formatMoney(s.balance)} owed
+      </p>
+    </div>
+  );
+}
+
+function HomeValueEditor({
+  loanId,
+  defaultValue,
+  defaultPurchaseDate,
+  onDone,
+}: {
+  loanId: string;
+  defaultValue?: number;
+  defaultPurchaseDate?: string;
+  onDone: (saved: boolean) => void;
+}) {
+  const [value, setValue] = useState(defaultValue !== undefined ? String(defaultValue) : "");
+  const [purchaseDate, setPurchaseDate] = useState(defaultPurchaseDate ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    const amount = Number(value);
+    setSaving(true);
+    const result = await updateHomeValue(loanId, amount, purchaseDate || null);
+    setSaving(false);
+    if (!result.ok) {
+      setError(result.error ?? "Couldn't save.");
+      return;
+    }
+    onDone(true);
+  }
+
+  return (
+    <div className="rounded-lg bg-bg px-3 py-2.5">
+      <div className="grid grid-cols-2 gap-2.5">
+        <div>
+          <p className="text-xs text-text-faint">Estimated home value</p>
+          <div className="relative mt-1.5">
+            <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-sm text-text-faint">
+              $
+            </span>
+            <input
+              type="number"
+              step="1000"
+              min="0"
+              autoFocus
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") save();
+                if (e.key === "Escape") onDone(false);
+              }}
+              className="w-full rounded-md border border-border bg-surface py-1.5 pr-2 pl-6 text-right text-sm text-text outline-none focus:border-accent"
+            />
+          </div>
+        </div>
+        <div>
+          <p className="text-xs text-text-faint">Purchase date</p>
+          <div className="mt-1.5">
+            <DatePicker
+              variant="compact"
+              className="w-full"
+              value={purchaseDate}
+              onChange={setPurchaseDate}
+            />
+          </div>
+        </div>
+      </div>
+      {/* Equity only counts toward Net Worth from this date on — no purchase
+          date set means it's always counted, since most homes will never
+          need this refinement (only relevant when comparing against a month
+          before the house was bought). */}
+      <p className="mt-1.5 text-xs text-text-faint">
+        Equity counts toward Net Worth starting this date. Leave blank to always count it.
+      </p>
+      <div className="mt-2 flex items-center gap-1.5">
+        <button
+          type="button"
+          disabled={saving}
+          onClick={save}
+          className="flex size-9 shrink-0 items-center justify-center rounded-lg text-positive-strong transition-colors hover:bg-positive-bg disabled:opacity-60"
+          aria-label="Save"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          onClick={() => onDone(false)}
+          className="flex size-9 shrink-0 items-center justify-center rounded-lg text-text-faint transition-colors hover:bg-bg"
+          aria-label="Cancel"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M6 6l12 12M18 6 6 18" stroke="currentColor" strokeWidth={2} strokeLinecap="round" />
+          </svg>
+        </button>
+      </div>
+      {error && <p className="mt-1.5 text-xs text-negative">{error}</p>}
+    </div>
+  );
+}
+
+// One row of the stacked detail list: label on the left, figure on the
+// right, and its context line underneath on the right.
 function Stat({ label, value, detail }: { label: string; value: string; detail: React.ReactNode }) {
   return (
-    <div className="min-w-0 rounded-lg border border-border p-3">
-      <p className="truncate text-xs text-text-faint">{label}</p>
-      <p className="tabular mt-1 truncate text-sm font-semibold text-text">{value}</p>
-      <div className="tabular mt-0.5 truncate text-xs text-text-faint">{detail}</div>
+    <div className="flex items-start justify-between gap-4 py-3 last:pb-0">
+      <p className="pt-px text-sm text-text-muted">{label}</p>
+      <div className="flex min-w-0 flex-col items-end text-right">
+        <p className="tabular text-sm font-semibold whitespace-nowrap text-text">{value}</p>
+        <div className="tabular mt-0.5 text-xs whitespace-nowrap text-text-faint">{detail}</div>
+      </div>
     </div>
   );
 }

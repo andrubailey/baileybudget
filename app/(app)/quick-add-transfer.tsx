@@ -16,12 +16,24 @@ import {
 } from "@/app/(app)/pending-transactions";
 import { FIELD_CLASS as fieldClass } from "@/lib/ui";
 
+// Keeps the default date inside the period this transfer is being filed
+// under — see the identical helper in quick-add.tsx for why.
+function clampToPeriod(iso: string, min?: string | null, max?: string | null): string {
+  if (min && iso < min) return min;
+  if (max && iso > max) return max;
+  return iso;
+}
+
 export function QuickAddTransferButton({
   periodId,
+  periodStart,
+  periodEnd,
   accounts,
   renderTrigger,
 }: {
   periodId: string;
+  periodStart?: string | null;
+  periodEnd?: string | null;
   accounts: Account[];
   renderTrigger?: (open: () => void) => React.ReactNode;
 }) {
@@ -126,7 +138,13 @@ export function QuickAddTransferButton({
 
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-text">Date</label>
-                <DatePicker name="txn_date" required defaultValue={new Date().toISOString().slice(0, 10)} />
+                <DatePicker
+                  name="txn_date"
+                  required
+                  defaultValue={clampToPeriod(new Date().toISOString().slice(0, 10), periodStart, periodEnd)}
+                  min={periodStart ?? undefined}
+                  max={periodEnd ?? undefined}
+                />
               </div>
 
               <div className="space-y-1.5">

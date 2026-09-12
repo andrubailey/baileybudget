@@ -15,13 +15,15 @@ const PENDING_REMOVE_EVENT = "budgetapp:transaction-pending-remove";
 export type PendingTransaction = Transaction & { pending: true };
 
 export function announcePendingTransaction(
-  draft: Omit<Transaction, "id" | "created_at" | "deleted_at" | "cleared" | "pending_approval" | "recurring_transaction_id" | "created_by" | "created_by_email"> &
+  draft: Omit<Transaction, "id" | "created_at" | "updated_at" | "deleted_at" | "cleared" | "pending_approval" | "recurring_transaction_id" | "created_by" | "created_by_email"> &
     Partial<Pick<Transaction, "cleared" | "pending_approval" | "created_by_email">>,
 ): string {
   const id = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const now = new Date().toISOString();
   const row: PendingTransaction = {
     id,
-    created_at: new Date().toISOString(),
+    created_at: now,
+    updated_at: now,
     deleted_at: null,
     cleared: false,
     pending_approval: false,

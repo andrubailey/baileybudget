@@ -5,17 +5,14 @@ import { usePathname } from "next/navigation";
 import { MOBILE_LINKS, MOBILE_ADD_LINK } from "./sidebar";
 
 // Native-app-style bottom tab bar for mobile, scoped to the four jobs
-// mobile is for: Budget, Accounts, Add, Recent. Add — the highest-frequency
-// action by a wide margin — isn't a fourth flat tab; it's a raised, accent
-// button dead-center of the bar, overlapping the gap between Accounts and
-// Recent, reachable from either thumb regardless of which of the three flat
-// tabs is currently open. Everything else stays desktop-only; see
-// MOBILE_LINKS/MOBILE_ADD_LINK in sidebar.tsx.
+// mobile is for: Budget, Accounts, Recent, Add — four flat tabs in a row,
+// Add on the far right next to Recent. Everything else stays desktop-only;
+// see MOBILE_LINKS/MOBILE_ADD_LINK in sidebar.tsx.
+const TABS = [...MOBILE_LINKS, MOBILE_ADD_LINK];
+
 export function MobileTabBar() {
   const pathname = usePathname();
-  const activeIndex = MOBILE_LINKS.findIndex((link) =>
-    pathname.startsWith(link.href),
-  );
+  const activeIndex = TABS.findIndex((link) => pathname.startsWith(link.href));
 
   return (
     <nav
@@ -29,11 +26,11 @@ export function MobileTabBar() {
           <div
             aria-hidden="true"
             className="absolute top-0 h-0.5 bg-accent-bright transition-[left] duration-200 ease-out"
-            style={{ left: `${activeIndex * (100 / 3)}%`, width: `${100 / 3}%` }}
+            style={{ left: `${activeIndex * (100 / TABS.length)}%`, width: `${100 / TABS.length}%` }}
           />
         )}
-        <div className="grid grid-cols-3">
-          {MOBILE_LINKS.map((link, i) => {
+        <div className="grid grid-cols-4">
+          {TABS.map((link, i) => {
             const active = pathname.startsWith(link.href);
             return (
               <Link
@@ -59,16 +56,6 @@ export function MobileTabBar() {
             );
           })}
         </div>
-
-        <Link
-          href={MOBILE_ADD_LINK.href}
-          aria-label={MOBILE_ADD_LINK.label}
-          className="absolute left-1/2 -top-6 flex size-14 -translate-x-1/2 items-center justify-center rounded-full bg-accent text-white shadow-modal ring-4 ring-hero-bg transition-transform active:scale-95"
-        >
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" className="shrink-0">
-            {MOBILE_ADD_LINK.icon}
-          </svg>
-        </Link>
       </div>
     </nav>
   );

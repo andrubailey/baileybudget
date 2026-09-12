@@ -2,19 +2,17 @@
 
 import { useState, useTransition } from "react";
 import { reconcileAccountBalance } from "@/app/actions";
-import { formatMoney, formatRelativeTime } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
 import { CurrencyInput } from "@/app/(app)/currency-input";
 import { Money } from "@/app/(app)/money";
 import { useToast } from "@/app/(app)/toast";
 import type { AccountWithBalance } from "@/lib/queries";
 
-// A stale balance you trust is worse than no balance at all, so every row
-// carries when it was last checked and a fast way to correct it right
-// there — no drawer, no navigating to account settings. Tapping the balance
-// swaps it for an editable field, pre-filled with what the app currently
-// computes, so confirming a balance that's already right is just "tap,
-// see it's correct, tap the check" — same number of taps as fixing a wrong
-// one.
+// A fast way to correct a stale balance right there — no drawer, no
+// navigating to account settings. Tapping the balance swaps it for an
+// editable field, pre-filled with what the app currently computes, so
+// confirming a balance that's already right is just "tap, see it's
+// correct, tap the check" — same number of taps as fixing a wrong one.
 export function AccountReconcileRow({
   account: a,
   index = 0,
@@ -52,11 +50,6 @@ export function AccountReconcileRow({
     >
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm text-text">{a.name}</p>
-        <p className="text-metadata mt-0.5">
-          {a.balance_checked_at
-            ? `Updated ${formatRelativeTime(a.balance_checked_at)}`
-            : "Never checked"}
-        </p>
       </div>
 
       {editing ? (

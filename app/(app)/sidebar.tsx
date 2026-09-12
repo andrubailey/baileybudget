@@ -69,11 +69,9 @@ const DIGIT_CODES = [
 // balances, see recent activity — not a subset of PRIMARY_LINKS. Everything
 // else (the full Transactions table, Spending breakdown, Recurring,
 // Reports, Goals, Settings) stays desktop-only, reachable by direct link if
-// truly needed but not part of the mobile chrome. Add is the highest-
-// frequency action by a wide margin, so it isn't one of these three flat
-// tabs — MobileTabBar renders it as a raised button dead-center of the bar
-// instead, reachable from either thumb regardless of which of these three
-// tabs you're on.
+// truly needed but not part of the mobile chrome. MobileTabBar renders
+// these three plus MOBILE_ADD_LINK as four flat tabs in a row, Add on the
+// far right next to Recent.
 export const MOBILE_LINKS = [
   {
     href: "/budget",

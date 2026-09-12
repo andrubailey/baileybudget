@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { PROFILING, profiledFetch } from "@/lib/perf";
 
 export async function createClient() {
   const cookieStore = await cookies();
@@ -22,6 +23,7 @@ export async function createClient() {
           }
         },
       },
+      ...(PROFILING ? { global: { fetch: profiledFetch } } : {}),
     },
   );
 }

@@ -43,6 +43,7 @@ export function TransactionDetailModal({
   onClose,
   splits,
   onSave,
+  period,
 }: {
   transaction: Transaction;
   accounts: Account[];
@@ -62,6 +63,13 @@ export function TransactionDetailModal({
   // silently desync it from the splits it actually represents; real
   // split-editing is a bigger feature this isn't attempting yet.
   splits?: SplitDetail[];
+  // Bounds the date field to the period this transaction is actually filed
+  // under — without it, an edited date can silently drift outside the
+  // period it's attributed to (it still counts toward that period's totals,
+  // since those are keyed by period_id, but drops out of anything that
+  // buckets by the date instead, like a trend chart). Optional because not
+  // every caller has period data on hand; omitting it just means no bound.
+  period?: { start_date: string; end_date: string } | null;
 }) {
   const isSplitParent = t.kind !== "transfer" && !!splits && splits.length > 0;
   const categoryById = new Map(categories.map((c) => [c.id, c]));
@@ -151,9 +159,22 @@ export function TransactionDetailModal({
       next.notes !== (t.notes ?? null);
 
     if (changed) {
-      onSave?.(next);
-      updateTransaction(t.id, formData)
-        .then(() => showToast("Transaction saved"))
+      // Don't touch the list until the save actually lands — patching it
+      // optimistically and only reconciling once fresh data arrives left a
+      // window (permanent, if the save silently failed) where the row showed
+      // an edit the database never received. updateTransaction's own result
+      // is the only thing allowed to confirm a save happened.
+      updateTransaction(t.id, formData, t.updated_at)
+        .then((result) => {
+          if (result.ok) {
+            onSave?.(next);
+            showToast("Transaction saved");
+          } else if (result.conflict) {
+            showToast(result.error ?? "Someone else already changed this transaction.");
+          } else {
+            showToast(result.error ?? "Couldn't save your changes");
+          }
+        })
         .catch(() => showToast("Couldn't save your changes"));
     }
 
@@ -342,7 +363,14 @@ export function TransactionDetailModal({
                 </PanelField>
 
                 <PanelField label="Date">
-                  <DatePicker variant="panel" name="txn_date" required defaultValue={t.txn_date} />
+                  <DatePicker
+                    variant="panel"
+                    name="txn_date"
+                    required
+                    defaultValue={t.txn_date}
+                    min={period?.start_date}
+                    max={period?.end_date}
+                  />
                 </PanelField>
 
                 <PanelField label="Account">

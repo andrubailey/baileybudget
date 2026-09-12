@@ -26,6 +26,16 @@ import {
 
 type DuplicateMatch = { id: string; description: string; amount: number; txn_date: string };
 
+// Keeps the default date inside the period this transaction is being filed
+// under — without this, opening the modal from a past or future month
+// (rather than the current one) would default to today, a date that reads
+// fine but sits outside the period it's actually attributed to.
+function clampToPeriod(iso: string, min?: string | null, max?: string | null): string {
+  if (min && iso < min) return min;
+  if (max && iso > max) return max;
+  return iso;
+}
+
 const ICONS = {
   income: (
     <path d="M12 5v14M5 12h14" stroke="var(--positive)" strokeWidth={2} strokeLinecap="round" />
@@ -49,12 +59,21 @@ const CONFIG = {
 export function QuickAddButton({
   kind,
   periodId,
+  periodStart,
+  periodEnd,
   accounts,
   categories,
   renderTrigger,
 }: {
   kind: "income" | "expense";
   periodId: string;
+  // Bounds the date picker to the period this transaction is actually being
+  // filed under — without them, nothing stops a date picked here from
+  // landing outside the period it's attributed to, which then reads
+  // correctly in every period-based total but silently drops out of any
+  // view (trend charts, category history) that buckets by the date instead.
+  periodStart?: string | null;
+  periodEnd?: string | null;
   accounts: Account[];
   categories: Category[];
   // Lets a different UI (e.g. a mobile floating action button) open this
@@ -341,7 +360,13 @@ export function QuickAddButton({
 
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-text">Date</label>
-                <DatePicker name="txn_date" required defaultValue={new Date().toISOString().slice(0, 10)} />
+                <DatePicker
+                  name="txn_date"
+                  required
+                  defaultValue={clampToPeriod(new Date().toISOString().slice(0, 10), periodStart, periodEnd)}
+                  min={periodStart ?? undefined}
+                  max={periodEnd ?? undefined}
+                />
               </div>
 
               <div className="space-y-1.5">

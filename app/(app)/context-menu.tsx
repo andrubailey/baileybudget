@@ -32,16 +32,57 @@ const isAction = (i: ContextMenuItem): i is ActionItem => i.type === undefined |
 
 type OpenState = { x: number; y: number; items: ContextMenuItem[] } | null;
 
+// Matches .animate-modal-panel-out in globals.css.
+const EXIT_MS = 120;
+
 export function useContextMenu() {
   const [state, setState] = useState<OpenState>(null);
+  const [closing, setClosing] = useState(false);
+  const exitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (exitTimer.current) clearTimeout(exitTimer.current);
+    },
+    [],
+  );
+
+  // Plays the exit animation, then unmounts. Safe to call repeatedly — an
+  // outside click and the window blur that follows can both fire.
+  function close() {
+    if (!state || exitTimer.current) return;
+    setClosing(true);
+    exitTimer.current = setTimeout(() => {
+      exitTimer.current = null;
+      setState(null);
+      setClosing(false);
+    }, EXIT_MS);
+  }
+
   return {
     open(e: React.MouseEvent, items: ContextMenuItem[]) {
       e.preventDefault();
       e.stopPropagation();
+      if (exitTimer.current) {
+        clearTimeout(exitTimer.current);
+        exitTimer.current = null;
+      }
+      setClosing(false);
       setState({ x: e.clientX, y: e.clientY, items });
     },
-    close: () => setState(null),
-    menu: state ? <ContextMenu x={state.x} y={state.y} items={state.items} onClose={() => setState(null)} /> : null,
+    close,
+    menu: state ? (
+      // Keyed by position so right-clicking somewhere else replays the
+      // entrance at the new spot instead of jumping the open menu there.
+      <ContextMenu
+        key={`${state.x},${state.y}`}
+        x={state.x}
+        y={state.y}
+        items={state.items}
+        closing={closing}
+        onClose={close}
+      />
+    ) : null,
   };
 }
 
@@ -54,12 +95,15 @@ function ContextMenu({
   onClose,
   depth = 0,
   anchor,
+  closing = false,
 }: {
   x: number;
   y: number;
   items: ContextMenuItem[];
   onClose: () => void;
   depth?: number;
+  // Playing the exit animation; unmounted by the hook once it finishes.
+  closing?: boolean;
   // For a submenu: the parent row's rect, so it can flip to the left.
   anchor?: DOMRect;
 }) {
@@ -160,7 +204,9 @@ function ContextMenu({
         onKeyDown={onKeyDown}
         onContextMenu={(e) => e.preventDefault()}
         style={{ left: pos.left, top: pos.top }}
-        className="animate-modal-panel fixed z-[210] w-60 overflow-hidden rounded-xl border border-border bg-surface shadow-modal outline-none"
+        className={`${
+          closing ? "animate-modal-panel-out pointer-events-none" : "animate-modal-panel"
+        } fixed z-[210] w-60 overflow-hidden rounded-xl border border-border bg-surface shadow-modal outline-none`}
       >
         {showSearch && (
           <div className="border-b border-border p-1.5">
@@ -240,6 +286,7 @@ function ContextMenu({
           items={sub.submenu}
           anchor={openSub.rect}
           depth={depth + 1}
+          closing={closing}
           onClose={depth === 0 ? onClose : () => setOpenSub(null)}
         />
       )}

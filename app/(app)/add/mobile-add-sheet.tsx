@@ -7,6 +7,8 @@ import type { Account, Category } from "@/lib/types";
 import { SubmitButton } from "@/app/(app)/submit-button";
 import { useToast } from "@/app/(app)/toast";
 import { CategorySelect } from "@/app/(app)/category-select";
+import { Dropdown } from "@/app/(app)/dropdown";
+import { accountChoices } from "@/app/(app)/dropdown-options";
 import { FIELD_CLASS as fieldClass } from "@/lib/ui";
 import {
   announcePendingTransaction,
@@ -216,47 +218,29 @@ export function MobileAddSheet({
 
             {type === "transfer" ? (
               <div className="grid grid-cols-2 gap-3">
-                <select
+                <Dropdown
                   name="from_account_id"
                   value={accountId}
-                  onChange={(e) => setAccountId(e.target.value)}
-                  className={fieldClass}
-                >
-                  <option value="">From account</option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-                <select
+                  onChange={setAccountId}
+                  options={accountChoices(accounts, "From account")}
+                  className="w-full"
+                />
+                <Dropdown
                   name="to_account_id"
                   value={toAccountId}
-                  onChange={(e) => setToAccountId(e.target.value)}
-                  className={fieldClass}
-                >
-                  <option value="">To account</option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setToAccountId}
+                  options={accountChoices(accounts, "To account")}
+                  className="w-full"
+                />
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-3">
-                <select
+                <Dropdown
                   value={accountId}
-                  onChange={(e) => setAccountId(e.target.value)}
-                  className={fieldClass}
-                >
-                  <option value="">Account</option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setAccountId}
+                  options={accountChoices(accounts, "Account")}
+                  className="w-full"
+                />
                 <CategorySelect
                   categories={kindCategories}
                   kind={type === "income" ? "income" : "expense"}

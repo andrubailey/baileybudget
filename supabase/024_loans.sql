@@ -29,8 +29,13 @@ create table if not exists loans (
   -- (case-insensitive) or it's in payment_category_id.
   payment_match text,
   payment_category_id uuid references categories(id) on delete set null,
+  -- The lender's sign-in page, shown as a login link on the card.
+  login_url text,
   created_at timestamptz not null default now()
 );
+
+-- For a database where this migration already ran before login_url existed.
+alter table loans add column if not exists login_url text;
 
 alter table loans enable row level security;
 
@@ -45,7 +50,7 @@ insert into loans (
   name, lender, property_address, borrowers, loan_number_last4,
   interest_rate, original_balance, first_payment_date, maturity_date,
   principal_balance, balance_as_of, next_payment_due, escrow_balance,
-  monthly_payment, payment_match, payment_category_id
+  monthly_payment, payment_match, payment_category_id, login_url
 )
 select
   'Mortgage', 'Rocket Mortgage', '168 Warrior Court, Hoschton, GA 30548',
@@ -53,5 +58,9 @@ select
   5.125, 361241.00, '2026-08-01', '2056-07-01',
   360816.89, '2026-08-07', '2026-09-01', 1216.60,
   2659.50, 'rocket mortgage',
-  (select id from categories where name = 'Mortgage' and kind = 'expense' limit 1)
+  (select id from categories where name = 'Mortgage' and kind = 'expense' limit 1),
+  'https://rocket.com/mortgage/servicing'
 where not exists (select 1 from loans where loan_number_last4 = '5053');
+
+update loans set login_url = 'https://rocket.com/mortgage/servicing'
+where loan_number_last4 = '5053' and login_url is null;

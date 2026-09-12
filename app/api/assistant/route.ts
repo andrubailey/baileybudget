@@ -457,10 +457,11 @@ async function runWriteTool(
       if (!category) {
         return { content: `No expense category found matching "${input.category_name}".`, isError: true };
       }
-      const planned_amount = typeof input.planned_amount === "number" ? input.planned_amount : NaN;
-      if (!Number.isFinite(planned_amount)) {
-        return { content: "planned_amount must be a number.", isError: true };
+      const rawPlanned = typeof input.planned_amount === "number" ? input.planned_amount : NaN;
+      if (!Number.isFinite(rawPlanned) || rawPlanned < 0) {
+        return { content: "planned_amount must be a non-negative number.", isError: true };
       }
+      const planned_amount = Math.round(rawPlanned * 100) / 100;
       const { error } = await supabase
         .from("budget_lines")
         .upsert(
@@ -687,6 +688,24 @@ Answering: lead with the direct answer and the key number, then only the detail 
         category_name?: string;
       };
 
+      // The tool description tells the model this is a positive amount, but
+      // that's only a hint the model can still get wrong (a misread refund,
+      // a stray minus sign). Every balance and budget total downstream just
+      // adds this in with a sign that assumes it's positive, so an
+      // unvalidated negative here would silently flip the wrong direction
+      // instead of erroring — the same check the Shortcuts API already does
+      // for this same insert.
+      const amount = Math.round(Number(input.amount) * 100) / 100;
+      if (!Number.isFinite(amount) || amount <= 0) {
+        toolResults.push({
+          type: "tool_result",
+          tool_use_id: block.id,
+          content: `"${input.amount}" isn't a valid positive amount. Ask the user for the correct amount instead of guessing.`,
+          is_error: true,
+        });
+        continue;
+      }
+
       const period = periodList.find(
         (p) => p.start_date <= input.txn_date && p.end_date >= input.txn_date,
       );
@@ -751,7 +770,7 @@ Answering: lead with the direct answer and the key number, then only the detail 
       const { error } = await supabase.from("transactions").insert({
         kind: input.kind,
         description,
-        amount: input.amount,
+        amount,
         txn_date: input.txn_date,
         account_id: account?.id ?? null,
         to_account_id: toAccount?.id ?? null,

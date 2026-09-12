@@ -173,6 +173,7 @@ export function CategoryDetailPanel({
                     <input
                       type="number"
                       step="0.01"
+                      min="0"
                       inputMode="decimal"
                       value={plannedInput}
                       onChange={(e) => setPlannedInput(e.target.value)}

@@ -6,6 +6,7 @@ import { Dropdown } from "@/app/(app)/dropdown";
 import { accountChoices, categoryChoices } from "@/app/(app)/dropdown-options";
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useExitingPanel } from "@/app/(app)/use-exiting-panel";
 import {
   bulkDeleteTransactions,
   bulkUpdateTransactions,
@@ -242,21 +243,13 @@ export function TransactionsTable({
   // Which transaction's detail modal is open. Closing plays the modal's exit
   // animation before actually unmounting — set detailClosing, wait for the
   // animation to finish, then clear editingId — instead of just vanishing.
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [detailClosing, setDetailClosing] = useState(false);
-
-  function openDetail(id: string) {
-    setEditingId(id);
-  }
-  function closeDetail() {
-    setDetailClosing(true);
-    // Matches .animate-drawer-out's duration (see globals.css) — the panel
-    // is a right-edge slide-over now, not the old centered modal.
-    setTimeout(() => {
-      setEditingId(null);
-      setDetailClosing(false);
-    }, 160);
-  }
+  // 160ms matches .animate-drawer-out (see globals.css) — the panel is a
+  // right-edge slide-over.
+  const detail = useExitingPanel<string>(160);
+  const editingId = detail.value;
+  const detailClosing = detail.closing;
+  const openDetail = detail.open;
+  const closeDetail = detail.close;
 
   // Row-selection for the bulk action bar (delete / change account / change
   // date / change category across everything checked at once).
@@ -1018,6 +1011,7 @@ export function TransactionsTable({
               closing={detailClosing}
               onClose={closeDetail}
               onSave={(patch) => setLocalEdits((prev) => ({ ...prev, [detailTransaction.id]: patch }))}
+              period={periods.find((p) => p.id === detailTransaction.period_id)}
             />
           );
         })()}

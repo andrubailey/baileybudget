@@ -1,4 +1,5 @@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { PROFILING, profiledFetch } from "@/lib/perf";
 
 // Service-role client: bypasses RLS entirely. Only import this from
 // server-only code that itself enforces access control (e.g. the Shortcuts
@@ -13,5 +14,6 @@ export function createAdminClient() {
   }
   return createSupabaseClient(url, key, {
     auth: { autoRefreshToken: false, persistSession: false },
+    ...(PROFILING ? { global: { fetch: profiledFetch } } : {}),
   });
 }

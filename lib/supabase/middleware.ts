@@ -1,7 +1,19 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { PROFILING, clock, profiledFetch, record, timed } from "@/lib/perf";
 
 export async function updateSession(request: NextRequest) {
+  if (!PROFILING) return updateSessionInner(request);
+  const start = clock();
+  const response = await updateSessionInner(request);
+  record("proxy", request.nextUrl.pathname, start, {
+    path: request.nextUrl.pathname,
+    status: response.status,
+  });
+  return response;
+}
+
+async function updateSessionInner(request: NextRequest) {
   // The Shortcuts API authenticates itself with its own bearer token (see
   // app/api/shortcuts/transaction/route.ts) instead of a browser session —
   // that's the whole point, so a Shortcut can log a transaction without
@@ -31,6 +43,7 @@ export async function updateSession(request: NextRequest) {
           );
         },
       },
+      ...(PROFILING ? { global: { fetch: profiledFetch } } : {}),
     },
   );
 
@@ -44,7 +57,9 @@ export async function updateSession(request: NextRequest) {
   // to getUser() automatically if the key were ever symmetric. Reading the
   // session here also still triggers the token refresh this middleware is
   // responsible for, via the cookie adapters above.
-  const { data } = await supabase.auth.getClaims();
+  const { data } = await timed("auth", "getClaims", () => supabase.auth.getClaims(), {
+    path: request.nextUrl.pathname,
+  });
   const user = data?.claims ?? null;
 
   const isLoginPage = request.nextUrl.pathname.startsWith("/login");
@@ -62,21 +77,21 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // On a phone, the Overview dashboard is a lot to land on cold — jump
-  // straight to logging a transaction instead. Only the bare root: a
-  // bookmark/link to a specific page (e.g. /transactions) should still open
-  // where it says. User-agent sniffing is the only signal available this
-  // early (no client JS has run yet to check viewport width), so this
-  // targets phone-class UAs specifically — tablets keep the desktop-style
-  // Overview landing.
-  const isMobileUserAgent = /Mobi|Android|iPhone|iPod/i.test(
-    request.headers.get("user-agent") ?? "",
-  );
-  if (user && request.nextUrl.pathname === "/" && isMobileUserAgent) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/add";
-    return NextResponse.redirect(url);
-  }
+  // Disabled: this sent every phone visit to / straight to /add instead of
+  // the dashboard, and /add was crashing with a server error for real
+  // mobile users in production right after this shipped. Mobile now lands
+  // on the same Overview dashboard as desktop (the previously-working
+  // behavior) until the crash on /add is root-caused — re-enable once
+  // that's fixed and verified.
+  //
+  // const isMobileUserAgent = /Mobi|Android|iPhone|iPod/i.test(
+  //   request.headers.get("user-agent") ?? "",
+  // );
+  // if (user && request.nextUrl.pathname === "/" && isMobileUserAgent) {
+  //   const url = request.nextUrl.clone();
+  //   url.pathname = "/add";
+  //   return NextResponse.redirect(url);
+  // }
 
   return supabaseResponse;
 }

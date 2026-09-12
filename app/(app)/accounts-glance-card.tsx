@@ -8,7 +8,7 @@ import { EmptyState } from "@/app/(app)/empty-state";
 // day-to-day account, then the two savings goals in the order they matter
 // most. Anything not in this list (a new personal account added later)
 // just falls after these, alphabetically.
-const PERSONAL_ACCOUNT_ORDER = ["Checking", "Car Fund", "Emergency Fund"];
+const PERSONAL_ACCOUNT_ORDER = ["Personal Checking", "Car Maintenance Fund", "Emergency Fund"];
 
 function byPersonalOrder(a: AccountWithBalance, b: AccountWithBalance) {
   const ai = PERSONAL_ACCOUNT_ORDER.indexOf(a.name);
