@@ -8,6 +8,7 @@ import type { TransactionSearchResult } from "@/lib/queries";
 import { formatDate } from "@/lib/format";
 import { TransactionAmount, TransactionAvatar } from "@/app/(app)/transaction-row";
 import { SPARKLE_PATH } from "@/app/(app)/sparkle-icon";
+import { useToast } from "@/app/(app)/toast";
 import { NAV_GROUPS } from "./sidebar";
 
 type DisplayMessage = { role: "user" | "assistant"; text: string };
@@ -37,10 +38,13 @@ type SpeechRecognitionLike = {
   maxAlternatives: number;
   onresult:
     | ((e: {
-        results: { [i: number]: { [j: number]: { transcript: string } } };
+        results: {
+          length: number;
+          [i: number]: { isFinal: boolean; [j: number]: { transcript: string } };
+        };
       }) => void)
     | null;
-  onerror: (() => void) | null;
+  onerror: ((e: { error: string }) => void) | null;
   onend: (() => void) | null;
   start: () => void;
   stop: () => void;
@@ -453,6 +457,7 @@ function AdvisorInput({
 // history to browse, "New chat" just clears it.
 export function FinancesChat() {
   const router = useRouter();
+  const showToast = useToast();
   const [popupOpen, setPopupOpen] = useState(false);
   // Closing plays the reverse of the open animation before the panel
   // actually unmounts — without this it would just vanish instantly, since
@@ -592,8 +597,13 @@ export function FinancesChat() {
   }, []);
 
   // ⌘K / "/" (see GlobalShortcuts) opens the Advisor and focuses its input.
+  // A caller can also hand it a `detail.prompt` (the Accounts page's
+  // reconcile modal does, to hand off a discrepancy) — pre-filled into the
+  // input rather than sent automatically, since it still needs the actual
+  // bank statement pasted in before there's anything to act on.
   useEffect(() => {
-    function handleOpenChat() {
+    function handleOpenChat(e: Event) {
+      const prompt = (e as CustomEvent<{ prompt?: string }>).detail?.prompt;
       // flushSync forces the panel/sheet's DOM to actually commit before
       // this function continues — a plain setState + requestAnimationFrame
       // raced React's own commit here, so the textarea sometimes wasn't in
@@ -604,6 +614,7 @@ export function FinancesChat() {
       } else {
         flushSync(() => setPopupOpen(true));
       }
+      if (prompt) setInput(prompt);
       inputRef.current?.focus();
     }
     window.addEventListener("budgetapp:open-chat", handleOpenChat);
@@ -692,25 +703,60 @@ export function FinancesChat() {
   }
 
   // Speak a question or a batch instead of typing it — transcribed and sent
-  // straight through the same advisor as typed messages.
+  // straight through the same advisor as typed messages. Every failure mode
+  // (mic permission denied, no mic hardware, the browser only allowing one
+  // recognizer active at a time, a network hiccup) used to fail completely
+  // silently — the button flashed "listening" and then just quietly
+  // reverted, with nothing telling you why nothing happened. Every path
+  // below now either transcribes or says what went wrong.
   function startVoiceInput() {
     const SpeechRecognitionCtor = getSpeechRecognition();
     if (!SpeechRecognitionCtor || listening) return;
 
     const recognition = new SpeechRecognitionCtor();
     recognition.lang = "en-US";
-    recognition.interimResults = false;
+    // Live, word-by-word — without this, nothing shows up until you stop
+    // talking and the whole utterance resolves at once.
+    recognition.interimResults = true;
     recognition.maxAlternatives = 1;
     recognition.onresult = (e) => {
-      const transcript = e.results[0]?.[0]?.transcript;
-      if (transcript) sendMessage(transcript);
+      // `results` holds every segment recognized so far this session, not
+      // just the newest one — concatenating all of them (final and the
+      // still-settling interim one) is what reconstructs the full text as
+      // it's spoken, rather than only the last word recognized.
+      let transcript = "";
+      for (let i = 0; i < e.results.length; i++) {
+        transcript += e.results[i][0]?.transcript ?? "";
+      }
+      setInput(transcript);
     };
-    recognition.onerror = () => setListening(false);
+    recognition.onerror = (e) => {
+      setListening(false);
+      // "aborted" fires from our own stopVoiceInput(); "no-speech" just
+      // means it didn't hear anything — neither is worth interrupting the
+      // user over. Everything else genuinely stopped this from working.
+      if (e.error === "aborted" || e.error === "no-speech") return;
+      const message =
+        e.error === "not-allowed" || e.error === "service-not-allowed"
+          ? "Microphone access is blocked — check this site's permissions in your browser settings."
+          : e.error === "audio-capture"
+            ? "No microphone found."
+            : "Voice input failed. Try again.";
+      showToast(message, "error");
+    };
     recognition.onend = () => setListening(false);
 
     recognitionRef.current = recognition;
     setListening(true);
-    recognition.start();
+    try {
+      recognition.start();
+    } catch {
+      // Some browsers throw synchronously here instead of firing onerror —
+      // most commonly when a recognizer is already running elsewhere on
+      // the page, since only one is ever allowed active at a time.
+      setListening(false);
+      showToast("Couldn't start voice input. Try again.", "error");
+    }
   }
 
   function stopVoiceInput() {
