@@ -1,0 +1,92 @@
+[
+  {
+    "id": "4a8fe3ac-037c-4b66-9164-60dfd2aab60a",
+    "description": "Comcast / Xfinity",
+    "created_by": "fec89386-cbfa-408d-b42b-a12d02aa4821",
+    "created_by_email": null
+  },
+  {
+    "id": "a4c9e6bb-2d06-4e91-a9b9-3ed7d3fc1ffc",
+    "description": "OpenAI ChatGPT subscription",
+    "created_by": "fec89386-cbfa-408d-b42b-a12d02aa4821",
+    "created_by_email": null
+  },
+  {
+    "id": "7c2561ee-5d08-4eb4-b155-b39345608268",
+    "description": "OpenAI ChatGPT subscription",
+    "created_by": "fec89386-cbfa-408d-b42b-a12d02aa4821",
+    "created_by_email": null
+  },
+  {
+    "id": "80829b4d-f1f7-42e0-8e5d-3dd8b90aeb9d",
+    "description": "Mobbin.com",
+    "created_by": "fec89386-cbfa-408d-b42b-a12d02aa4821",
+    "created_by_email": null
+  },
+  {
+    "id": "f802e53a-560b-4ed0-b872-56c946365c37",
+    "description": "World Market",
+    "created_by": "fec89386-cbfa-408d-b42b-a12d02aa4821",
+    "created_by_email": null
+  },
+  {
+    "id": "eb4418b3-5316-4336-ad92-a6e9ccc44a03",
+    "description": "Sam's Club",
+    "created_by": "fec89386-cbfa-408d-b42b-a12d02aa4821",
+    "created_by_email": null
+  },
+  {
+    "id": "607f3515-bea3-48f9-b27d-a1b5cf835aa9",
+    "description": "First Watch",
+    "created_by": "fec89386-cbfa-408d-b42b-a12d02aa4821",
+    "created_by_email": null
+  },
+  {
+    "id": "d09c839b-ad65-47f3-a6ed-ac74539c0eb8",
+    "description": "AN Toyota Scion Mall of Georgia",
+    "created_by": "fec89386-cbfa-408d-b42b-a12d02aa4821",
+    "created_by_email": null
+  },
+  {
+    "id": "5b314fa2-9cb8-4831-9f1c-7ca5874e861e",
+    "description": "Northside Gwinnett parking lot",
+    "created_by": "fec89386-cbfa-408d-b42b-a12d02aa4821",
+    "created_by_email": null
+  },
+  {
+    "id": "186a8e54-87f6-4bce-b4fb-33738e24539f",
+    "description": "Costco",
+    "created_by": "fec89386-cbfa-408d-b42b-a12d02aa4821",
+    "created_by_email": null
+  },
+  {
+    "id": "9da70324-813c-4b68-a10f-42c00f955b20",
+    "description": "Costco",
+    "created_by": "fec89386-cbfa-408d-b42b-a12d02aa4821",
+    "created_by_email": null
+  },
+  {
+    "id": "a2e3aa2d-a793-4df4-bac9-5264f4c460f5",
+    "description": "Transfer",
+    "created_by": "fec89386-cbfa-408d-b42b-a12d02aa4821",
+    "created_by_email": null
+  },
+  {
+    "id": "e04c871b-89ac-4747-be8c-2557ddafc97b",
+    "description": "PHR*MFM of Georgia",
+    "created_by": "fec89386-cbfa-408d-b42b-a12d02aa4821",
+    "created_by_email": null
+  },
+  {
+    "id": "faec0dfc-532e-4f84-a364-b13a0d259308",
+    "description": "Manual balance adjustment",
+    "created_by": null,
+    "created_by_email": null
+  },
+  {
+    "id": "bcb72482-8ec8-4e50-89aa-d19cae3d8572",
+    "description": "Anthropic Claude subscription",
+    "created_by": "fec89386-cbfa-408d-b42b-a12d02aa4821",
+    "created_by_email": null
+  }
+]

@@ -1,6 +1,7 @@
 import { getPeriods, pickPeriod } from "@/lib/periods";
 import {
   getTransactions,
+  getAllTransactions,
   getCategories,
   getAccountsWithBalances,
   getSplitsByTransaction,
@@ -48,7 +49,8 @@ export default async function TransactionsPage({
     getAccountsWithBalances(),
     getCategories(),
   ]);
-  const { period, periods, transactions, splitsByTransaction, dueRecurringCount } = periodData;
+  const { period, periods, transactions, splitsByTransaction, dueRecurringCount, selectedPeriodId } =
+    periodData;
 
   return (
     <div className="space-y-6">
@@ -77,7 +79,7 @@ export default async function TransactionsPage({
           initialFlag={initialFlag}
           highlightId={highlightId}
           periods={periods}
-          selectedPeriodId={period.id}
+          selectedPeriodId={selectedPeriodId}
         />
         </>
       )}
@@ -97,9 +99,14 @@ async function loadPeriodData(requestedPeriod: string | undefined): Promise<{
   transactions: Transaction[];
   splitsByTransaction: Map<string, SplitDetail[]>;
   dueRecurringCount: number;
+  // A period id, or "all" for every month at once (e.g. an account's full
+  // history, opened from its card on the Accounts page).
+  selectedPeriodId: string;
 }> {
   const periods = await getPeriods();
-  const period = pickPeriod(periods, requestedPeriod);
+  const allTime = requestedPeriod === "all";
+  // "All time" still needs the current month for posting due recurring bills.
+  const period = pickPeriod(periods, allTime ? undefined : requestedPeriod);
   if (!period) {
     return {
       period: null,
@@ -107,6 +114,7 @@ async function loadPeriodData(requestedPeriod: string | undefined): Promise<{
       transactions: [],
       splitsByTransaction: new Map(),
       dueRecurringCount: 0,
+      selectedPeriodId: "",
     };
   }
 
@@ -116,7 +124,7 @@ async function loadPeriodData(requestedPeriod: string | undefined): Promise<{
   // made here wouldn't show up until something else changed. This read is
   // free (cached snapshot), and it's zero on the vast majority of loads.
   const [transactions, dueRows] = await Promise.all([
-    getTransactions(period.id),
+    allTime ? getAllTransactions() : getTransactions(period.id),
     getDueRecurringRows(period.id),
   ]);
   const splitsByTransaction = await getSplitsByTransaction(
@@ -129,5 +137,6 @@ async function loadPeriodData(requestedPeriod: string | undefined): Promise<{
     transactions,
     splitsByTransaction,
     dueRecurringCount: dueRows.length,
+    selectedPeriodId: allTime ? "all" : period.id,
   };
 }

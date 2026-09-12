@@ -8,6 +8,7 @@ import { PullToRefresh } from "./pull-to-refresh";
 import { PageTransition } from "./page-transition";
 import { FinancesChat } from "./finances-chat";
 import { DataQualityBanner, type DataQualityIssue } from "./data-quality-banner";
+import { getWeeklyRecapData } from "./weekly-recap";
 import { getTable } from "@/lib/snapshot";
 import { getCurrentSession, getCurrentUserProfile } from "@/lib/profile";
 
@@ -16,11 +17,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // call — the real validation already happened in proxy.ts's middleware.
   // The nav badge count and the data-quality banner below both come from the
   // cached transactions snapshot, so this layout costs no database round
-  // trip at all.
-  const [session, transactions, splits] = await Promise.all([
+  // trip at all. The recap lives in the same banner now (see
+  // DataQualityBanner/WeeklyRecapAlert) so it's fetched here too — it needs
+  // to be visible app-wide, not just on the Overview page.
+  const [session, transactions, splits, recap] = await Promise.all([
     getCurrentSession(),
     getTable("transactions"),
     getTable("transaction_splits"),
+    getWeeklyRecapData(),
   ]);
   const activeTransactions = transactions.filter((t) => t.deleted_at == null);
   const pendingApprovalCount = activeTransactions.filter((t) => t.pending_approval === true).length;
@@ -64,7 +68,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           avatarUrl={profile?.avatar_url ?? null}
         />
         <div className="flex min-w-0 flex-1 flex-col">
-          <DataQualityBanner issues={dataQualityIssues} />
+          <DataQualityBanner issues={dataQualityIssues} recap={recap} />
           <main className="w-full min-w-0 flex-1 px-4 pt-10 pb-28 sm:px-6 lg:px-8 lg:pt-16 lg:pb-32">
             <PullToRefresh>
               <div className="mx-auto max-w-[1600px]">

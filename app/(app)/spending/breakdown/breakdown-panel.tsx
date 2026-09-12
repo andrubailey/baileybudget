@@ -11,29 +11,12 @@ import { SegmentedProgress } from "@/app/(app)/segmented-progress";
 import { CategoryDetailDrawer } from "./category-detail-drawer";
 import { useContextMenu } from "@/app/(app)/context-menu";
 import { categoryMenuItems, useCategoryQuickActions } from "@/app/(app)/category-menu";
+import type { CategoryRow } from "../build-category-rows";
 
-export type CategoryRow = {
-  id: string;
-  name: string;
-  icon: string | null;
-  group: string | null;
-  isActive: boolean;
-  // "Need" is purely descriptive here (no needs/wants rollup reads it yet)
-  // — it's just tagged per category so that reporting can be built later
-  // without a second pass to backfill every category's answer.
-  isNeed: boolean;
-  // When true, an unspent (or overspent) amount carries into next period's
-  // planned amount instead of resetting — see lib/queries.ts's
-  // getRolloverAmounts, which already folds this into `planned` above
-  // whenever it's on.
-  rollover: boolean;
-  planned: number;
-  actual: number;
-  lastMonth: number;
-  monthlyAverage: number;
-  history: { month: string; amount: number }[];
-  transactions: { id: string; description: string; amount: number; txn_date: string }[];
-};
+// Re-exported so existing `import type { CategoryRow } from "./breakdown-panel"`
+// call sites (budget-editor.tsx) keep working — build-category-rows.ts is
+// the canonical definition now, shared with the Budget page.
+export type { CategoryRow };
 
 export type IncomeRow = { id: string; name: string; icon: string | null; actual: number };
 
@@ -136,7 +119,7 @@ export function BreakdownPanel({
         <div className="flex items-center justify-between border-b border-border px-5 py-3">
           <p className="text-section-label">Category breakdown</p>
           <Link
-            href={`/spending/breakdown?period=${periodId}&edit=1`}
+            href="/spending/budget"
             aria-label="Edit budget"
             className="flex size-8 items-center justify-center rounded-lg border border-border text-text-muted transition-colors hover:bg-bg hover:text-text"
           >
@@ -291,7 +274,7 @@ export function BreakdownPanel({
 
             <div className="mt-6 flex items-center justify-between">
               <Link
-                href={`/spending/breakdown?period=${periodId}&edit=1`}
+                href="/spending/budget"
                 className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-text transition-colors hover:bg-bg"
               >
                 <PencilIcon /> Edit budget
@@ -305,7 +288,7 @@ export function BreakdownPanel({
                   icon="chart"
                   message="No budget set for this month."
                   action={
-                    <Link href={`/spending/breakdown?period=${periodId}&edit=1`} className="text-xs font-medium text-accent underline underline-offset-2">
+                    <Link href="/spending/budget" className="text-xs font-medium text-accent underline underline-offset-2">
                       Set one up
                     </Link>
                   }

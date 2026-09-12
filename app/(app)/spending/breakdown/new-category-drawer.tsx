@@ -8,6 +8,7 @@ import { quickCreateCategory } from "@/app/actions";
 import type { Category } from "@/lib/types";
 import { FIELD_CLASS } from "@/lib/ui";
 import { useToast } from "@/app/(app)/toast";
+import { FieldError } from "@/app/(app)/field-error";
 import { CategoryIconGlyph } from "@/app/(app)/category-icon";
 import {
   CATEGORY_ICON_KEYS,
@@ -153,7 +154,7 @@ export function NewCategoryDrawer({
           <p className="text-metadata">
             The category&apos;s color is assigned automatically and stays the same everywhere it appears.
           </p>
-          {error && <p className="text-xs text-negative">{error}</p>}
+          <FieldError error={error} className="text-xs text-negative" />
         </div>
 
         <div className="flex justify-end border-t border-border px-5 py-4">

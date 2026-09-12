@@ -1,6 +1,6 @@
-import type { RecurringTransaction } from "@/lib/types";
-import { formatDate, formatMoney } from "@/lib/format";
-import { TransactionAvatar } from "@/app/(app)/transaction-row";
+import type { Account, Category, RecurringTransaction } from "@/lib/types";
+import { formatMoney } from "@/lib/format";
+import { UpcomingRecurringList } from "./upcoming-recurring-list";
 
 export type UpcomingDay = {
   iso: string;
@@ -51,7 +51,16 @@ export function buildUpcomingDays(
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-export function UpcomingCalendar({ days }: { days: UpcomingDay[] }) {
+export function UpcomingCalendar({
+  days,
+  accounts,
+  categories,
+}: {
+  days: UpcomingDay[];
+  // For the bill list's right-click menu and edit modal.
+  accounts: Account[];
+  categories: Category[];
+}) {
   const upcoming = days.flatMap((d) => d.items.map((r) => ({ ...r, iso: d.iso })));
   const billTotal = upcoming
     .filter((r) => r.kind === "expense")
@@ -75,7 +84,7 @@ export function UpcomingCalendar({ days }: { days: UpcomingDay[] }) {
         {days.map((d) => (
           <div
             key={d.iso}
-            className={`flex min-h-16 flex-col items-center justify-center gap-1 rounded-lg border border-border px-0.5 py-1.5 ${
+            className={`flex min-h-16 flex-col items-center justify-start gap-1 rounded-lg border border-border px-0.5 py-1.5 ${
               d.isPast ? "opacity-40" : ""
             }`}
           >
@@ -110,25 +119,7 @@ export function UpcomingCalendar({ days }: { days: UpcomingDay[] }) {
         </p>
       ) : (
         <>
-          <ul className="mt-4 divide-y divide-border">
-            {upcoming.slice(0, 4).map((r) => (
-              <li key={`${r.id}-${r.iso}`} className="flex items-center gap-3 py-2.5">
-                <TransactionAvatar label={r.description} size="sm" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-text">{r.description}</p>
-                  <p className="text-metadata">{formatDate(r.iso)}</p>
-                </div>
-                <span
-                  className={`tabular shrink-0 text-sm font-medium ${
-                    r.kind === "income" ? "text-positive" : "text-text"
-                  }`}
-                >
-                  {r.kind === "income" ? "+" : ""}
-                  {formatMoney(r.amount)}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <UpcomingRecurringList items={upcoming.slice(0, 4)} accounts={accounts} categories={categories} />
           {billTotal > 0 && (
             <p className="text-metadata mt-2">{formatMoney(billTotal)} in bills coming up</p>
           )}

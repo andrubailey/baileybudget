@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { LogoMark } from "@/app/(app)/logo-mark";
+import { FieldError } from "@/app/(app)/field-error";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -75,7 +76,7 @@ export default function LoginPage() {
           />
         </div>
 
-        {error && <p className="text-sm text-negative">{error}</p>}
+        <FieldError error={error} className="text-sm text-negative" />
 
         <button
           type="submit"

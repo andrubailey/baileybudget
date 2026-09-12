@@ -493,6 +493,74 @@ async function runWriteTool(
   }
 }
 
+const IMAGE_MEDIA_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+// Base64 runs ~33% larger than the original file, and Vercel's serverless
+// functions reject a request body over ~4.5MB outright (a generic platform
+// error, not one this route ever gets a chance to explain) — capping well
+// under that per file, and per request, keeps a rejected upload something
+// the model can actually tell the user about instead of a bare 413.
+const MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024;
+const MAX_ATTACHMENTS = 4;
+
+// Images/PDFs arrive base64-encoded (data.length is ~4/3 the decoded byte
+// count); a CSV arrives as plain text instead (the client sends its raw
+// contents, not base64 — see attachmentToBlock), so its data.length already
+// is the byte count. Same MAX_ATTACHMENT_BYTES ceiling either way.
+function approxDecodedBytes(mediaType: string, dataLength: number) {
+  return mediaType === "text/csv" ? dataLength : (dataLength * 3) / 4;
+}
+
+type Attachment = { name: string; mediaType: string; data: string };
+
+// Statements/receipts the user attaches — a photo, a PDF, or a CSV export —
+// handed to Claude as native image/document content blocks so it can read
+// figures straight off them instead of the user retyping.
+function parseAttachments(raw: unknown): Attachment[] {
+  if (!Array.isArray(raw)) return [];
+  const out: Attachment[] = [];
+  for (const item of raw.slice(0, MAX_ATTACHMENTS)) {
+    if (!item || typeof item !== "object") continue;
+    const name = String((item as Record<string, unknown>).name ?? "attachment");
+    const mediaType = String((item as Record<string, unknown>).mediaType ?? "");
+    const data = String((item as Record<string, unknown>).data ?? "");
+    if (!data) continue;
+    if (!IMAGE_MEDIA_TYPES.has(mediaType) && mediaType !== "application/pdf" && mediaType !== "text/csv") {
+      continue;
+    }
+    if (approxDecodedBytes(mediaType, data.length) > MAX_ATTACHMENT_BYTES) continue;
+    out.push({ name, mediaType, data });
+  }
+  return out;
+}
+
+function attachmentToBlock(a: Attachment): Anthropic.Beta.BetaContentBlockParam {
+  if (a.mediaType === "application/pdf") {
+    return {
+      type: "document",
+      source: { type: "base64", media_type: "application/pdf", data: a.data },
+      title: a.name,
+    };
+  }
+  if (a.mediaType === "text/csv") {
+    // The API only knows "text/plain" as a document media type — CSV is
+    // plain text either way, and a.data here is the file's raw contents
+    // (not base64; see the client, which reads CSVs with file.text()).
+    return {
+      type: "document",
+      source: { type: "text", media_type: "text/plain", data: a.data },
+      title: a.name,
+    };
+  }
+  return {
+    type: "image",
+    source: {
+      type: "base64",
+      media_type: a.mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+      data: a.data,
+    },
+  };
+}
+
 export async function POST(request: Request) {
   try {
     return await handlePost(request);
@@ -531,8 +599,9 @@ async function handlePost(request: Request) {
   const state: Anthropic.Beta.BetaMessageParam[] = Array.isArray(body.state)
     ? body.state
     : [];
+  const attachments = parseAttachments(body.attachments);
 
-  if (!userMessage) {
+  if (!userMessage && attachments.length === 0) {
     return NextResponse.json({ error: "Empty message" }, { status: 400 });
   }
 
@@ -573,11 +642,21 @@ Logging: they often paste or dictate a whole batch at once — several expenses,
 
 Making changes: go ahead and do what's asked — deleting an account/category deactivates it (history is kept, fully reversible from the app), and deleting a goal or transaction is soft-deleted the same way the app's own "Undo" toast works, so none of this is destructive. Only ask first if the request is genuinely ambiguous (which of two similarly-named accounts, which transaction among several matches). After a change, confirm briefly what you did.
 
+Attachments: they can attach photos, PDFs, or CSV exports — bank/credit-card statements, receipts, a mortgage statement, a screenshot of a balance, or a downloaded transaction export. Read them directly; don't ask them to retype what's already visible. For a statement, CSV, or anything else listing several transactions, pull out description/amount/date for each and log them the same way as a typed batch (still check for anything ambiguous, like which account it's for, before logging) — a CSV especially may have far more rows than a typed message ever would, so work through all of them, not just the first few. For a single receipt, log the one transaction it shows. If they just ask what something says or means, answer from what's in the file without necessarily logging anything.
+
 Answering: lead with the direct answer and the key number, then only the detail that matters. When an answer has several parts, use short "## " headings and "- " bullet lists, and **bold** the key figure sparingly. Keep it concise. For general money guidance beyond their own data, be practical and mention you're not a licensed financial advisor.`;
+
+  const userContent: Anthropic.Beta.BetaMessageParam["content"] =
+    attachments.length > 0
+      ? [
+          ...attachments.map(attachmentToBlock),
+          { type: "text", text: userMessage || "What do you see in this?" },
+        ]
+      : userMessage;
 
   const messages: Anthropic.Beta.BetaMessageParam[] = [
     ...state,
-    { role: "user", content: userMessage },
+    { role: "user", content: userContent },
   ];
 
   // Org-wide (not workspace-scoped) API keys require this header on every

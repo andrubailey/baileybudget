@@ -143,7 +143,7 @@ export function BudgetCategoriesCard({
           compact
           action={
             <Link
-              href="/spending/breakdown?edit=1"
+              href="/spending/budget"
               className="text-xs font-medium text-accent underline underline-offset-2"
             >
               Set up your budget

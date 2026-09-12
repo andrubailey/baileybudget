@@ -5,7 +5,6 @@ import { BANK_OPTIONS } from "@/lib/types";
 import { AccountList } from "./account-list";
 import { AddAccountForm } from "./add-account-form";
 import { MortgageCard } from "./mortgage-card";
-import { ReconcileButton } from "./reconcile-modal";
 
 export default async function AccountsPage() {
   const [accounts, loans] = await Promise.all([getAccountsWithBalances(), getLoanSummaries()]);
@@ -14,13 +13,8 @@ export default async function AccountsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Accounts"
-        description="Bank accounts, cards, or savings goals. Balances update automatically from transactions — use Reconcile to check one against what the bank actually shows."
-        actions={
-          <>
-            <ReconcileButton accounts={accounts} />
-            <AddAccountForm />
-          </>
-        }
+        description="Bank accounts, cards, or savings goals. Balances update automatically from transactions — use Reconcile on a card to check it against what the bank actually shows."
+        actions={<AddAccountForm />}
       />
 
       {loans.length > 0 ? (

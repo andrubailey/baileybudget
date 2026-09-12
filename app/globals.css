@@ -128,6 +128,26 @@
   --tile-2-text: #1a2e05;
   --tile-3-bg: var(--border);
   --tile-3-text: var(--text);
+
+  /* ============================================================
+     MOTION — one small set of durations, reused everywhere instead
+     of each component picking its own. Before this, the app had 150ms,
+     160ms, 200ms, 220ms, 300ms and a handful of others in circulation
+     with no shared reasoning behind any of them.
+       instant  state changes, tap/press feedback — fast enough to
+                read as an immediate acknowledgment, not an animation.
+       fast     hover colors, small transitions (the old Tailwind
+                default most of the app was already using, made explicit).
+       base     most enter/exit motion — dropdowns, drawers, banners.
+       slow     the ceiling for anything ordinary — sheets, modals,
+                larger surfaces. Nothing in normal UI interaction should
+                take longer than this; a data-viz reveal (a chart
+                drawing itself in) is the one deliberate exception, and
+                is called out as such at its own definition below. */
+  --duration-instant: 100ms;
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+  --duration-slow: 300ms;
 }
 
 /* Dark mode — follows the OS/browser preference by default, overridable by
@@ -216,6 +236,19 @@
   --color-tile-3-bg: var(--tile-3-bg);
   --color-tile-3-text: var(--tile-3-text);
   --font-sans: var(--font-main);
+
+  /* Overrides Tailwind's own default ease-out/ease-in curves, so the
+     Tailwind utility classes (`ease-out`, `ease-in`) and every
+     hand-written `animation`/`transition` below that reads
+     `var(--ease-out)`/`var(--ease-in)` resolve to the exact same curve.
+     Before this, "ease-out" meant three different things depending on
+     which file you were in: the plain CSS keyword, this cubic-bezier
+     used directly, and Tailwind's own built-in default. One curve per
+     direction now: entering eases out (starts fast, settles gently);
+     leaving eases in (starts gently, exits with a little more speed) —
+     never linear. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
 }
 
 body {
@@ -354,6 +387,37 @@ body {
   text-transform: uppercase;
 }
 
+/* ============================================================
+   TAP FEEDBACK — every button, link, and role="button" row in the app
+   compresses slightly the instant it's pressed, so a tap never waits on
+   a hover-color fade (built for a mouse, not a thumb) to feel acknowledged.
+   ------------------------------------------------------------
+   Deliberately in @layer base, not a bare unlayered rule: an element that
+   also carries its own Tailwind transition-* utility (transition-colors,
+   which lives in Tailwind's utilities layer) keeps that utility's
+   transition-property list untouched, since utilities always outrank
+   base regardless of source order. This rule only ever wins the
+   transition-property contest where nothing else claims one — so it can
+   never silently disable an existing hover-color transition, only add a
+   press-scale where there's room for it. Opt out with .no-tap-scale for
+   an element compressing would look wrong on (a full-bleed bar, the tab
+   bar's own slide indicator).
+   ============================================================ */
+@layer base {
+  button:not(:disabled, .no-tap-scale),
+  a:not(.no-tap-scale),
+  [role="button"]:not(.no-tap-scale) {
+    transition-property: transform;
+    transition-duration: var(--duration-instant);
+    transition-timing-function: var(--ease-out);
+  }
+  button:not(:disabled, .no-tap-scale):active,
+  a:not(.no-tap-scale):active,
+  [role="button"]:not(.no-tap-scale):active {
+    transform: scale(0.97);
+  }
+}
+
 /* Right-edge slide-over panel (category detail). */
 @keyframes drawer-in {
   from {
@@ -372,10 +436,10 @@ body {
   }
 }
 .animate-drawer-in {
-  animation: drawer-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: drawer-in var(--duration-slow) var(--ease-out);
 }
 .animate-drawer-out {
-  animation: drawer-out 160ms ease-in forwards;
+  animation: drawer-out var(--duration-base) var(--ease-in) forwards;
 }
 
 /* The one card surface. p-5 on phones, p-6 from sm up, matching what
@@ -516,10 +580,10 @@ body {
   }
 }
 .animate-modal-backdrop {
-  animation: modal-backdrop-in 150ms ease-out;
+  animation: modal-backdrop-in var(--duration-base) var(--ease-out);
 }
 .animate-modal-panel {
-  animation: modal-panel-in 150ms ease-out;
+  animation: modal-panel-in var(--duration-base) var(--ease-out);
 }
 
 /* Modal exit — the reverse, played while the panel is held mounted a beat
@@ -544,10 +608,10 @@ body {
   }
 }
 .animate-modal-backdrop-out {
-  animation: modal-backdrop-out 120ms ease-in forwards;
+  animation: modal-backdrop-out var(--duration-fast) var(--ease-in) forwards;
 }
 .animate-modal-panel-out {
-  animation: modal-panel-out 120ms ease-in forwards;
+  animation: modal-panel-out var(--duration-fast) var(--ease-in) forwards;
 }
 
 /* True slide-up-from-the-bottom-edge, for the mobile Add sheet — a much
@@ -570,21 +634,21 @@ body {
   }
 }
 .animate-sheet-in {
-  animation: sheet-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: sheet-in var(--duration-slow) var(--ease-out);
 }
 .animate-sheet-out {
-  animation: sheet-out 160ms ease-in forwards;
+  animation: sheet-out var(--duration-base) var(--ease-in) forwards;
 }
 
 .animate-toast-in {
-  animation: toast-in 150ms ease-out;
+  animation: toast-in var(--duration-fast) var(--ease-out);
 }
 /* Hover-lift for interactive cards (accounts, quick-add tiles) — a small
    shadow deepen + rise instead of the flat static shadow used elsewhere. */
 .card-hover {
   transition:
-    transform 150ms ease-out,
-    box-shadow 150ms ease-out;
+    transform 150ms var(--ease-out),
+    box-shadow 150ms var(--ease-out);
 }
 .card-hover:hover {
   transform: translateY(-2px);
@@ -594,7 +658,10 @@ body {
 }
 
 /* Chart/bar entrance — bars and donut wedges grow in from zero instead of
-   appearing fully drawn, used via inline animationDelay for stagger. */
+   appearing fully drawn, used via inline animationDelay for stagger.
+   500ms/450ms exceed --duration-slow deliberately: this is a data-viz
+   reveal playing once per chart mount, not a UI response to a tap — the
+   one exception the token scale's own definition calls out. */
 @keyframes bar-grow-in {
   from {
     transform: scaleY(0);
@@ -606,7 +673,7 @@ body {
 .animate-bar-grow {
   transform-box: fill-box;
   transform-origin: bottom;
-  animation: bar-grow-in 500ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation: bar-grow-in 500ms var(--ease-out) backwards;
 }
 /* Same grow-from-zero, anchored at the top instead — for SVG bars that
    extend downward from a baseline (expense bars in the trend chart) rather
@@ -614,7 +681,7 @@ body {
 .animate-bar-grow-top {
   transform-box: fill-box;
   transform-origin: top;
-  animation: bar-grow-in 500ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation: bar-grow-in 500ms var(--ease-out) backwards;
 }
 
 /* Donut/wedge entrance — each slice pops in from center instead of the
@@ -632,7 +699,7 @@ body {
 .animate-donut-slice {
   transform-box: fill-box;
   transform-origin: center;
-  animation: donut-slice-in 450ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation: donut-slice-in 450ms var(--ease-out) backwards;
 }
 @keyframes fade-in-up {
   from {
@@ -645,10 +712,11 @@ body {
   }
 }
 .animate-fade-in-up {
-  /* Short enough that page-to-page navigation (PageTransition remounts this
-     on every route change) reads as snappy, not sluggish, while still
-     giving a soft entrance instead of a hard cut. */
-  animation: fade-in-up 120ms ease-out backwards;
+  /* Deliberately a touch faster than --duration-fast: page-to-page
+     navigation (PageTransition remounts this on every route change) needs
+     to read as snappy, not sluggish, while still giving a soft entrance
+     instead of a hard cut. */
+  animation: fade-in-up 120ms var(--ease-out) backwards;
 }
 
 /* Page transitions — see PageTransition. Browser View Transitions: the old
@@ -665,17 +733,17 @@ body {
    resolve to the same fade. */
 ::view-transition-old(.nav-forward),
 ::view-transition-old(.nav-back) {
-  animation: 80ms ease-in both vt-fade reverse;
+  animation: 80ms var(--ease-in) both vt-fade reverse;
 }
 ::view-transition-new(.nav-forward),
 ::view-transition-new(.nav-back) {
-  animation: 120ms ease-out both vt-fade;
+  animation: 120ms var(--ease-out) both vt-fade;
 }
 ::view-transition-old(.page-fade) {
-  animation: 80ms ease-in both vt-fade reverse;
+  animation: 80ms var(--ease-in) both vt-fade reverse;
 }
 ::view-transition-new(.page-fade) {
-  animation: 120ms ease-out both vt-fade;
+  animation: 120ms var(--ease-out) both vt-fade;
 }
 @keyframes vt-fade {
   from {
@@ -716,14 +784,15 @@ body {
 }
 .animate-confetti-piece {
   animation-name: confetti-piece;
-  animation-timing-function: ease-out;
+  animation-timing-function: var(--ease-out);
   animation-fill-mode: forwards;
 }
 
 /* Horizontal counterpart to animate-bar-grow, for progress-bar fills
    (budget categories, goals, account goal/payoff progress) — scaleX instead
    of a dynamic width keyframe so it works regardless of the bar's actual
-   pixel width. */
+   pixel width. 700ms is a deliberate data-viz-reveal exception to
+   --duration-slow, same reasoning as animate-bar-grow above. */
 @keyframes bar-grow-in-x {
   from {
     transform: scaleX(0);
@@ -734,7 +803,7 @@ body {
 }
 .animate-bar-grow-x {
   transform-origin: left;
-  animation: bar-grow-in-x 700ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation: bar-grow-in-x 700ms var(--ease-out) backwards;
 }
 
 /* SegmentedProgress's individual pills, not a continuous bar — each one is
@@ -756,12 +825,13 @@ body {
   }
 }
 .animate-pill-fade {
-  animation: pill-fade-in 300ms ease-out backwards;
+  animation: pill-fade-in var(--duration-slow) var(--ease-out) backwards;
 }
 
 /* Draws an SVG line/area path in instead of it appearing fully rendered —
    pair with `pathLength={1}` on the target <path>/<polyline> so the dash
-   math works the same regardless of the path's actual geometry. */
+   math works the same regardless of the path's actual geometry. 900ms is
+   a deliberate data-viz-reveal exception to --duration-slow. */
 @keyframes draw-line-in {
   from {
     stroke-dashoffset: 1;
@@ -773,7 +843,7 @@ body {
 .animate-draw-line {
   stroke-dasharray: 1;
   stroke-dashoffset: 1;
-  animation: draw-line-in 900ms ease-out forwards;
+  animation: draw-line-in 900ms var(--ease-out) forwards;
 }
 
 @keyframes toast-out {
@@ -787,10 +857,12 @@ body {
   }
 }
 .animate-toast-out {
-  animation: toast-out 150ms ease-in forwards;
+  animation: toast-out var(--duration-fast) var(--ease-in) forwards;
 }
 
-/* One-shot glow when a goal/progress bar first reaches 100%. */
+/* One-shot glow when a goal/progress bar first reaches 100% — a
+   celebratory flourish, not a UI response, so 900ms is a deliberate
+   exception to --duration-slow rather than an oversight. */
 @keyframes pulse-glow {
   0%,
   100% {
@@ -801,11 +873,13 @@ body {
   }
 }
 .animate-pulse-glow {
-  animation: pulse-glow 900ms ease-out 1;
+  animation: pulse-glow 900ms var(--ease-out) 1;
 }
 
 /* Flags a just-added row (new transaction, import, undo) with a brief
-   background flash instead of it just appearing with no acknowledgment. */
+   background flash instead of it just appearing with no acknowledgment.
+   1500ms so it stays noticeable long enough to actually find the row —
+   a deliberate exception to --duration-slow, not something a tap waits on. */
 @keyframes row-highlight {
   from {
     background-color: var(--accent-soft);
@@ -815,7 +889,7 @@ body {
   }
 }
 .animate-row-highlight {
-  animation: row-highlight 1500ms ease-out;
+  animation: row-highlight 1500ms var(--ease-out);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -836,6 +910,9 @@ body {
   .animate-row-highlight,
   .animate-sheet-in,
   .animate-sheet-out,
+  .animate-drawer-in,
+  .animate-drawer-out,
+  .animate-confetti-piece,
   .card-hover {
     animation: none;
     transition: none;
@@ -845,5 +922,21 @@ body {
   }
   .animate-draw-line {
     stroke-dashoffset: 0;
+  }
+  /* Tap feedback stays — losing all press acknowledgment would hurt
+     usability more than a 3% scale ever counts as "motion" — but the
+     scale transform itself is swapped for an opacity dim, so someone
+     who's asked for no motion gets literally none, anywhere. */
+  button:not(:disabled, .no-tap-scale),
+  a:not(.no-tap-scale),
+  [role="button"]:not(.no-tap-scale) {
+    transition-property: opacity;
+    transition-duration: var(--duration-instant);
+  }
+  button:not(:disabled, .no-tap-scale):active,
+  a:not(.no-tap-scale):active,
+  [role="button"]:not(.no-tap-scale):active {
+    transform: none;
+    opacity: 0.7;
   }
 }

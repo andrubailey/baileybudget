@@ -6,6 +6,7 @@ import type { Category } from "@/lib/types";
 import { FIELD_CLASS } from "@/lib/ui";
 import { Dropdown } from "@/app/(app)/dropdown";
 import { categoryChoices } from "@/app/(app)/dropdown-options";
+import { FieldError } from "@/app/(app)/field-error";
 
 const NEW_OPTION_VALUE = "__new__";
 
@@ -117,7 +118,7 @@ export function CategorySelect({
             ✕
           </button>
         </div>
-        {error && <p className="text-xs text-negative">{error}</p>}
+        <FieldError error={error} className="text-xs text-negative" />
         {/* Keeps the form's field present while the name is being typed. */}
         <input type="hidden" name={name} value={value} />
       </div>

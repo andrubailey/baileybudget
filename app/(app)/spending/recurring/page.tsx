@@ -3,7 +3,7 @@ import { getAccounts, getCategories, getPostedRecurringIds, getRecurringTransact
 import { PageHeader } from "@/app/(app)/page-header";
 import { EmptyState } from "@/app/(app)/empty-state";
 import { SpendingTabs } from "../spending-tabs";
-import { RecurringRow } from "./recurring-row";
+import { RecurringList } from "./recurring-list";
 
 export default async function RecurringPage() {
   const periods = await getPeriods();
@@ -49,31 +49,22 @@ export default async function RecurringPage() {
           <EmptyState message="No recurring bills or income set up yet. Mark a transaction as recurring to start one." />
         ) : (
           <div className="divide-y divide-border px-2 py-2 sm:px-4">
-            {active.map((rule) => (
-              <RecurringRow
-                key={rule.id}
-                rule={rule}
-                account={rule.account_id ? (accountsById.get(rule.account_id) ?? null) : null}
-                category={rule.category_id ? (categoriesById.get(rule.category_id) ?? null) : null}
-                postedThisPeriod={postedIds.has(rule.id)}
-              />
-            ))}
-            {paused.length > 0 && (
-              <>
-                <div className="px-3 pt-4 pb-1">
-                  <p className="text-xs font-medium text-text-faint">Paused</p>
-                </div>
-                {paused.map((rule) => (
-                  <RecurringRow
-                    key={rule.id}
-                    rule={rule}
-                    account={rule.account_id ? (accountsById.get(rule.account_id) ?? null) : null}
-                    category={rule.category_id ? (categoriesById.get(rule.category_id) ?? null) : null}
-                    postedThisPeriod={postedIds.has(rule.id)}
-                  />
-                ))}
-              </>
-            )}
+            <RecurringList
+              active={active.map((rule) => ({
+                rule,
+                account: rule.account_id ? (accountsById.get(rule.account_id) ?? null) : null,
+                category: rule.category_id ? (categoriesById.get(rule.category_id) ?? null) : null,
+                postedThisPeriod: postedIds.has(rule.id),
+              }))}
+              paused={paused.map((rule) => ({
+                rule,
+                account: rule.account_id ? (accountsById.get(rule.account_id) ?? null) : null,
+                category: rule.category_id ? (categoriesById.get(rule.category_id) ?? null) : null,
+                postedThisPeriod: postedIds.has(rule.id),
+              }))}
+              accounts={accounts}
+              categories={categories}
+            />
           </div>
         )}
       </section>

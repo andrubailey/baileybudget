@@ -32,8 +32,9 @@ const PRIMARY_LINKS = [
   },
 ];
 
-// The Spending item covers all of its tabs — the overview at /spending, the
-// breakdown & budget view at /spending/breakdown (which replaced the old
+// The Spending item covers all of its tabs — the overview at /spending
+// (which now includes the category breakdown that used to be its own
+// page), the budget editor at /spending/budget (which replaced the old
 // standalone Budget page), and the full table at /transactions.
 function isActiveLink(href: string, pathname: string) {
   if (href === "/") return pathname === "/";
@@ -65,14 +66,19 @@ const DIGIT_CODES = [
   "Digit7",
 ];
 
-// Mobile is scoped to four jobs — view the budget, add a transaction, check
-// balances, see recent activity — not a subset of PRIMARY_LINKS. Everything
-// else (the full Transactions table, Spending breakdown, Recurring,
-// Reports, Goals, Settings) stays desktop-only, reachable by direct link if
-// truly needed but not part of the mobile chrome. MobileTabBar renders
-// these three plus MOBILE_ADD_LINK as four flat tabs in a row, Add on the
-// far right next to Recent.
+// Mobile is scoped to five jobs — a glance at the headline numbers, view
+// the budget, add a transaction, check balances, see recent activity — not
+// a subset of PRIMARY_LINKS. Everything else (the full Transactions table,
+// Spending breakdown, Recurring, Reports, Goals, Settings) stays
+// desktop-only, reachable by direct link if truly needed but not part of
+// the mobile chrome. MobileTabBar renders these four plus MOBILE_ADD_LINK
+// as five flat tabs in a row, Add on the far right.
 export const MOBILE_LINKS = [
+  {
+    href: "/",
+    label: "Overview",
+    icon: <CooliconPaths name="Custom_Dashboard" />,
+  },
   {
     href: "/budget",
     label: "Budget",

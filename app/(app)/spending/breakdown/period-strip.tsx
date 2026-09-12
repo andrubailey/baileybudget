@@ -15,8 +15,18 @@ export type StripMonth = {
 
 // The time-period strip: one column per month with a small bar for what
 // was spent, the selected month highlighted. Clicking a month reloads the
-// view for it. Scrolls so the selected month is visible.
-export function PeriodStrip({ months, selectedId }: { months: StripMonth[]; selectedId: string }) {
+// view for it. Scrolls so the selected month is visible. `basePath` lets
+// this render from more than one page (Spending overview, formerly also a
+// standalone Breakdown page) without hardcoding where a month click lands.
+export function PeriodStrip({
+  months,
+  selectedId,
+  basePath = "/spending",
+}: {
+  months: StripMonth[];
+  selectedId: string;
+  basePath?: string;
+}) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const max = Math.max(1, ...months.map((m) => m.expense));
   const selectedIndex = months.findIndex((m) => m.periodId === selectedId);
@@ -37,7 +47,7 @@ export function PeriodStrip({ months, selectedId }: { months: StripMonth[]; sele
         </span>
       </div>
       <div className="flex items-center gap-1 px-2 py-4">
-        <StepLink href={prev ? `/spending/breakdown?period=${prev.periodId}` : null} direction="prev" />
+        <StepLink href={prev ? `${basePath}?period=${prev.periodId}` : null} direction="prev" />
         <div
           ref={scrollerRef}
           className="flex flex-1 items-end gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
@@ -48,7 +58,7 @@ export function PeriodStrip({ months, selectedId }: { months: StripMonth[]; sele
             return (
               <Link
                 key={m.periodId}
-                href={`/spending/breakdown?period=${m.periodId}`}
+                href={`${basePath}?period=${m.periodId}`}
                 data-selected={selected ? "true" : "false"}
                 title={`${m.name}: ${formatMoney(m.expense)} spent`}
                 className={`flex min-w-[72px] flex-1 flex-col items-center justify-end gap-2 rounded-xl px-2 pt-6 pb-3 transition-colors ${
@@ -71,7 +81,7 @@ export function PeriodStrip({ months, selectedId }: { months: StripMonth[]; sele
             );
           })}
         </div>
-        <StepLink href={next ? `/spending/breakdown?period=${next.periodId}` : null} direction="next" />
+        <StepLink href={next ? `${basePath}?period=${next.periodId}` : null} direction="next" />
       </div>
     </div>
   );

@@ -198,7 +198,11 @@ export default async function DashboardPage({
 
   return (
     <div className="min-w-0 space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      {/* Desktop-only — mobile has its own Overview tab (below) that's just
+          the four cards and nothing else; the greeting/New-transaction row
+          and the rest of this dashboard are reachable there via the other
+          mobile tabs (Budget, Accounts, Add) instead. */}
+      <div className="hidden lg:flex lg:items-start lg:justify-between lg:gap-4">
         <GreetingHeader firstName={firstName} />
         <div className="flex shrink-0 items-center gap-3">
           <NewTransactionButton
@@ -215,17 +219,12 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      {/* Main content + a minimal accounts-at-a-glance rail on the right.
-          The rail only appears as a true side column at xl+ — below that
-          there's no room for a third column next to the metric cards, so it
-          drops to full width below everything else instead. */}
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_260px] xl:items-start">
-        <div className="min-w-0 space-y-6">
-          {/* Five-column grid so Net Worth can span 2 columns — the largest,
-              most important card — while the other three take 1 each. Phones
-              swipe through the cards; from sm up they sit in a grid. */}
-          <div className="snap-row -mx-4 px-4 sm:mx-0 sm:grid sm:grid-cols-2 sm:gap-4 sm:overflow-visible sm:px-0 2xl:grid-cols-5">
-            <MetricCard
+      {/* The mobile Overview tab is just this: the four headline cards,
+          stacked. Same cards feed the desktop dashboard's own five-column
+          row below at lg+ (Net Worth spans 2), so nothing here is
+          duplicated — this is the only place they render. */}
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:gap-4 2xl:grid-cols-5">
+        <MetricCard
               label="Net Worth"
               index={0}
               className="2xl:col-span-2"
@@ -315,58 +314,66 @@ export default async function DashboardPage({
             />
           </div>
 
-          {/* Budget categories + recent transactions, side by side. Budget
-              dictates the pair's height (its own natural content size);
-              Recent Transactions is measured against it and trims to what
-              fits rather than growing the row — see DashboardEqualHeightRow
-              for why plain CSS stretch can't do this. */}
-          <DashboardEqualHeightRow
-            budget={
-              <BudgetCategoriesCard
-                categoryProgress={categoryProgress}
-                editablePeriodId={editablePeriod?.id ?? null}
-                rangeIsSinglePeriod={Boolean(editablePeriod)}
-              />
-            }
-            recent={
-              <div className="card flex h-full min-h-0 flex-col">
-                <div className="mb-4 flex shrink-0 items-center justify-between">
-                  <p className="text-heading text-text">Recent Transactions</p>
-                  <Link
-                    href="/transactions"
-                    className="text-xs font-medium text-text-faint hover:text-text"
-                  >
-                    View All
-                  </Link>
-                </div>
-
-                {recentTransactions.length === 0 ? (
-                  <EmptyState
-                    compact
-                    message="Nothing logged for this range yet."
-                    shortcut={{ keys: ["⌥", "E"], label: "to log an expense from anywhere" }}
+          {/* Everything below is desktop-only — mobile's Overview tab is
+              just the four cards above, nothing else; Budget/Recent Transactions/
+              Accounts/Goals each live on their own dedicated mobile tab instead.
+              The rail only appears as a true side column at xl+ — below that
+              there's no room for a third column next to the metric cards, so it
+              drops to full width below everything else instead. */}
+          <div className="hidden lg:grid lg:grid-cols-1 lg:gap-6 xl:grid-cols-[minmax(0,1fr)_260px] xl:items-start">
+            <div className="min-w-0 space-y-6">
+              {/* Budget categories + recent transactions, side by side. Budget
+                  dictates the pair's height (its own natural content size);
+                  Recent Transactions is measured against it and trims to what
+                  fits rather than growing the row — see DashboardEqualHeightRow
+                  for why plain CSS stretch can't do this. */}
+              <DashboardEqualHeightRow
+                budget={
+                  <BudgetCategoriesCard
+                    categoryProgress={categoryProgress}
+                    editablePeriodId={editablePeriod?.id ?? null}
+                    rangeIsSinglePeriod={Boolean(editablePeriod)}
                   />
-                ) : (
-                  <div className="min-h-0 flex-1 overflow-hidden">
-                    <RecentTransactionsList
-                      transactions={recentTransactions}
-                      accounts={accounts}
-                      categories={categories}
-                      maxRows={8}
-                      splitsByTransaction={splitsByTransaction}
-                    />
-                  </div>
-                )}
-              </div>
-            }
-          />
-        </div>
+                }
+                recent={
+                  <div className="card flex h-full min-h-0 flex-col">
+                    <div className="mb-4 flex shrink-0 items-center justify-between">
+                      <p className="text-heading text-text">Recent Transactions</p>
+                      <Link
+                        href="/transactions"
+                        className="text-xs font-medium text-text-faint hover:text-text"
+                      >
+                        View All
+                      </Link>
+                    </div>
 
-        <div className="space-y-6">
-          <AccountsGlanceCard accounts={activeAccounts} />
-          <GoalsCard objectives={objectives} accounts={activeAccounts} />
-        </div>
-      </div>
+                    {recentTransactions.length === 0 ? (
+                      <EmptyState
+                        compact
+                        message="Nothing logged for this range yet."
+                        shortcut={{ keys: ["⌥", "E"], label: "to log an expense from anywhere" }}
+                      />
+                    ) : (
+                      <div className="min-h-0 flex-1 overflow-hidden">
+                        <RecentTransactionsList
+                          transactions={recentTransactions}
+                          accounts={accounts}
+                          categories={categories}
+                          maxRows={8}
+                          splitsByTransaction={splitsByTransaction}
+                        />
+                      </div>
+                    )}
+                  </div>
+                }
+              />
+            </div>
+
+            <div className="space-y-6">
+              <AccountsGlanceCard accounts={activeAccounts} />
+              <GoalsCard objectives={objectives} accounts={activeAccounts} />
+            </div>
+          </div>
     </div>
   );
 }

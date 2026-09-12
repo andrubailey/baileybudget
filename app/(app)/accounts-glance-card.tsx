@@ -1,8 +1,16 @@
+"use client";
+
 import Link from "next/link";
 import type { AccountWithBalance } from "@/lib/queries";
 import { formatMoney } from "@/lib/format";
 import { BankLogo } from "@/app/(app)/accounts/bank-logo";
 import { EmptyState } from "@/app/(app)/empty-state";
+import { useContextMenu } from "@/app/(app)/context-menu";
+import {
+  accountLoginUrl,
+  accountMenuItems,
+  useAccountQuickActions,
+} from "@/app/(app)/accounts/account-menu";
 
 // Preferred display order for the Personal group — checking first as the
 // day-to-day account, then the two savings goals in the order they matter
@@ -30,6 +38,11 @@ function byPersonalOrder(a: AccountWithBalance, b: AccountWithBalance) {
 // overhaul reuses this exact minimal view as its own full-page destination
 // instead of the full account-management page.
 export function AccountsGlanceCard({ accounts }: { accounts: AccountWithBalance[] }) {
+  // Right-click a row for the same account menu as the Accounts page, minus
+  // editing/deactivating (no edit panel here) plus a link to that page.
+  const contextMenu = useContextMenu();
+  const accountActions = useAccountQuickActions();
+
   if (accounts.length === 0) {
     return (
       <div className="card">
@@ -101,6 +114,17 @@ export function AccountsGlanceCard({ accounts }: { accounts: AccountWithBalance[
                   return (
                     <div
                       key={a.id}
+                      onContextMenu={(e) =>
+                        contextMenu.open(
+                          e,
+                          accountMenuItems(a, {
+                            allTransactionsHref: `/transactions?account=${a.id}&period=all`,
+                            loginUrl: accountLoginUrl(a),
+                            manageHref: "/accounts",
+                            actions: accountActions,
+                          }),
+                        )
+                      }
                       style={{ animationDelay: `${i * 12}ms` }}
                       className="animate-fade-in-up flex items-center gap-3 py-3 first:pt-0 last:pb-0"
                     >
@@ -146,6 +170,7 @@ export function AccountsGlanceCard({ accounts }: { accounts: AccountWithBalance[
           ));
         })()}
       </div>
+      {contextMenu.menu}
     </div>
   );
 }

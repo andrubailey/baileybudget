@@ -87,6 +87,11 @@ export function Dropdown({
   const value = isControlled ? controlledValue : uncontrolled;
 
   const [open, setOpen] = useState(false);
+  // Keeps the menu mounted (and playing the reverse animation) for one
+  // more beat after `open` goes false — without this it just vanished
+  // instantly, since a conditionally-rendered element gives CSS nothing
+  // left to animate once it's gone.
+  const [closing, setClosing] = useState(false);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(-1);
   const [coords, setCoords] = useState<{ top: number; left: number; width: number; above: boolean } | null>(null);
@@ -135,6 +140,8 @@ export function Dropdown({
   function closeMenu(refocus = true) {
     setOpen(false);
     if (refocus) triggerRef.current?.focus();
+    setClosing(true);
+    setTimeout(() => setClosing(false), 150);
   }
 
   function choose(option: DropdownOption) {
@@ -301,7 +308,7 @@ export function Dropdown({
         />
       )}
 
-      {open &&
+      {(open || closing) &&
         coords &&
         createPortal(
           <div
@@ -312,7 +319,9 @@ export function Dropdown({
               width: coords.width,
               transform: coords.above ? "translateY(-100%)" : undefined,
             }}
-            className={`animate-modal-panel fixed z-[200] overflow-hidden rounded-xl border border-border bg-surface shadow-modal ${menuClassName}`}
+            className={`fixed z-[200] overflow-hidden rounded-xl border border-border bg-surface shadow-modal ${
+              closing ? "animate-modal-panel-out pointer-events-none" : "animate-modal-panel"
+            } ${menuClassName}`}
             onKeyDown={onMenuKeyDown}
           >
             {showSearch && (

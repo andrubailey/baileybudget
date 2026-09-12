@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { updateMyProfile, uploadAvatar } from "@/app/actions";
+import { FieldError } from "@/app/(app)/field-error";
 import { SubmitButton } from "@/app/(app)/submit-button";
 import { useToast } from "@/app/(app)/toast";
 
@@ -171,7 +172,7 @@ export function ProfileModal({
             />
           </div>
 
-          {error && <p className="text-sm text-danger">{error}</p>}
+          <FieldError error={error} className="text-sm text-danger" />
 
           {/* Sticky, not just the last item — stays reachable at the
               bottom of the scrollable panel instead of scrolling away

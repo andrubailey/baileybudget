@@ -118,18 +118,7 @@ export function BudgetEditor({
     <>
       <div className="card p-0 sm:p-0">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3">
-          <div className="flex items-center gap-3">
-            <Link
-              href={`/spending/breakdown?period=${periodId}`}
-              aria-label="Back to breakdown"
-              className="flex size-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-bg hover:text-text"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M19 12H5m0 0 6-6m-6 6 6 6" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </Link>
-            <p className="text-section-label">Monthly budget · {periodName}</p>
-          </div>
+          <p className="text-section-label">Budget · {periodName}</p>
           <div className="flex items-center gap-2">
             {previousPeriod && (
               <button
@@ -142,10 +131,10 @@ export function BudgetEditor({
               </button>
             )}
             <Link
-              href={`/spending/breakdown?period=${periodId}`}
-              className="rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+              href="/spending"
+              className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-text transition-colors hover:bg-bg"
             >
-              Done
+              View breakdown
             </Link>
           </div>
         </div>
@@ -153,15 +142,15 @@ export function BudgetEditor({
         <div className="grid grid-cols-1 gap-6 p-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
           {/* Income − budget = savings */}
           <div className="card-flush flex flex-col items-center justify-center gap-4 px-6 py-8 text-center lg:sticky lg:top-6">
-            <Figure label="Monthly income" value={income} muted />
+            <Figure label="Income" value={income} muted />
             <Operator>−</Operator>
             <div className="w-full rounded-xl border border-border bg-bg px-6 py-5">
-              <Figure label="Monthly budget" value={totalBudget} />
+              <Figure label="Budget" value={totalBudget} />
             </div>
             <Operator>=</Operator>
             <div>
               <Figure label="Savings target" value={savings} muted signed />
-              <p className="text-metadata mt-1">{savingsPct.toFixed(0)}% of monthly income</p>
+              <p className="text-metadata mt-1">{savingsPct.toFixed(0)}% of income</p>
             </div>
           </div>
 

@@ -962,6 +962,49 @@ export async function toggleRecurringActive(id: string, is_active: boolean) {
   revalidateHousehold(["recurring_transactions"]);
 }
 
+// Edits a recurring rule's own details — description, amount, which day of
+// the month it posts on, and which account/category it's attributed to.
+// Doesn't touch any transaction already generated from it (past copies keep
+// whatever they were created with); this only changes what the *next* one
+// looks like. kind isn't editable here — flipping income/expense on an
+// existing rule would silently orphan its category (categories are one
+// kind or the other), so that stays fixed at creation time.
+export async function updateRecurringTransaction(
+  id: string,
+  data: {
+    description: string;
+    amount: number;
+    day_of_month: number;
+    account_id: string | null;
+    category_id: string | null;
+  },
+): Promise<{ ok: boolean; error?: string }> {
+  const description = data.description.trim();
+  if (!description) return { ok: false, error: "Description is required." };
+  if (!Number.isFinite(data.amount) || data.amount <= 0) {
+    return { ok: false, error: "Enter a valid amount." };
+  }
+  if (!Number.isInteger(data.day_of_month) || data.day_of_month < 1 || data.day_of_month > 31) {
+    return { ok: false, error: "Day of month must be between 1 and 31." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("recurring_transactions")
+    .update({
+      description,
+      amount: data.amount,
+      day_of_month: data.day_of_month,
+      account_id: data.account_id,
+      category_id: data.category_id,
+    })
+    .eq("id", id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidateHousehold(["recurring_transactions"]);
+  return { ok: true };
+}
+
 // Server Action wrapper around the plain query version (which the
 // Transactions page also calls directly during its own render, where
 // revalidatePath isn't allowed) — kept for any explicit manual trigger.

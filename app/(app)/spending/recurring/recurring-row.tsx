@@ -20,19 +20,37 @@ export function RecurringRow({
   account,
   category,
   postedThisPeriod,
+  onClick,
+  onContextMenu,
 }: {
   rule: RecurringTransaction;
   account: AccountLookup | null;
   category: { id: string; name: string; icon?: string | null } | null;
   postedThisPeriod: boolean;
+  onClick?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }) {
   const [isPending, startTransition] = useTransition();
 
   return (
     <div
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
+      onContextMenu={onContextMenu}
       className={`flex items-center gap-3 rounded-lg px-3 py-3 transition-opacity ${
-        rule.is_active ? "" : "opacity-50"
-      }`}
+        onClick ? "cursor-pointer hover:bg-bg" : ""
+      } ${rule.is_active ? "" : "opacity-50"}`}
     >
       <TransactionAvatar label={rule.description} />
       <div className="min-w-0 flex-1">
@@ -80,16 +98,18 @@ export function RecurringRow({
         {formatMoney(rule.amount)}
       </span>
 
-      <ToggleSwitch
-        checked={rule.is_active}
-        onChange={() =>
-          startTransition(async () => {
-            await toggleRecurringActive(rule.id, !rule.is_active);
-          })
-        }
-        disabled={isPending}
-        label={rule.is_active ? "Pause recurring bill" : "Resume recurring bill"}
-      />
+      <span onClick={(e) => e.stopPropagation()}>
+        <ToggleSwitch
+          checked={rule.is_active}
+          onChange={() =>
+            startTransition(async () => {
+              await toggleRecurringActive(rule.id, !rule.is_active);
+            })
+          }
+          disabled={isPending}
+          label={rule.is_active ? "Pause recurring bill" : "Resume recurring bill"}
+        />
+      </span>
     </div>
   );
 }

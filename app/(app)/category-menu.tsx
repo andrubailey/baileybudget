@@ -85,7 +85,7 @@ export function categoryMenuItems(
   const transactionsHref = periodId
     ? `/transactions?period=${periodId}&category=${c.id}`
     : `/transactions?category=${c.id}`;
-  const editorHref = periodId ? `/spending/breakdown?period=${periodId}&edit=1` : "/spending/breakdown?edit=1";
+  const editorHref = "/spending/budget";
 
   return [
     {

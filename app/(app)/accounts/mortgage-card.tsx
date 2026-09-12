@@ -7,6 +7,7 @@ import { CurrencyInput } from "@/app/(app)/currency-input";
 import { DatePicker } from "@/app/(app)/date-picker";
 import { Money } from "@/app/(app)/money";
 import { PanelField } from "@/app/(app)/panel-field";
+import { FieldError } from "@/app/(app)/field-error";
 import { SegmentedProgress } from "@/app/(app)/segmented-progress";
 import { SubmitButton } from "@/app/(app)/submit-button";
 import { useToast } from "@/app/(app)/toast";
@@ -304,7 +305,7 @@ function HomeValueEditor({
           </svg>
         </button>
       </div>
-      {error && <p className="mt-1.5 text-xs text-negative">{error}</p>}
+      <FieldError error={error} className="text-xs text-negative" />
     </div>
   );
 }
@@ -406,7 +407,7 @@ function StatementModal({ summary: s, onClose }: { summary: LoanSummary; onClose
                 </PanelField>
               </div>
             </div>
-            {error && <p className="text-sm text-negative">{error}</p>}
+            <FieldError error={error} className="text-sm text-negative" />
           </div>
 
           <div className="flex shrink-0 items-center gap-3 border-t border-border p-4">

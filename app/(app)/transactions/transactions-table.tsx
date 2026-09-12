@@ -567,7 +567,7 @@ export function TransactionsTable({
             ))}
           </div>
         </div>
-        <PeriodSwitcher periods={periods} selectedId={selectedPeriodId} />
+        <PeriodSwitcher periods={periods} selectedId={selectedPeriodId} allTimeOption />
       </div>
 
       {selectedIds.size > 0 && (

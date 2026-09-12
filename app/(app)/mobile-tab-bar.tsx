@@ -4,15 +4,21 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { MOBILE_LINKS, MOBILE_ADD_LINK } from "./sidebar";
 
-// Native-app-style bottom tab bar for mobile, scoped to the four jobs
-// mobile is for: Budget, Accounts, Recent, Add — four flat tabs in a row,
-// Add on the far right next to Recent. Everything else stays desktop-only;
-// see MOBILE_LINKS/MOBILE_ADD_LINK in sidebar.tsx.
+// Native-app-style bottom tab bar for mobile, scoped to the five jobs
+// mobile is for: Overview, Budget, Accounts, Recent, Add — five flat tabs
+// in a row, Add on the far right. Everything else stays desktop-only; see
+// MOBILE_LINKS/MOBILE_ADD_LINK in sidebar.tsx.
 const TABS = [...MOBILE_LINKS, MOBILE_ADD_LINK];
+
+// "/" would otherwise match every path via startsWith — same exact-match
+// carve-out the desktop dock's isActiveLink uses for its own Overview link.
+function isActiveTab(href: string, pathname: string) {
+  return href === "/" ? pathname === "/" : pathname.startsWith(href);
+}
 
 export function MobileTabBar() {
   const pathname = usePathname();
-  const activeIndex = TABS.findIndex((link) => pathname.startsWith(link.href));
+  const activeIndex = TABS.findIndex((link) => isActiveTab(link.href, pathname));
 
   return (
     <nav
@@ -29,9 +35,9 @@ export function MobileTabBar() {
             style={{ left: `${activeIndex * (100 / TABS.length)}%`, width: `${100 / TABS.length}%` }}
           />
         )}
-        <div className="grid grid-cols-4">
+        <div className="grid grid-cols-5">
           {TABS.map((link, i) => {
-            const active = pathname.startsWith(link.href);
+            const active = isActiveTab(link.href, pathname);
             return (
               <Link
                 key={link.href}

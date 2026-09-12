@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { FieldError } from "@/app/(app)/field-error";
 
 export default function UpdatePasswordPage() {
   const router = useRouter();
@@ -79,7 +80,7 @@ export default function UpdatePasswordPage() {
           />
         </div>
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        <FieldError error={error} className="text-sm text-red-600" />
 
         <button
           type="submit"

@@ -1,15 +1,15 @@
 "use client";
 
-import { Dropdown } from "@/app/(app)/dropdown";
-import { goalStatusChoices } from "@/app/(app)/dropdown-options";
-
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
 import { deleteObjective, restoreObjective, updateObjectiveStatus } from "@/app/actions";
 import { formatDate, formatMoney } from "@/lib/format";
 import { timeElapsedPct } from "@/lib/objective-progress";
 import type { AccountWithBalance } from "@/lib/queries";
-import { type Objective } from "@/lib/types";
+import { OBJECTIVE_STATUSES, type Objective } from "@/lib/types";
+import { useContextMenu, type ContextMenuItem } from "@/app/(app)/context-menu";
+import { MenuGlyph } from "@/app/(app)/transaction-menu";
 import { Celebration, useCelebration } from "@/app/(app)/celebration";
 import { AddObjectiveForm, EditObjectiveForm } from "@/app/(app)/objectives-section";
 import { SegmentedProgress } from "@/app/(app)/segmented-progress";
@@ -60,6 +60,19 @@ export function GoalsCard({
   const showToast = useToast();
   const { celebrationKey, fire } = useCelebration();
 
+  // Celebrate whenever a goal becomes Achieved — saved from the edit form
+  // or picked from the right-click Status menu — by diffing each fresh
+  // `objectives` prop against the last one shown.
+  const [lastObjectives, setLastObjectives] = useState(objectives);
+  if (objectives !== lastObjectives) {
+    const newlyAchieved = objectives.some((o) => {
+      const previous = lastObjectives.find((p) => p.id === o.id);
+      return o.status === "Achieved" && previous !== undefined && previous.status !== "Achieved";
+    });
+    if (newlyAchieved) fire();
+    setLastObjectives(objectives);
+  }
+
   // Open goals first, soonest due date first; undated ones after.
   const open = objectives
     .filter((o) => o.status !== "Achieved")
@@ -90,8 +103,69 @@ export function GoalsCard({
   }
 
   function handleStatus(o: Objective, next: string) {
-    if (next === "Achieved" && o.status !== "Achieved") fire();
     updateObjectiveStatus(o.id, next);
+  }
+
+  // Right-click a goal: edit it, change its status, jump to its linked
+  // account's transactions, copy its name, or delete it (with the same
+  // undo bar as deleting from the edit form).
+  const contextMenu = useContextMenu();
+  const router = useRouter();
+  function goalMenuItems(o: Objective): ContextMenuItem[] {
+    const linked = o.linked_account_id ? accounts.find((a) => a.id === o.linked_account_id) : undefined;
+    const items: ContextMenuItem[] = [
+      {
+        label: "Edit goal",
+        icon: <MenuGlyph d="M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4" />,
+        onSelect: () => setModal({ mode: "edit", id: o.id }),
+      },
+      {
+        label: "Status",
+        icon: <span className={`size-2 rounded-full ${STATUS_DOT[o.status] ?? "bg-neutral"}`} />,
+        hint: o.status,
+        submenu: OBJECTIVE_STATUSES.map((status) => ({
+          label: status,
+          checked: status === o.status,
+          icon: <span className={`size-2 rounded-full ${STATUS_DOT[status] ?? "bg-neutral"}`} />,
+          onSelect: () => {
+            if (status === o.status) return;
+            handleStatus(o, status);
+            showToast(`${o.name} marked ${status.toLowerCase()}`);
+          },
+        })),
+      },
+    ];
+    if (linked) {
+      items.push({
+        label: `View ${linked.name} transactions`,
+        icon: <MenuGlyph d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01" />,
+        onSelect: () => router.push(`/transactions?account=${linked.id}&period=all`),
+      });
+    }
+    items.push(
+      {
+        label: "Copy goal name",
+        icon: (
+          <MenuGlyph d="M9 9h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1ZM5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />
+        ),
+        onSelect: async () => {
+          try {
+            await navigator.clipboard.writeText(o.name);
+            showToast("Goal name copied");
+          } catch {
+            showToast("Couldn't copy goal name");
+          }
+        },
+      },
+      { type: "divider" },
+      {
+        label: "Delete goal",
+        icon: <MenuGlyph d="M4 7h16M10 11v6M14 11v6M6 7l1 12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-12M9 7V4h6v3" />,
+        tone: "danger",
+        onSelect: () => handleDelete(o),
+      },
+    );
+    return items;
   }
 
   return (
@@ -142,6 +216,7 @@ export function GoalsCard({
                 accounts={accounts}
                 index={i}
                 onOpen={() => setModal({ mode: "edit", id: o.id })}
+                onContextMenu={(e) => contextMenu.open(e, goalMenuItems(o))}
               />
             ))}
           </ul>
@@ -164,6 +239,7 @@ export function GoalsCard({
                       accounts={accounts}
                       index={i}
                       onOpen={() => setModal({ mode: "edit", id: o.id })}
+                      onContextMenu={(e) => contextMenu.open(e, goalMenuItems(o))}
                     />
                   ))}
                 </ul>
@@ -173,6 +249,7 @@ export function GoalsCard({
         </>
       )}
 
+      {contextMenu.menu}
       {modal && (
         <GoalModal
           title={editing ? editing.name : "New goal"}
@@ -180,19 +257,6 @@ export function GoalsCard({
         >
           {editing ? (
             <div className="space-y-5">
-              <div className="flex items-center justify-between gap-3">
-                <label className="text-sm font-medium text-text" htmlFor="goal-status">
-                  Status
-                </label>
-                <Dropdown
-                  id="goal-status"
-                  variant="compact"
-                  className="w-40"
-                  defaultValue={editing.status}
-                  onChange={(next) => handleStatus(editing, next)}
-                  options={goalStatusChoices()}
-                />
-              </div>
               <EditObjectiveForm
                 objective={editing}
                 accounts={accounts}
@@ -230,15 +294,21 @@ function GoalRow({
   accounts,
   index,
   onOpen,
+  onContextMenu,
 }: {
   objective: Objective;
   accounts: AccountWithBalance[];
   index: number;
   onOpen: () => void;
+  onContextMenu: (e: React.MouseEvent) => void;
 }) {
   const { pct, detail } = progressFor(o, accounts);
   return (
-    <li style={{ animationDelay: `${index * 12}ms` }} className="animate-fade-in-up">
+    <li
+      style={{ animationDelay: `${index * 12}ms` }}
+      className="animate-fade-in-up"
+      onContextMenu={onContextMenu}
+    >
       <button type="button" onClick={onOpen} className="group block w-full text-left">
         <div className="flex items-start gap-2">
           <span

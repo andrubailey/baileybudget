@@ -3,7 +3,8 @@
 import { Dropdown } from "@/app/(app)/dropdown";
 import { accountTypeChoices, bankChoices } from "@/app/(app)/dropdown-options";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   removeAccountLogo,
   updateAccountDetails,
@@ -26,6 +27,14 @@ import { Celebration, useCelebration } from "@/app/(app)/celebration";
 import { PANEL_FIELD_INPUT_CLASS } from "@/lib/ui";
 import { PanelField } from "@/app/(app)/panel-field";
 import { ToggleSwitch } from "@/app/(app)/toggle-switch";
+import { useContextMenu } from "@/app/(app)/context-menu";
+import { accountMenuItems, useAccountQuickActions } from "./account-menu";
+import { ReconcileModal } from "./reconcile-modal";
+
+// Every transaction on this account, across all months.
+function accountTransactionsHref(accountId: string) {
+  return `/transactions?account=${accountId}&period=all`;
+}
 
 function defaultLoginUrl(bank: string | null): string | null {
   if (!bank) return null;
@@ -67,11 +76,17 @@ export function AccountList({
   }
   const [showDeactivated, setShowDeactivated] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [reconcilingId, setReconcilingId] = useState<string | null>(null);
   const showToast = useToast();
+  const router = useRouter();
+  const contextMenu = useContextMenu();
+  const accountActions = useAccountQuickActions();
+  const [confirmingDeactivate, setConfirmingDeactivate] = useState<AccountWithBalance | null>(null);
 
   const deactivatedCount = accounts.filter((a) => !a.is_active).length;
   const visible = showDeactivated ? accounts : accounts.filter((a) => a.is_active);
   const editingAccount = accounts.find((a) => a.id === editingId) ?? null;
+  const reconcilingAccount = accounts.find((a) => a.id === reconcilingId) ?? null;
 
   // Business first, then Personal, then Debt — same split as the dashboard's
   // Accounts card.
@@ -146,16 +161,28 @@ export function AccountList({
               return (
                 <div
                   key={a.id}
-                  role="button"
+                  role="link"
                   tabIndex={0}
-                  onClick={() => setEditingId(a.id)}
+                  onClick={() => router.push(accountTransactionsHref(a.id))}
+                  onContextMenu={(e) =>
+                    contextMenu.open(
+                      e,
+                      accountMenuItems(a, {
+                        allTransactionsHref: accountTransactionsHref(a.id),
+                        loginUrl,
+                        onEdit: () => setEditingId(a.id),
+                        onDeactivate: () => setConfirmingDeactivate(a),
+                        actions: accountActions,
+                      }),
+                    )
+                  }
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
-                      setEditingId(a.id);
+                      router.push(accountTransactionsHref(a.id));
                     }
                   }}
-                  aria-label={`Edit ${a.name}`}
+                  aria-label={`View ${a.name} transactions`}
                   style={{ animationDelay: `${i * 12}ms` }}
                   className={`card card-hover animate-fade-in-up cursor-pointer ${
                     !a.is_active ? "opacity-70" : ""
@@ -190,11 +217,39 @@ export function AccountList({
                         </svg>
                       </span>
                     )}
-                    {!a.is_active && (
-                      <span className="rounded-full bg-bg px-1.5 py-0.5 text-[10px] font-semibold text-text-faint">
-                        Deactivated
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {!a.is_active && (
+                        <span className="rounded-full bg-bg px-1.5 py-0.5 text-[10px] font-semibold text-text-faint">
+                          Deactivated
+                        </span>
+                      )}
+                      {/* The card itself opens the account's transactions;
+                          these open the reconcile/edit panels instead. */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setReconcilingId(a.id);
+                        }}
+                        onKeyDown={(e) => e.stopPropagation()}
+                        aria-label={`Reconcile ${a.name}`}
+                        className="rounded-md px-1 text-xs font-medium text-text-muted transition-colors hover:text-accent hover:underline"
+                      >
+                        Reconcile
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingId(a.id);
+                        }}
+                        onKeyDown={(e) => e.stopPropagation()}
+                        aria-label={`Edit ${a.name}`}
+                        className="-mr-1 rounded-md px-1 text-xs font-medium text-text-muted transition-colors hover:text-accent hover:underline"
+                      >
+                        Edit
+                      </button>
+                    </div>
                   </div>
 
                   <div className="mt-3">
@@ -307,6 +362,20 @@ export function AccountList({
         </button>
       )}
 
+      {contextMenu.menu}
+      {confirmingDeactivate && (
+        <ConfirmDeactivateModal
+          account={confirmingDeactivate}
+          onConfirm={() => accountActions.setActive(confirmingDeactivate, false)}
+          onClose={() => setConfirmingDeactivate(null)}
+        />
+      )}
+      {reconcilingAccount && (
+        <ReconcileModal
+          account={reconcilingAccount}
+          onClose={() => setReconcilingId(null)}
+        />
+      )}
       {editingAccount && (
         <AccountEditModal
           account={editingAccount}
@@ -624,6 +693,95 @@ function ToggleRow({
       </div>
       <input type="hidden" name={name} value={checked ? "on" : ""} />
       <ToggleSwitch checked={checked} onChange={onChange} label={label} />
+    </div>
+  );
+}
+
+// Matches .animate-modal-panel-out in globals.css.
+const CONFIRM_EXIT_MS = 120;
+
+// "Are you sure?" before deactivating an account from its right-click menu.
+function ConfirmDeactivateModal({
+  account: a,
+  onConfirm,
+  onClose,
+}: {
+  account: AccountWithBalance;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const [closing, setClosing] = useState(false);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+
+  function close() {
+    setClosing(true);
+    setTimeout(onClose, CONFIRM_EXIT_MS);
+  }
+
+  // Focus Cancel once the right-click menu that opened this has finished
+  // its exit (it holds focus until then), so Enter never deactivates by
+  // accident and Tab starts inside the dialog.
+  useEffect(() => {
+    const timer = setTimeout(() => cancelRef.current?.focus(), CONFIRM_EXIT_MS + 30);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      setClosing(true);
+      setTimeout(onClose, CONFIRM_EXIT_MS);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  return (
+    <div
+      className={`fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4 ${
+        closing ? "animate-modal-backdrop-out" : "animate-modal-backdrop"
+      }`}
+      onClick={close}
+    >
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="confirm-deactivate-title"
+        onClick={(e) => e.stopPropagation()}
+        className={`w-full max-w-sm rounded-xl border border-border bg-surface p-5 shadow-modal ${
+          closing ? "animate-modal-panel-out" : "animate-modal-panel"
+        }`}
+      >
+        <h2 id="confirm-deactivate-title" className="text-base font-semibold text-text">
+          Deactivate {a.name}?
+        </h2>
+        <p className="mt-1.5 text-sm text-text-muted">
+          It&apos;ll be hidden from your account lists and left out of totals like Net Worth. Its
+          transactions stay, and you can reactivate it anytime from &ldquo;Show deactivated
+          accounts.&rdquo;
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            ref={cancelRef}
+            type="button"
+            autoFocus
+            onClick={close}
+            className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-text-muted transition-colors hover:bg-bg"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onConfirm();
+              close();
+            }}
+            className="rounded-lg bg-negative px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+          >
+            Deactivate
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

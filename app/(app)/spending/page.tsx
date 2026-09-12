@@ -4,21 +4,26 @@ import {
   getAccounts,
   getCategories,
   getCategoryProgressForRange,
+  getMonthlyFlow,
+  getPeriodSummary,
   getPostedRecurringIds,
   getRecurringTransactions,
   getSplitsByTransaction,
   getTransactions,
+  getTransactionsForRange,
 } from "@/lib/queries";
 import { formatMoney } from "@/lib/format";
 import type { Period, Transaction } from "@/lib/types";
 import { PageHeader } from "@/app/(app)/page-header";
 import { EmptyState } from "@/app/(app)/empty-state";
 import { RecentTransactionsList } from "@/app/(app)/recent-transactions-list";
-import { CashFlowReportCard } from "@/app/(app)/cash-flow-report-card";
 import { SpendingTabs } from "./spending-tabs";
 import { SpendPaceChart } from "./spend-pace-chart";
-import { CategoryBreakdownCard } from "./category-breakdown-card";
 import { UpcomingCalendar, buildUpcomingDays } from "./upcoming-calendar";
+import { buildCategoryRows, isIncomeTransaction, isSpendTransaction } from "./build-category-rows";
+import { PeriodStrip } from "./breakdown/period-strip";
+import { BreakdownPanel } from "./breakdown/breakdown-panel";
+import { CashFlowCard, LargestTransactionsCard, MostFrequentCard } from "./breakdown/side-cards";
 
 // On a debt account (credit card, loan) a charge is stored as "income" and a
 // payment as "expense", so spending is "expense on a normal account, or
@@ -62,9 +67,14 @@ function cumulativeSpend(
   return series;
 }
 
-export default async function SpendingPage() {
+export default async function SpendingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ period?: string }>;
+}) {
+  const { period: requestedPeriod } = await searchParams;
   const periods = await getPeriods();
-  const period = pickPeriod(periods);
+  const period = pickPeriod(periods, requestedPeriod);
 
   if (!period) {
     return (
@@ -81,16 +91,35 @@ export default async function SpendingPage() {
   // getPeriods() is newest first, so the one after the current is last month.
   const previous = periods[periods.findIndex((p) => p.id === period.id) + 1] ?? null;
 
-  const [transactions, previousTransactions, categoryProgress, recurring, postedIds, accounts, categories] =
-    await Promise.all([
-      getTransactions(period.id),
-      previous ? getTransactions(previous.id) : Promise.resolve([] as Transaction[]),
-      getCategoryProgressForRange(period.start_date, period.end_date),
-      getRecurringTransactions(),
-      getPostedRecurringIds(period.id),
-      getAccounts(),
-      getCategories(),
-    ]);
+  // Six months back, for the per-category history BreakdownPanel shows
+  // (monthly average, last month).
+  const historyStart = new Date(`${period.start_date}T00:00:00Z`);
+  historyStart.setUTCMonth(historyStart.getUTCMonth() - 5);
+  const historyStartIso = historyStart.toISOString().slice(0, 10);
+
+  const [
+    transactions,
+    previousTransactions,
+    categoryProgress,
+    summary,
+    recurring,
+    postedIds,
+    accounts,
+    categories,
+    historyTransactions,
+    flow,
+  ] = await Promise.all([
+    getTransactions(period.id),
+    previous ? getTransactions(previous.id) : Promise.resolve([] as Transaction[]),
+    getCategoryProgressForRange(period.start_date, period.end_date),
+    getPeriodSummary(period.id),
+    getRecurringTransactions(),
+    getPostedRecurringIds(period.id),
+    getAccounts(),
+    getCategories(),
+    getTransactionsForRange(historyStartIso, period.end_date),
+    getMonthlyFlow(24),
+  ]);
 
   const debtIds = new Set(accounts.filter((a) => a.is_debt).map((a) => a.id));
   const today = new Date().toISOString().slice(0, 10);
@@ -117,6 +146,54 @@ export default async function SpendingPage() {
     recentTransactions.filter((t) => t.category_id === null).map((t) => t.id),
   );
 
+  const rows = buildCategoryRows({
+    period,
+    categoryProgress,
+    previousTransactions,
+    historyTransactions,
+    debtIds,
+  });
+
+  const incomeByCategory = new Map<string, number>();
+  let uncategorizedIncome = 0;
+  for (const t of transactions) {
+    if (!isIncomeTransaction(t, debtIds)) continue;
+    if (t.category_id) incomeByCategory.set(t.category_id, (incomeByCategory.get(t.category_id) ?? 0) + t.amount);
+    else uncategorizedIncome += t.amount;
+  }
+  const incomeRows = categories
+    .filter((c) => c.kind === "income")
+    .map((c) => ({ id: c.id, name: c.name, icon: c.icon, actual: incomeByCategory.get(c.id) ?? 0 }))
+    .filter((c) => c.actual > 0)
+    .sort((a, b) => b.actual - a.actual);
+  if (uncategorizedIncome > 0) {
+    incomeRows.push({ id: "uncategorized", name: "Uncategorized", icon: "income", actual: uncategorizedIncome });
+  }
+
+  const spendTransactions = transactions.filter((t) => isSpendTransaction(t, debtIds));
+  const largest = [...spendTransactions].sort((a, b) => b.amount - a.amount).slice(0, 5);
+  const frequency = new Map<string, { count: number; total: number }>();
+  for (const t of spendTransactions) {
+    const key = t.description.trim().toLowerCase();
+    const entry = frequency.get(key) ?? { count: 0, total: 0 };
+    entry.count += 1;
+    entry.total += t.amount;
+    frequency.set(key, entry);
+  }
+  const mostFrequent = [...frequency.entries()]
+    .map(([key, v]) => ({
+      name: spendTransactions.find((t) => t.description.trim().toLowerCase() === key)?.description ?? key,
+      ...v,
+    }))
+    .sort((a, b) => b.count - a.count || b.total - a.total)
+    .slice(0, 4);
+
+  const strip = flow.map((f) => ({ periodId: f.periodId, label: f.label, expense: f.expense, income: f.income }));
+  const stripWithNames = strip.map((s) => {
+    const p = periods.find((x) => x.id === s.periodId);
+    return { ...s, name: p?.name ?? s.label, startDate: p?.start_date ?? "" };
+  });
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -124,6 +201,8 @@ export default async function SpendingPage() {
         description={`Where your money went in ${period.name}, what's coming up, and how it compares to your budget.`}
       />
       <SpendingTabs />
+
+      <PeriodStrip months={stripWithNames} selectedId={period.id} />
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">
         <div className="min-w-0 space-y-6">
@@ -168,6 +247,16 @@ export default async function SpendingPage() {
             </div>
           </div>
 
+          <BreakdownPanel
+            periodId={period.id}
+            periodName={period.name}
+            rows={rows}
+            incomeRows={incomeRows}
+            totalIncome={summary.income}
+            accounts={accounts}
+            categories={categories}
+          />
+
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <div className="card flex h-full flex-col">
               <div className="mb-3 flex items-center justify-between gap-3">
@@ -192,14 +281,14 @@ export default async function SpendingPage() {
               )}
             </div>
 
-            <UpcomingCalendar days={upcomingDays} />
+            <UpcomingCalendar days={upcomingDays} accounts={accounts} categories={categories} />
           </div>
-
-          <CashFlowReportCard />
         </div>
 
         <div className="space-y-6">
-          <CategoryBreakdownCard categoryProgress={categoryProgress} />
+          <CashFlowCard income={summary.income} expenses={summary.expense} />
+          <LargestTransactionsCard transactions={largest} />
+          <MostFrequentCard items={mostFrequent} />
         </div>
       </div>
     </div>

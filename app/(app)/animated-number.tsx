@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { formatMoney } from "@/lib/format";
 
-// Counts from the previous value up/down to the new one over ~600ms instead
+// Counts from the previous value up/down to the new one over ~350ms instead
 // of snapping — runs once per mount and again whenever `value` changes.
+// Under 400ms so it never delays actually reading the number.
 export function AnimatedMoney({ value, className }: { value: number; className?: string }) {
   const [display, setDisplay] = useState(value);
   const fromRef = useRef(value);
@@ -15,7 +16,21 @@ export function AnimatedMoney({ value, className }: { value: number; className?:
     const to = value;
     if (from === to) return;
 
-    const duration = 600;
+    // Respected here explicitly rather than through a CSS media query —
+    // this is a JS rAF loop, not a CSS animation/transition, so the
+    // @media (prefers-reduced-motion: reduce) rules elsewhere in the app
+    // have no way to reach it.
+    const reducedMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reducedMotion) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing display with an external system's current preference, not deriving render output
+      setDisplay(to);
+      fromRef.current = to;
+      return;
+    }
+
+    const duration = 350;
     const start = performance.now();
 
     function tick(now: number) {

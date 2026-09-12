@@ -11,7 +11,98 @@ import { SPARKLE_PATH } from "@/app/(app)/sparkle-icon";
 import { useToast } from "@/app/(app)/toast";
 import { NAV_GROUPS } from "./sidebar";
 
-type DisplayMessage = { role: "user" | "assistant"; text: string };
+type DisplayMessage = {
+  role: "user" | "assistant";
+  text: string;
+  // Shown as small chips under a user bubble — just enough to remember what
+  // was attached; the actual base64 payload only ever lives in the request
+  // that sent it, never kept around in this display history.
+  attachments?: { name: string; isImage: boolean }[];
+};
+
+type PendingAttachment = { name: string; mediaType: string; data: string; isImage: boolean };
+
+// Matches the server's own limits (app/api/assistant/route.ts) — checking
+// here too means a rejected file gets an immediate, specific toast instead
+// of a round trip just to find out it was too big.
+const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+const MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024;
+const MAX_ATTACHMENTS = 4;
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      // "data:<type>;base64,<payload>" — only the API wants the payload.
+      const result = String(reader.result ?? "");
+      const comma = result.indexOf(",");
+      resolve(comma === -1 ? result : result.slice(comma + 1));
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function AttachmentIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M21.44 11.05 12.25 20.24a5.5 5.5 0 0 1-7.78-7.78l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a1.5 1.5 0 0 1-2.12-2.12l8.49-8.48"
+        stroke="currentColor"
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function FileChip({
+  name,
+  isImage,
+  onRemove,
+}: {
+  name: string;
+  isImage: boolean;
+  onRemove?: () => void;
+}) {
+  return (
+    <span className="inline-flex max-w-[180px] items-center gap-1.5 rounded-lg border border-border bg-bg py-1 pr-1.5 pl-2 text-xs text-text-muted">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="shrink-0">
+        {isImage ? (
+          <path
+            d="M4 16.5 8 12l3 3 5-6 4 7.5M4 6h16v12H4V6Z"
+            stroke="currentColor"
+            strokeWidth={1.6}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ) : (
+          <path
+            d="M14 3v5h5M6 3h8l5 5v13H6V3Z"
+            stroke="currentColor"
+            strokeWidth={1.6}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
+      </svg>
+      <span className="truncate">{name}</span>
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={`Remove ${name}`}
+          className="flex size-4 shrink-0 items-center justify-center rounded-full text-text-faint transition-colors hover:bg-border hover:text-text"
+        >
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none">
+            <path d="M6 6l12 12M18 6 6 18" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" />
+          </svg>
+        </button>
+      )}
+    </span>
+  );
+}
 
 const ALL_LINKS = NAV_GROUPS.flatMap((g) => g.links);
 
@@ -325,10 +416,19 @@ function AdvisorFeed({
         <div className="space-y-5">
           {messages.map((m, i) =>
             m.role === "user" ? (
-              <div key={i} className="flex justify-end">
-                <p className="max-w-[80%] rounded-2xl bg-bg px-4 py-2 text-sm whitespace-pre-wrap text-text">
-                  {m.text}
-                </p>
+              <div key={i} className="flex flex-col items-end gap-1.5">
+                {m.attachments && m.attachments.length > 0 && (
+                  <div className="flex max-w-[80%] flex-wrap justify-end gap-1.5">
+                    {m.attachments.map((a, j) => (
+                      <FileChip key={j} name={a.name} isImage={a.isImage} />
+                    ))}
+                  </div>
+                )}
+                {m.text && (
+                  <p className="max-w-[80%] rounded-2xl bg-bg px-4 py-2 text-sm whitespace-pre-wrap text-text">
+                    {m.text}
+                  </p>
+                )}
               </div>
             ) : (
               <RichText key={i} text={m.text} />
@@ -368,6 +468,9 @@ function AdvisorInput({
   busy,
   listening,
   speechSupported,
+  attachments,
+  onAddFiles,
+  onRemoveAttachment,
   onSend,
   onToggleVoice,
   onKeyDown,
@@ -379,26 +482,58 @@ function AdvisorInput({
   busy: boolean;
   listening: boolean;
   speechSupported: boolean;
+  attachments: PendingAttachment[];
+  onAddFiles: (files: FileList | null) => void;
+  onRemoveAttachment: (index: number) => void;
   onSend: (e: React.FormEvent) => void;
   onToggleVoice: () => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   inputRef?: (el: HTMLTextAreaElement | null) => void;
   compact?: boolean;
 }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
   return (
     <form
       onSubmit={onSend}
       className={`shrink-0 ${compact ? "border-t border-border p-3" : "px-6 pt-2 pb-5"}`}
     >
       <div className={compact ? "" : "mx-auto max-w-2xl"}>
+        {attachments.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {attachments.map((a, i) => (
+              <FileChip key={i} name={a.name} isImage={a.isImage} onRemove={() => onRemoveAttachment(i)} />
+            ))}
+          </div>
+        )}
         <div className="flex items-end gap-2 rounded-xl border border-border bg-surface p-2 shadow-card transition-colors focus-within:border-accent">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,.csv,text/csv"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              onAddFiles(e.target.files);
+              e.target.value = "";
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={attachments.length >= MAX_ATTACHMENTS}
+            aria-label="Attach a statement, receipt, or photo"
+            title="Attach a statement, receipt, or photo"
+            className="flex size-9 shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-bg disabled:opacity-40"
+          >
+            <AttachmentIcon />
+          </button>
           <textarea
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
             rows={1}
-            placeholder="Ask anything or search…"
+            placeholder="Ask anything, search, or attach a statement…"
             className="max-h-40 min-h-9 flex-1 resize-none bg-transparent px-2 py-1.5 text-base text-text outline-none placeholder:text-text-faint sm:text-sm"
           />
           {speechSupported && (
@@ -424,7 +559,7 @@ function AdvisorInput({
           )}
           <button
             type="submit"
-            disabled={busy || !input.trim()}
+            disabled={busy || (!input.trim() && attachments.length === 0)}
             aria-label="Ask the advisor"
             className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent text-white transition-opacity hover:opacity-90 disabled:opacity-40"
           >
@@ -467,6 +602,7 @@ export function FinancesChat() {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState("");
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [listening, setListening] = useState(false);
   const [txnResults, setTxnResults] = useState<TransactionSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -556,10 +692,54 @@ export function FinancesChat() {
   function resetConversation() {
     setMessages([]);
     setInput("");
+    setAttachments([]);
     setTxnResults([]);
     setSearching(false);
     setActiveIndex(0);
     apiState.current = [];
+  }
+
+  // Reads each dropped/picked file into a base64 payload the API can send
+  // straight to Claude as an image/document block. Validated against the
+  // same limits the server enforces (app/api/assistant/route.ts) so a
+  // rejected file gets an immediate, specific toast instead of a round trip.
+  async function handleFilesSelected(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const room = MAX_ATTACHMENTS - attachments.length;
+    if (room <= 0) {
+      showToast(`You can attach up to ${MAX_ATTACHMENTS} files at once.`, "error");
+      return;
+    }
+    for (const file of Array.from(files).slice(0, room)) {
+      const isImage = ACCEPTED_IMAGE_TYPES.includes(file.type);
+      // Browsers are inconsistent about what MIME type a .csv gets (some
+      // report "text/csv", some "application/vnd.ms-excel", some nothing at
+      // all) — the extension is the one reliable signal, so it's checked
+      // regardless of what file.type says.
+      const isCsv = file.type === "text/csv" || file.name.toLowerCase().endsWith(".csv");
+      if (!isImage && !isCsv && file.type !== "application/pdf") {
+        showToast(`${file.name}: only images, PDFs, and CSVs are supported.`, "error");
+        continue;
+      }
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        showToast(`${file.name} is over ${MAX_ATTACHMENT_BYTES / (1024 * 1024)}MB — try a smaller file.`, "error");
+        continue;
+      }
+      try {
+        // A CSV is sent as its raw text (the API's plain-text document
+        // source takes text directly, not base64) — everything else is
+        // read as base64 for the image/PDF document sources.
+        const data = isCsv ? await file.text() : await fileToBase64(file);
+        const mediaType = isCsv ? "text/csv" : file.type;
+        setAttachments((a) => [...a, { name: file.name, mediaType, data, isImage }]);
+      } catch {
+        showToast(`Couldn't read ${file.name}.`, "error");
+      }
+    }
+  }
+
+  function removeAttachment(index: number) {
+    setAttachments((a) => a.filter((_, i) => i !== index));
   }
 
   // Enter is the one "do the obvious thing" key: jump to whatever result is
@@ -661,11 +841,20 @@ export function FinancesChat() {
   }
 
   async function sendMessage(text: string) {
-    if (!text || busy) return;
+    if ((!text && attachments.length === 0) || busy) return;
 
     const priorState = apiState.current;
-    setMessages((m) => [...m, { role: "user", text }]);
+    const sentAttachments = attachments;
+    setMessages((m) => [
+      ...m,
+      {
+        role: "user",
+        text,
+        attachments: sentAttachments.map((a) => ({ name: a.name, isImage: a.isImage })),
+      },
+    ]);
     setInput("");
+    setAttachments([]);
     setTxnResults([]);
     setLoading(true);
 
@@ -673,7 +862,15 @@ export function FinancesChat() {
       const res = await fetch("/api/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, state: priorState }),
+        body: JSON.stringify({
+          message: text,
+          state: priorState,
+          attachments: sentAttachments.map((a) => ({
+            name: a.name,
+            mediaType: a.mediaType,
+            data: a.data,
+          })),
+        }),
       });
       const data = await res.json();
 
@@ -788,6 +985,9 @@ export function FinancesChat() {
     busy,
     listening,
     speechSupported,
+    attachments,
+    onAddFiles: handleFilesSelected,
+    onRemoveAttachment: removeAttachment,
     onSend: handleSend,
     onToggleVoice: toggleVoice,
     onKeyDown: handleKeyDown,

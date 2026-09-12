@@ -1121,6 +1121,19 @@ export async function getTransactions(
   return data ?? [];
 }
 
+// Every transaction across all periods, newest first — the Transactions
+// page's "All time" view (e.g. one account's full history).
+export async function getAllTransactions(): Promise<Transaction[]> {
+  const supabase = snapshotClient();
+  const { data } = await supabase
+    .from("transactions")
+    .select("*")
+    .is("deleted_at", null)
+    .order("txn_date", { ascending: false })
+    .order("created_at", { ascending: false });
+  return data ?? [];
+}
+
 // Same account, same exact amount, within 2 days either way — catches the
 // classic "we both logged it" double-entry without being so loose it flags
 // unrelated same-amount purchases weeks apart.
