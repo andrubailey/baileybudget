@@ -10,7 +10,7 @@ import {
   updateAccountDetails,
   uploadAccountLogo,
 } from "@/app/actions";
-import { formatMoney, progressColor } from "@/lib/format";
+import { formatMoney, isOwed, progressColor } from "@/lib/format";
 import { Money } from "@/app/(app)/money";
 import { SegmentedProgress } from "@/app/(app)/segmented-progress";
 import type { AccountWithBalance } from "@/lib/queries";
@@ -63,7 +63,7 @@ export function AccountList({
     const worthCelebrating = accounts.some((a) => {
       const prev = lastAccounts.find((p) => p.id === a.id);
       if (!prev) return false;
-      if (a.is_debt) return prev.balance > 0 && a.balance <= 0;
+      if (a.is_debt) return isOwed(prev.balance) && !isOwed(a.balance);
       return (
         a.goal != null &&
         a.goal > 0 &&
@@ -152,7 +152,7 @@ export function AccountList({
                 a.low_balance_alert !== null &&
                 a.balance < a.low_balance_alert;
               const loginUrl = a.login_url || defaultLoginUrl(a.bank);
-              const paidOff = a.is_debt && a.balance <= 0;
+              const paidOff = a.is_debt && !isOwed(a.balance);
               const metaParts = [
                 a.account_type ? ACCOUNT_TYPE_LABELS[a.account_type] : null,
                 a.is_business ? "Business" : null,

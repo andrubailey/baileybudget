@@ -15,6 +15,15 @@ export function formatMoney(value: number): string {
   });
 }
 
+// A debt account's balance accumulates from many float additions/subtractions
+// across its transaction history, so "paid off" can land on something like
+// 0.0000000001 instead of exactly 0 — still `> 0` by raw comparison, which
+// showed a stray "-$0.00" (negative, still "owed") on a card that's actually
+// settled. Round to the cent before treating a debt balance as owed vs. paid off.
+export function isOwed(balance: number): boolean {
+  return Math.round(balance * 100) / 100 > 0;
+}
+
 // Formats a "YYYY-MM-DD" date string for display without shifting timezone
 // (parsing as UTC keeps the day the same regardless of the viewer's locale).
 export function formatDate(iso: string): string {

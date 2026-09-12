@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { reconcileAccountBalance } from "@/app/actions";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, isOwed } from "@/lib/format";
 import { CurrencyInput } from "@/app/(app)/currency-input";
 import { Money } from "@/app/(app)/money";
 import { useToast } from "@/app/(app)/toast";
@@ -90,7 +90,7 @@ export function AccountReconcileRow({
         >
           <Money
             amount={a.balance}
-            tone={a.is_debt && a.balance > 0 ? "negative" : undefined}
+            tone={a.is_debt && isOwed(a.balance) ? "negative" : undefined}
             className="tabular text-sm font-semibold text-text"
           />
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" className="shrink-0 text-text-faint">

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { AccountWithBalance } from "@/lib/queries";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, isOwed } from "@/lib/format";
 import { BankLogo } from "@/app/(app)/accounts/bank-logo";
 import { EmptyState } from "@/app/(app)/empty-state";
 import { useContextMenu } from "@/app/(app)/context-menu";
@@ -126,7 +126,7 @@ export function AccountsGlanceCard({ accounts }: { accounts: AccountWithBalance[
                         )
                       }
                       style={{ animationDelay: `${i * 12}ms` }}
-                      className="animate-fade-in-up flex items-center gap-3 py-3 first:pt-0 last:pb-0"
+                      className="animate-fade-in-up -mx-3 flex items-center gap-3 rounded-lg px-3 py-3 transition-colors first:pt-0 last:pb-0 hover:bg-bg"
                     >
                       {a.logo_url ? (
                         <span className="inline-flex size-5 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-white">
@@ -156,12 +156,12 @@ export function AccountsGlanceCard({ accounts }: { accounts: AccountWithBalance[
                       </span>
                       <span
                         className={`tabular shrink-0 text-sm font-semibold ${
-                          a.is_debt && a.balance > 0 ? "text-negative" : "text-text"
+                          a.is_debt && isOwed(a.balance) ? "text-negative" : "text-text"
                         }`}
                       >
                         {/* Owed money reads red and negative; a paid-off
                             card is just a plain $0.00. */}
-                        {a.is_debt && a.balance > 0 ? "-" : ""}
+                        {a.is_debt && isOwed(a.balance) ? "-" : ""}
                         {formatMoney(a.balance)}
                       </span>
                     </div>
