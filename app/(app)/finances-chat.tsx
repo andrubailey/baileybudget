@@ -380,7 +380,7 @@ function AdvisorFeed({
 }) {
   const showWelcome = messages.length === 0 && trimmedInput.length === 0 && !thinking;
   return (
-    <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+    <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
       <div className={compact ? "px-4 py-4" : "mx-auto max-w-2xl px-6 py-6"}>
         {showWelcome && (
           <div className={`flex flex-col items-center text-center ${compact ? "py-6" : "pt-14 pb-4"}`}>
@@ -443,7 +443,9 @@ function AdvisorFeed({
         </div>
       </div>
 
-      {trimmedInput.length > 0 && (
+      {/* Search results only on a fresh Advisor — mid-conversation, typing
+          is a follow-up question, not a search. */}
+      {trimmedInput.length > 0 && messages.length === 0 && !thinking && (
         <div className={compact ? "" : "mx-auto max-w-2xl px-4"}>
           <InlineResults
             matches={matches}
@@ -475,6 +477,7 @@ function AdvisorInput({
   onToggleVoice,
   onKeyDown,
   inputRef,
+  inConversation,
   compact = false,
 }: {
   input: string;
@@ -489,6 +492,8 @@ function AdvisorInput({
   onToggleVoice: () => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   inputRef?: (el: HTMLTextAreaElement | null) => void;
+  // A conversation is under way, so typing no longer searches.
+  inConversation: boolean;
   compact?: boolean;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -533,7 +538,9 @@ function AdvisorInput({
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
             rows={1}
-            placeholder="Ask anything, search, or attach a statement…"
+            placeholder={
+              inConversation ? "Ask a follow-up or attach a statement…" : "Ask anything, search, or attach a statement…"
+            }
             className="max-h-40 min-h-9 flex-1 resize-none bg-transparent px-2 py-1.5 text-base text-text outline-none placeholder:text-text-faint sm:text-sm"
           />
           {speechSupported && (
@@ -622,10 +629,14 @@ export function FinancesChat() {
   const thinking = loading;
 
   const trimmedInput = input.trim();
+  // Search (pages + transactions) is only offered on a fresh Advisor. Once a
+  // conversation has started, whatever's typed is a follow-up for the AI,
+  // not a search query.
+  const inConversation = messages.length > 0 || loading;
   // Every link's label vacuously matches an empty query — without the length
   // guard, opening ⌘K on a blank input dumped the entire nav as results.
   const pageMatches =
-    trimmedInput.length > 0
+    !inConversation && trimmedInput.length > 0
       ? ALL_LINKS.filter((link) => link.label.toLowerCase().includes(trimmedInput.toLowerCase()))
       : [];
   const matches: Match[] = [
@@ -635,7 +646,7 @@ export function FinancesChat() {
       label: link.label,
       icon: link.icon,
     })),
-    ...txnResults.map((result) => ({
+    ...(inConversation ? [] : txnResults).map((result) => ({
       type: "transaction" as const,
       href: `/transactions?period=${result.period_id}&highlight=${result.id}`,
       result,
@@ -655,7 +666,7 @@ export function FinancesChat() {
   // sequence number discards any response that isn't from the latest
   // keystroke.
   useEffect(() => {
-    if (trimmedInput.length < 2) {
+    if (inConversation || trimmedInput.length < 2) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- clearing stale results when the debounced search below no longer applies, not deriving render output
       setTxnResults([]);
       setSearching(false);
@@ -671,7 +682,7 @@ export function FinancesChat() {
       }
     }, 250);
     return () => clearTimeout(timer);
-  }, [trimmedInput]);
+  }, [trimmedInput, inConversation]);
 
   function go(match: Match) {
     router.push(match.href);
@@ -824,16 +835,31 @@ export function FinancesChat() {
     mobileScrollRef.current?.scrollTo({ top: mobileScrollRef.current.scrollHeight });
   }, [messages, loading]);
 
-  // Lock body scroll behind the full-screen mobile sheet, same pattern the
-  // mobile nav drawer already uses.
+  // Lock page scroll behind the Advisor — the desktop modal (including its
+  // closing animation) and the full-screen mobile sheet — so scrolling only
+  // ever moves the conversation. Both <html> and <body> are locked since
+  // either can be the scroll container, and the page is padded by the
+  // scrollbar's width so hiding it doesn't shift the layout sideways.
+  const advisorVisible = popupOpen || popupClosing || mobileOpen;
   useEffect(() => {
-    if (!mobileOpen) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previous;
+    if (!advisorVisible) return;
+    const html = document.documentElement;
+    const body = document.body;
+    const scrollbarWidth = window.innerWidth - html.clientWidth;
+    const previous = {
+      htmlOverflow: html.style.overflow,
+      bodyOverflow: body.style.overflow,
+      bodyPaddingRight: body.style.paddingRight,
     };
-  }, [mobileOpen]);
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    if (scrollbarWidth > 0) body.style.paddingRight = `${scrollbarWidth}px`;
+    return () => {
+      html.style.overflow = previous.htmlOverflow;
+      body.style.overflow = previous.bodyOverflow;
+      body.style.paddingRight = previous.bodyPaddingRight;
+    };
+  }, [advisorVisible]);
 
   function appendMessage(message: DisplayMessage, nextState?: unknown[]) {
     setMessages((m) => [...m, message]);
@@ -994,6 +1020,7 @@ export function FinancesChat() {
     inputRef: (el: HTMLTextAreaElement | null) => {
       inputRef.current = el;
     },
+    inConversation,
   };
 
   return (

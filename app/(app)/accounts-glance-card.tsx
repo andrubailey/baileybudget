@@ -156,10 +156,12 @@ export function AccountsGlanceCard({ accounts }: { accounts: AccountWithBalance[
                       </span>
                       <span
                         className={`tabular shrink-0 text-sm font-semibold ${
-                          a.is_debt ? "text-negative" : "text-text"
+                          a.is_debt && a.balance > 0 ? "text-negative" : "text-text"
                         }`}
                       >
-                        {a.is_debt ? "-" : ""}
+                        {/* Owed money reads red and negative; a paid-off
+                            card is just a plain $0.00. */}
+                        {a.is_debt && a.balance > 0 ? "-" : ""}
                         {formatMoney(a.balance)}
                       </span>
                     </div>

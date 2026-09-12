@@ -90,7 +90,7 @@ export function AccountReconcileRow({
         >
           <Money
             amount={a.balance}
-            tone={a.is_debt ? "negative" : undefined}
+            tone={a.is_debt && a.balance > 0 ? "negative" : undefined}
             className="tabular text-sm font-semibold text-text"
           />
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" className="shrink-0 text-text-faint">
