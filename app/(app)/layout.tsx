@@ -16,6 +16,7 @@ import { activitySignature } from "@/lib/activity-signature";
 import { getCurrentSession, getCurrentUserProfile } from "@/lib/profile";
 import { getAccounts, getBillsDueSoonCount, getCategories, getLowBalanceAccountCount } from "@/lib/queries";
 import { getPeriods, pickPeriod } from "@/lib/periods";
+import { headers } from "next/headers";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   // getCurrentSession() reads the JWT straight from cookies with no network
@@ -40,6 +41,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       getCategories(),
     ]);
   const addPeriod = pickPeriod(periods);
+  // Phones skip the page View Transition (see PageTransition). Same
+  // phone-class user-agent check the auth proxy uses; tablets count as desktop.
+  const isPhone = /Mobi|Android|iPhone|iPod/i.test((await headers()).get("user-agent") ?? "");
   const activeTransactions = transactions.filter((t) => t.deleted_at == null);
   const pendingApprovalCount = activeTransactions.filter((t) => t.pending_approval === true).length;
   // A split parent stores category_id: null too, but its real breakdown
@@ -105,7 +109,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <main className="w-full min-w-0 flex-1 px-4 pt-10 pb-28 sm:px-6 lg:px-8 lg:pt-16 lg:pb-32">
             <PullToRefresh>
               <div className="mx-auto max-w-[1600px]">
-                <PageTransition>{children}</PageTransition>
+                <PageTransition enabled={!isPhone}>{children}</PageTransition>
               </div>
             </PullToRefresh>
           </main>

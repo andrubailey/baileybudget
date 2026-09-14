@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import type { Account, Category } from "@/lib/types";
 import { MOBILE_LINKS, MOBILE_ADD_LINK } from "./sidebar";
 import { MobileAddSheet } from "./add/mobile-add-sheet";
@@ -17,7 +17,7 @@ function isActiveTab(href: string, pathname: string) {
 // blurred, with a faint light edge and a soft floating shadow — the iOS 27
 // floating tab bar look.
 const GLASS =
-  "border border-white/10 bg-hero-bg/80 shadow-[0_10px_30px_-8px_rgba(0,0,0,0.45)] backdrop-blur-xl backdrop-saturate-150";
+  "border border-white/15 bg-hero-bg/55 shadow-[0_10px_30px_-8px_rgba(0,0,0,0.45)] backdrop-blur-2xl backdrop-saturate-[1.8]";
 
 // Mobile navigation as a floating capsule (iOS 27 style) instead of a bar
 // pinned edge to edge: Overview, Budget, Accounts and Recent in one pill,
@@ -34,6 +34,7 @@ export function MobileTabBar({
   categories: Category[];
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [adding, setAdding] = useState(false);
   const activeIndex = MOBILE_LINKS.findIndex((link) => isActiveTab(link.href, pathname));
 
@@ -67,6 +68,10 @@ export function MobileTabBar({
                   <Link
                     key={link.href}
                     href={link.href}
+                    // Start fetching the page as soon as a finger touches
+                    // the tab rather than on release, so the new page is
+                    // usually already on its way by the time the tap lands.
+                    onPointerDown={() => router.prefetch(link.href)}
                     aria-current={active ? "page" : undefined}
                     transitionTypes={
                       activeIndex === -1 || active ? undefined : [i > activeIndex ? "nav-forward" : "nav-back"]
