@@ -251,10 +251,24 @@
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
 }
 
+/* Prevents the classic mobile Safari "pull down and the page slides away
+   from a mismatched white background" effect: iOS's elastic overscroll
+   bounces the whole document past its own edges, momentarily exposing
+   whatever's behind it — which was the browser's default white, since only
+   <body> (not <html>) had the app's own background color set.
+   overscroll-behavior-y stops the bounce itself from happening at all;
+   matching background-color on <html> is a defensive fallback for any
+   older engine that still lets a sliver of it show through anyway. */
+html {
+  background-color: var(--bg);
+  overscroll-behavior-y: none;
+}
+
 body {
   background-color: var(--bg);
   color: var(--text);
   font-family: var(--font-main), ui-sans-serif, system-ui, sans-serif;
+  overscroll-behavior-y: none;
 }
 
 .tabular {
@@ -727,23 +741,36 @@ body {
   /* Keep clicks during the animation reaching the live page. */
   pointer-events: none;
 }
-/* No slide — every navigation is the same short crossfade. The server
-   answers in ~40ms, so anything longer than a blink reads as waiting.
-   The nav-forward/nav-back transition types the links still set just
-   resolve to the same fade. */
+/* No slide — every navigation is the same short fade, and the nav-forward/
+   nav-back transition types the links set just resolve to it too.
+   Sequential, not a simultaneous crossfade: the old page fades out first and
+   the new one only starts fading in once it's gone (note the delay), so two
+   pages are never on screen stacked on top of each other — on a phone, a
+   tall page and a short one crossfading read as one jumbled, overlapping
+   layer. Still well under a quarter second end to end. */
 ::view-transition-old(.nav-forward),
-::view-transition-old(.nav-back) {
-  animation: 80ms var(--ease-in) both vt-fade reverse;
+::view-transition-old(.nav-back),
+::view-transition-old(.page-fade) {
+  animation: 90ms var(--ease-in) both vt-fade reverse;
 }
 ::view-transition-new(.nav-forward),
-::view-transition-new(.nav-back) {
-  animation: 120ms var(--ease-out) both vt-fade;
-}
-::view-transition-old(.page-fade) {
-  animation: 80ms var(--ease-in) both vt-fade reverse;
-}
+::view-transition-new(.nav-back),
 ::view-transition-new(.page-fade) {
-  animation: 120ms var(--ease-out) both vt-fade;
+  animation: 140ms var(--ease-out) 90ms both vt-fade;
+}
+/* Don't morph the page's box from the old page's size to the new one's —
+   between pages of different heights that stretched both snapshots while
+   they faded. */
+::view-transition-group(.nav-forward),
+::view-transition-group(.nav-back),
+::view-transition-group(.page-fade) {
+  animation: none;
+}
+/* Everything outside the page (top bar, tab bar, alerts banner) stays put
+   instead of running its own full-screen crossfade underneath the page's. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
 }
 @keyframes vt-fade {
   from {
@@ -876,6 +903,23 @@ body {
   animation: pulse-glow 900ms var(--ease-out) 1;
 }
 
+/* Draws the eye to a control the user was just told to use but hasn't
+   necessarily noticed yet (e.g. "attach a statement" after a reconcile
+   handoff) — three slow pulses, then it stops on its own rather than
+   nagging indefinitely. */
+@keyframes attention-ring {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--accent-border);
+  }
+  50% {
+    box-shadow: 0 0 0 4px var(--accent-border);
+  }
+}
+.animate-attention-ring {
+  animation: attention-ring 1100ms var(--ease-out) 3;
+}
+
 /* Flags a just-added row (new transaction, import, undo) with a brief
    background flash instead of it just appearing with no acknowledgment.
    1500ms so it stays noticeable long enough to actually find the row —
@@ -907,6 +951,7 @@ body {
   .animate-donut-slice,
   .animate-fade-in-up,
   .animate-pulse-glow,
+  .animate-attention-ring,
   .animate-row-highlight,
   .animate-sheet-in,
   .animate-sheet-out,

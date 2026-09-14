@@ -42,7 +42,7 @@ export function BudgetCategoryRow({
   const row = (
     <div
       style={{ animationDelay: `${index * 12}ms` }}
-      className="animate-fade-in-up flex items-center gap-3 py-3 first:pt-0 last:pb-0"
+      className="animate-fade-in-up flex items-center gap-3 px-3 py-3 first:pt-0 last:pb-0"
     >
       <CategoryChip id={id} name={name} icon={icon} className="min-w-0 flex-1" />
       <div className="w-24 shrink-0">

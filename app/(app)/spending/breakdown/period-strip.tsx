@@ -39,18 +39,18 @@ export function PeriodStrip({
   }, [selectedId]);
 
   return (
-    <div className="card p-0 sm:p-0">
+    <div className="card flex h-full flex-col p-0 sm:p-0">
       <div className="flex items-center justify-between border-b border-border px-5 py-3">
         <p className="text-section-label">Time period</p>
         <span className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-text">
           Monthly
         </span>
       </div>
-      <div className="flex items-center gap-1 px-2 py-4">
+      <div className="flex flex-1 items-center gap-1 px-2 py-4">
         <StepLink href={prev ? `${basePath}?period=${prev.periodId}` : null} direction="prev" />
         <div
           ref={scrollerRef}
-          className="flex flex-1 items-end gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="flex flex-1 items-stretch self-stretch gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {months.map((m) => {
             const selected = m.periodId === selectedId;
@@ -61,11 +61,17 @@ export function PeriodStrip({
                 href={`${basePath}?period=${m.periodId}`}
                 data-selected={selected ? "true" : "false"}
                 title={`${m.name}: ${formatMoney(m.expense)} spent`}
-                className={`flex min-w-[72px] flex-1 flex-col items-center justify-end gap-2 rounded-xl px-2 pt-6 pb-3 transition-colors ${
+                className={`group relative flex min-w-[72px] flex-1 flex-col items-center justify-end gap-2 rounded-xl px-2 pt-6 pb-3 transition-colors ${
                   selected ? "bg-bg ring-1 ring-border" : "hover:bg-bg/60"
                 }`}
               >
-                <span className="flex h-12 items-end">
+                <span className="relative flex h-12 items-end">
+                  {/* Native `title` covers touch/keyboard; this is the fast,
+                      styled version for a mouse hover — fades in, doesn't
+                      shift any layout since it's positioned out of flow. */}
+                  <span className="pointer-events-none absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2 rounded-md bg-text px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap text-surface opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                    {formatMoney(m.expense)}
+                  </span>
                   <span
                     className={`block w-3 rounded-sm ${selected ? "bg-accent" : "bg-neutral-track"}`}
                     style={{ height: h }}

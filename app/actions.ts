@@ -11,8 +11,11 @@ import {
   getAccountsWithBalances,
   getCategories,
   getTransactionHistory,
+  searchAccountsAndCategories as searchAccountsAndCategoriesQuery,
   searchTransactions as searchTransactionsQuery,
   suggestCategoryForDescription,
+  type AccountSearchResult,
+  type CategorySearchResult,
   type TransactionSearchResult,
 } from "@/lib/queries";
 import { getPeriods, pickPeriod } from "@/lib/periods";
@@ -426,6 +429,12 @@ export async function checkDuplicateTransaction(
 
 export async function searchTransactions(query: string): Promise<TransactionSearchResult[]> {
   return searchTransactionsQuery(query);
+}
+
+export async function searchAccountsAndCategories(
+  query: string,
+): Promise<{ accounts: AccountSearchResult[]; categories: CategorySearchResult[] }> {
+  return searchAccountsAndCategoriesQuery(query);
 }
 
 export type CsvImportRow = {

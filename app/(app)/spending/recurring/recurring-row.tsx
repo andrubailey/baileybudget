@@ -110,6 +110,22 @@ export function RecurringRow({
           label={rule.is_active ? "Pause recurring bill" : "Resume recurring bill"}
         />
       </span>
+
+      {/* A hover background alone never showed on touch, so tapping to edit
+          had no visible hint it was possible — this reads as tappable at a
+          glance on any device, the same way a plain list row does elsewhere. */}
+      {onClick && (
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          aria-hidden="true"
+          className="shrink-0 text-text-faint"
+        >
+          <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )}
     </div>
   );
 }

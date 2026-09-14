@@ -22,8 +22,10 @@ import { formatMoney, formatDate } from "@/lib/format";
 import { FIELD_CLASS as fieldClass } from "@/lib/ui";
 import {
   announcePendingTransaction,
+  markPendingQueued,
   withdrawPendingTransaction,
 } from "@/app/(app)/pending-transactions";
+import { encodeSplitRows, enqueueJob, formDataToFields } from "@/lib/offline-queue";
 
 type DuplicateMatch = { id: string; description: string; amount: number; txn_date: string };
 
@@ -88,6 +90,12 @@ export function QuickAddButton({
   const [splitRows, setSplitRows] = useState([{ category_id: "", amount: "" }]);
   const [duplicates, setDuplicates] = useState<DuplicateMatch[] | null>(null);
   const [pendingFormData, setPendingFormData] = useState<FormData | null>(null);
+  // "Add anyway" isn't the form's own submit button, so it isn't covered by
+  // useFormStatus/SubmitButton's built-in double-submit guard — without
+  // this, a slow connection plus an impatient second tap called
+  // submitFormData twice with the same data and inserted two rows, since
+  // there's no server-side dedup on identical transactions.
+  const [confirmingDuplicate, setConfirmingDuplicate] = useState(false);
   const [accountId, setAccountId] = useState("");
   const [makeRecurring, setMakeRecurring] = useState(false);
   const [lastOpen, setLastOpen] = useState(open);
@@ -201,23 +209,39 @@ export function QuickAddButton({
       notes: String(formData.get("notes") ?? "").trim() || null,
       pending_approval: formData.get("pending_approval") === "on",
     });
-    const result = split
-      ? await createSplitTransaction(
-          formData,
-          splitRows
-            .filter((r) => r.category_id && r.amount)
-            .map((r) => ({ category_id: r.category_id, amount: Number(r.amount) })),
-        )
-      : await createTransaction(formData);
+    const validSplitRows = splitRows
+      .filter((r) => r.category_id && r.amount)
+      .map((r) => ({ category_id: r.category_id, amount: Number(r.amount) }));
 
-    if (!result.ok) {
-      withdrawPendingTransaction(pendingId);
-      showToast(result.error ? `Couldn't save: ${result.error}` : "Couldn't save transaction");
-      return;
+    try {
+      const result = split
+        ? await createSplitTransaction(formData, validSplitRows)
+        : await createTransaction(formData);
+
+      if (!result.ok) {
+        withdrawPendingTransaction(pendingId);
+        showToast(result.error ? `Couldn't save: ${result.error}` : "Couldn't save transaction");
+        return;
+      }
+
+      rememberChoices();
+      showToast(`${actionLabel[0].toUpperCase()}${actionLabel.slice(1)} logged`);
+    } catch {
+      // The request never reached the server at all (no connection) — as
+      // opposed to the server rejecting it above, which retyping wouldn't
+      // fix anyway. Staged to send itself once the connection's back.
+      const fields = formDataToFields(formData);
+      if (split) fields.__splits = encodeSplitRows(validSplitRows);
+      enqueueJob({
+        id: pendingId,
+        kind: split ? "split" : "transaction",
+        pendingId,
+        fields,
+        label: fields.description || title,
+      });
+      markPendingQueued(pendingId);
+      showToast("No connection — saved, will send automatically.");
     }
-
-    rememberChoices();
-    showToast(`${actionLabel[0].toUpperCase()}${actionLabel.slice(1)} logged`);
     resetForm();
   }
 
@@ -241,8 +265,13 @@ export function QuickAddButton({
   }
 
   async function confirmAnyway() {
-    if (!pendingFormData) return;
-    await submitFormData(pendingFormData);
+    if (!pendingFormData || confirmingDuplicate) return;
+    setConfirmingDuplicate(true);
+    try {
+      await submitFormData(pendingFormData);
+    } finally {
+      setConfirmingDuplicate(false);
+    }
   }
 
   function addSplitRow() {
@@ -386,6 +415,7 @@ export function QuickAddButton({
                       setCategoryTouched(true);
                     }}
                     className={fieldClass}
+                    searchable={false}
                   />
                 </div>
               )}
@@ -411,6 +441,7 @@ export function QuickAddButton({
                         value={row.category_id}
                         onChange={(id) => updateSplitRow(i, "category_id", id)}
                         className={fieldClass}
+                        searchable={false}
                       />
                       <input
                         type="number"
@@ -486,9 +517,10 @@ export function QuickAddButton({
                     <button
                       type="button"
                       onClick={confirmAnyway}
-                      className="rounded-md border border-caution px-3 py-1.5 text-xs font-semibold text-caution-strong transition-colors hover:bg-caution-bg"
+                      disabled={confirmingDuplicate}
+                      className="rounded-md border border-caution px-3 py-1.5 text-xs font-semibold text-caution-strong transition-colors hover:bg-caution-bg disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      Add anyway
+                      {confirmingDuplicate ? "Adding…" : "Add anyway"}
                     </button>
                     <button
                       type="button"

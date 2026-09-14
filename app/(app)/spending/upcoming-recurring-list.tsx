@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { deleteRecurringTransaction, restoreRecurringTransaction } from "@/app/actions";
 import { formatDate, formatMoney } from "@/lib/format";
 import { TransactionAvatar } from "@/app/(app)/transaction-row";
 import { useContextMenu } from "@/app/(app)/context-menu";
+import { useToast } from "@/app/(app)/toast";
 import type { Account, Category, RecurringTransaction } from "@/lib/types";
 import { recurringMenuItems, useRecurringQuickActions } from "./recurring/recurring-menu";
 import { RecurringEditModal } from "./recurring/recurring-edit-modal";
@@ -21,13 +23,50 @@ export function UpcomingRecurringList({
 }) {
   const contextMenu = useContextMenu();
   const recurringActions = useRecurringQuickActions();
+  const showToast = useToast();
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
+  const [undoRule, setUndoRule] = useState<{ id: string; description: string } | null>(null);
   const editingRule = editingId ? (items.find((r) => r.id === editingId) ?? null) : null;
+  const visibleItems = items.filter((r) => !hiddenIds.has(r.id));
+
+  async function handleDelete(rule: RecurringTransaction) {
+    setHiddenIds((prev) => new Set(prev).add(rule.id));
+    setUndoRule({ id: rule.id, description: rule.description });
+    setTimeout(() => setUndoRule((current) => (current?.id === rule.id ? null : current)), 8000);
+    await deleteRecurringTransaction(rule.id);
+    showToast(`${rule.description} deleted`);
+  }
+
+  async function handleUndo() {
+    if (!undoRule) return;
+    const { id } = undoRule;
+    setUndoRule(null);
+    await restoreRecurringTransaction(id);
+    setHiddenIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    showToast("Restored");
+  }
 
   return (
     <>
+      {undoRule && (
+        <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-accent-border bg-accent-soft px-3 py-2 text-sm">
+          <span className="min-w-0 truncate text-accent">Deleted &ldquo;{undoRule.description}&rdquo;.</span>
+          <button
+            type="button"
+            onClick={handleUndo}
+            className="shrink-0 font-semibold text-accent underline underline-offset-2 hover:text-accent-bright"
+          >
+            Undo
+          </button>
+        </div>
+      )}
       <ul className="mt-4 divide-y divide-border">
-        {items.map((r) => (
+        {visibleItems.map((r) => (
           <li
             key={`${r.id}-${r.iso}`}
             onContextMenu={(e) =>
@@ -36,6 +75,7 @@ export function UpcomingRecurringList({
                 recurringMenuItems(r, {
                   accountName: accounts.find((a) => a.id === r.account_id)?.name ?? null,
                   onEdit: () => setEditingId(r.id),
+                  onDelete: () => handleDelete(r),
                   actions: recurringActions,
                 }),
               )

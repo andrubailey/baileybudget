@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { formatMoney } from "@/lib/format";
 
-const HEIGHT = 190;
+const MIN_HEIGHT = 190;
 const PAD_TOP = 14;
 const PAD_BOTTOM = 22;
 const PAD_X = 8;
@@ -28,21 +28,28 @@ export function SpendPaceChart({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(600);
+  // Fills whatever height the card gives it (see spending/page.tsx's
+  // flex-1 wrapper) instead of a fixed pixel value — falls back to
+  // MIN_HEIGHT until the first measurement lands, and never drops below
+  // it even if a very cramped layout offers less.
+  const [height, setHeight] = useState(MIN_HEIGHT);
   const [hoverDay, setHoverDay] = useState<number | null>(null);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const observer = new ResizeObserver((entries) => {
-      const w = entries[0]?.contentRect.width;
-      if (w) setWidth(w);
+      const rect = entries[0]?.contentRect;
+      if (!rect) return;
+      if (rect.width) setWidth(rect.width);
+      if (rect.height) setHeight(Math.max(MIN_HEIGHT, rect.height));
     });
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
 
   const prev = previous.slice(0, daysInMonth);
-  const plotHeight = HEIGHT - PAD_TOP - PAD_BOTTOM;
+  const plotHeight = height - PAD_TOP - PAD_BOTTOM;
   const maxValue = Math.max(budget ?? 0, ...current, ...prev, 1) * 1.08;
   const x = (dayIndex: number) =>
     PAD_X + (daysInMonth <= 1 ? 0 : (dayIndex / (daysInMonth - 1)) * (width - PAD_X * 2));
@@ -65,10 +72,10 @@ export function SpendPaceChart({
   const tooltipLeft = hoverDay !== null ? Math.min(Math.max(0, x(hoverDay) - 70), Math.max(0, width - 160)) : 0;
 
   return (
-    <div ref={containerRef} className="relative w-full">
+    <div ref={containerRef} className="relative h-full w-full">
       <svg
         width={width}
-        height={HEIGHT}
+        height={height}
         className="block touch-none"
         onPointerMove={handleMove}
         onPointerLeave={() => setHoverDay(null)}
@@ -150,7 +157,7 @@ export function SpendPaceChart({
           <text
             key={i}
             x={x(i)}
-            y={HEIGHT - 4}
+            y={height - 4}
             textAnchor={i === 0 ? "start" : "middle"}
             className="fill-[var(--text-faint)] text-[11px]"
           >

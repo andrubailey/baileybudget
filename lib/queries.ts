@@ -1135,6 +1135,21 @@ export async function getAllTransactions(): Promise<Transaction[]> {
   return data ?? [];
 }
 
+// Soft-deleted transactions, most recently deleted first — backs a
+// "recently deleted" recovery view so a stray bulk-delete (which explicitly
+// isn't undoable in bulk from its own toast) or a missed single-delete undo
+// window isn't actually the end of the line.
+export async function getDeletedTransactions(limit = 50): Promise<Transaction[]> {
+  const supabase = snapshotClient();
+  const { data } = await supabase
+    .from("transactions")
+    .select("*")
+    .not("deleted_at", "is", null)
+    .order("deleted_at", { ascending: false })
+    .limit(limit);
+  return data ?? [];
+}
+
 // An account's own history for its detail panel — either side of a
 // transfer counts (a transfer into this account is still something that
 // happened to it), which the snapshot query builder can't express as a
@@ -1305,6 +1320,30 @@ export async function searchTransactions(
     account_name: t.account_id ? (accountById.get(t.account_id) ?? null) : null,
     to_account_name: t.to_account_id ? (accountById.get(t.to_account_id) ?? null) : null,
   }));
+}
+
+export type AccountSearchResult = { id: string; name: string };
+export type CategorySearchResult = { id: string; name: string; kind: "income" | "expense" };
+
+// The ⌘K palette's search only ever matched transactions, so finding the
+// account or category record itself — not a transaction that happens to
+// reference it — meant navigating there by hand. This gives search a direct
+// hit on either, same query text as searchTransactions above.
+export async function searchAccountsAndCategories(rawQuery: string): Promise<{
+  accounts: AccountSearchResult[];
+  categories: CategorySearchResult[];
+}> {
+  const q = rawQuery.trim();
+  if (q.length < 2) return { accounts: [], categories: [] };
+  const supabase = await createClient();
+  const safe = q.replace(/[,()]/g, " ").trim();
+  if (!safe) return { accounts: [], categories: [] };
+
+  const [{ data: accounts }, { data: categories }] = await Promise.all([
+    supabase.from("accounts").select("id, name").ilike("name", `%${safe}%`).limit(5),
+    supabase.from("categories").select("id, name, kind").ilike("name", `%${safe}%`).limit(5),
+  ]);
+  return { accounts: accounts ?? [], categories: categories ?? [] };
 }
 
 export async function getRecurringTransactions(): Promise<

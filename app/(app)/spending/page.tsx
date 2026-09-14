@@ -187,51 +187,53 @@ export default async function SpendingPage({
       />
       <SpendingTabs />
 
-      <PeriodStrip months={lastTwelveMonths} selectedId={period.id} />
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <PeriodStrip months={lastTwelveMonths} selectedId={period.id} />
+
+        <div className="card flex h-full flex-col">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-heading text-text">Spend this month</h2>
+              <p className="tabular text-balance-display mt-1 text-text">{formatMoney(spentSoFar)}</p>
+              {paceChange !== null && previousMonthName && (
+                <p className="mt-1 text-sm text-text-muted">
+                  <span className={paceChange > 0 ? "text-negative" : "text-positive"}>
+                    {Math.abs(paceChange).toFixed(0)}% {paceChange > 0 ? "more" : "less"}
+                  </span>{" "}
+                  than {previousMonthName} by this point
+                </p>
+              )}
+            </div>
+            <div className="flex items-center gap-4 text-xs text-text-muted">
+              <span className="flex items-center gap-1.5">
+                <span className="h-0.5 w-4 rounded-full bg-accent" aria-hidden="true" />
+                {period.name.split(" ")[0]}
+              </span>
+              {previousMonthName && (
+                <span className="flex items-center gap-1.5">
+                  <span
+                    className="w-4 border-t-2 border-dashed border-text-faint"
+                    aria-hidden="true"
+                  />
+                  {previousMonthName}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="mt-4 min-h-0 flex-1">
+            <SpendPaceChart
+              current={current}
+              previous={previousSeries}
+              daysInMonth={days}
+              budget={totalBudget > 0 ? totalBudget : null}
+              previousLabel={previousMonthName}
+            />
+          </div>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">
         <div className="min-w-0 space-y-6">
-          <div className="card">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-heading text-text">Spend this month</h2>
-                <p className="tabular text-balance-display mt-1 text-text">{formatMoney(spentSoFar)}</p>
-                {paceChange !== null && previousMonthName && (
-                  <p className="mt-1 text-sm text-text-muted">
-                    <span className={paceChange > 0 ? "text-negative" : "text-positive"}>
-                      {Math.abs(paceChange).toFixed(0)}% {paceChange > 0 ? "more" : "less"}
-                    </span>{" "}
-                    than {previousMonthName} by this point
-                  </p>
-                )}
-              </div>
-              <div className="flex items-center gap-4 text-xs text-text-muted">
-                <span className="flex items-center gap-1.5">
-                  <span className="h-0.5 w-4 rounded-full bg-accent" aria-hidden="true" />
-                  {period.name.split(" ")[0]}
-                </span>
-                {previousMonthName && (
-                  <span className="flex items-center gap-1.5">
-                    <span
-                      className="w-4 border-t-2 border-dashed border-text-faint"
-                      aria-hidden="true"
-                    />
-                    {previousMonthName}
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="mt-4">
-              <SpendPaceChart
-                current={current}
-                previous={previousSeries}
-                daysInMonth={days}
-                budget={totalBudget > 0 ? totalBudget : null}
-                previousLabel={previousMonthName}
-              />
-            </div>
-          </div>
-
           <BreakdownPanel
             periodId={period.id}
             periodName={period.name}

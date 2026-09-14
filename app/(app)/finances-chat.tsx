@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
-import { searchTransactions } from "@/app/actions";
-import type { TransactionSearchResult } from "@/lib/queries";
+import { searchAccountsAndCategories, searchTransactions } from "@/app/actions";
+import type { AccountSearchResult, CategorySearchResult, TransactionSearchResult } from "@/lib/queries";
 import { formatDate } from "@/lib/format";
 import { TransactionAmount, TransactionAvatar } from "@/app/(app)/transaction-row";
 import { SPARKLE_PATH } from "@/app/(app)/sparkle-icon";
@@ -108,7 +108,9 @@ const ALL_LINKS = NAV_GROUPS.flatMap((g) => g.links);
 
 type Match =
   | { type: "page"; href: string; label: string; icon: React.ReactNode }
-  | { type: "transaction"; href: string; result: TransactionSearchResult };
+  | { type: "transaction"; href: string; result: TransactionSearchResult }
+  | { type: "account"; href: string; account: AccountSearchResult }
+  | { type: "category"; href: string; category: CategorySearchResult };
 
 const CHAT_ICON_PATH =
   "M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8-1.297 0-2.53-.242-3.643-.677L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8Z";
@@ -292,8 +294,64 @@ function InlineResults({
           );
         }
 
+        if (match.type === "account") {
+          const isFirstAccount = matches.findIndex((m) => m.type === "account") === i;
+          const a = match.account;
+          return (
+            <div key={`account-${a.id}`}>
+              {isFirstAccount && (
+                <p className="px-3 pt-2 pb-0.5 text-[11px] font-semibold tracking-wide text-text-faint uppercase">
+                  Accounts
+                </p>
+              )}
+              <button
+                type="button"
+                onMouseEnter={() => setActiveIndex(i)}
+                onClick={() => onSelect(match)}
+                className={`flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left text-sm transition-colors ${
+                  i === activeIndex ? "bg-accent-soft" : "hover:bg-bg"
+                }`}
+              >
+                <TransactionAvatar label={a.name} size="sm" />
+                <span className="min-w-0 flex-1 truncate font-medium text-text">{a.name}</span>
+                <span className="hidden shrink-0 sm:flex">
+                  <GoArrow />
+                </span>
+              </button>
+            </div>
+          );
+        }
+
+        if (match.type === "category") {
+          const isFirstCategory = matches.findIndex((m) => m.type === "category") === i;
+          const c = match.category;
+          return (
+            <div key={`category-${c.id}`}>
+              {isFirstCategory && (
+                <p className="px-3 pt-2 pb-0.5 text-[11px] font-semibold tracking-wide text-text-faint uppercase">
+                  Categories
+                </p>
+              )}
+              <button
+                type="button"
+                onMouseEnter={() => setActiveIndex(i)}
+                onClick={() => onSelect(match)}
+                className={`flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left text-sm transition-colors ${
+                  i === activeIndex ? "bg-accent-soft" : "hover:bg-bg"
+                }`}
+              >
+                <TransactionAvatar label={c.name} size="sm" />
+                <span className="min-w-0 flex-1 truncate font-medium text-text">{c.name}</span>
+                <span className="hidden shrink-0 sm:flex">
+                  <GoArrow />
+                </span>
+              </button>
+            </div>
+          );
+        }
+
         const t = match.result;
-        const isFirstTxn = i === pageMatchCount;
+        const isFirstTxn = matches.findIndex((m) => m.type === "transaction") === i;
         return (
           <div key={`txn-${t.id}`}>
             {isFirstTxn && (
@@ -338,7 +396,7 @@ function InlineResults({
       )}
       {!searching && matches.length === 0 && (
         <p className="px-3 py-2.5 text-center text-xs text-text-faint">
-          No matching pages or transactions. Press Enter to ask the advisor instead.
+          No matches. Press Enter to ask the advisor instead.
         </p>
       )}
     </div>
@@ -478,6 +536,8 @@ function AdvisorInput({
   onKeyDown,
   inputRef,
   inConversation,
+  highlightAttach = false,
+  onAttachButtonUsed,
   compact = false,
 }: {
   input: string;
@@ -494,6 +554,10 @@ function AdvisorInput({
   inputRef?: (el: HTMLTextAreaElement | null) => void;
   // A conversation is under way, so typing no longer searches.
   inConversation: boolean;
+  // True right after a handoff (the reconcile modal's "Find the
+  // discrepancy") that's expecting a statement to be attached next.
+  highlightAttach?: boolean;
+  onAttachButtonUsed?: () => void;
   compact?: boolean;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -524,11 +588,16 @@ function AdvisorInput({
           />
           <button
             type="button"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => {
+              onAttachButtonUsed?.();
+              fileInputRef.current?.click();
+            }}
             disabled={attachments.length >= MAX_ATTACHMENTS}
             aria-label="Attach a statement, receipt, or photo"
             title="Attach a statement, receipt, or photo"
-            className="flex size-9 shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-bg disabled:opacity-40"
+            className={`flex size-9 shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-bg disabled:opacity-40 ${
+              highlightAttach ? "animate-attention-ring text-accent" : ""
+            }`}
           >
             <AttachmentIcon />
           </button>
@@ -609,9 +678,16 @@ export function FinancesChat() {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState("");
+  // Briefly rings the attach button when a handoff (the Accounts page's
+  // reconcile modal) says it's expecting a statement — the button's own
+  // aria-label/title already say what it's for, but nothing pointed at it
+  // before this, so it went unnoticed.
+  const [highlightAttach, setHighlightAttach] = useState(false);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [listening, setListening] = useState(false);
   const [txnResults, setTxnResults] = useState<TransactionSearchResult[]>([]);
+  const [accountResults, setAccountResults] = useState<AccountSearchResult[]>([]);
+  const [categoryResults, setCategoryResults] = useState<CategorySearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   // Starts false (matching the server-rendered HTML, which has no way to
@@ -646,6 +722,19 @@ export function FinancesChat() {
       label: link.label,
       icon: link.icon,
     })),
+    ...(inConversation ? [] : accountResults).map((account) => ({
+      type: "account" as const,
+      // Straight into reconcile rather than that account's transaction
+      // list — searching an account by name is almost always "let me check
+      // this against the bank," not "let me browse its history."
+      href: `/accounts?reconcile=${account.id}`,
+      account,
+    })),
+    ...(inConversation ? [] : categoryResults).map((category) => ({
+      type: "category" as const,
+      href: `/transactions?category=${category.id}&period=all`,
+      category,
+    })),
     ...(inConversation ? [] : txnResults).map((result) => ({
       type: "transaction" as const,
       href: `/transactions?period=${result.period_id}&highlight=${result.id}`,
@@ -669,15 +758,22 @@ export function FinancesChat() {
     if (inConversation || trimmedInput.length < 2) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- clearing stale results when the debounced search below no longer applies, not deriving render output
       setTxnResults([]);
+      setAccountResults([]);
+      setCategoryResults([]);
       setSearching(false);
       return;
     }
     setSearching(true);
     const seq = ++searchSeq.current;
     const timer = setTimeout(async () => {
-      const results = await searchTransactions(trimmedInput);
+      const [results, accountsAndCategories] = await Promise.all([
+        searchTransactions(trimmedInput),
+        searchAccountsAndCategories(trimmedInput),
+      ]);
       if (searchSeq.current === seq) {
         setTxnResults(results);
+        setAccountResults(accountsAndCategories.accounts);
+        setCategoryResults(accountsAndCategories.categories);
         setSearching(false);
       }
     }, 250);
@@ -688,6 +784,8 @@ export function FinancesChat() {
     router.push(match.href);
     setInput("");
     setTxnResults([]);
+    setAccountResults([]);
+    setCategoryResults([]);
     if (popupOpen) {
       closePopup();
     } else if (mobileOpen) {
@@ -707,6 +805,7 @@ export function FinancesChat() {
     setTxnResults([]);
     setSearching(false);
     setActiveIndex(0);
+    setHighlightAttach(false);
     apiState.current = [];
   }
 
@@ -794,7 +893,7 @@ export function FinancesChat() {
   // bank statement pasted in before there's anything to act on.
   useEffect(() => {
     function handleOpenChat(e: Event) {
-      const prompt = (e as CustomEvent<{ prompt?: string }>).detail?.prompt;
+      const detail = (e as CustomEvent<{ prompt?: string; hint?: string }>).detail;
       // flushSync forces the panel/sheet's DOM to actually commit before
       // this function continues — a plain setState + requestAnimationFrame
       // raced React's own commit here, so the textarea sometimes wasn't in
@@ -805,7 +904,8 @@ export function FinancesChat() {
       } else {
         flushSync(() => setPopupOpen(true));
       }
-      if (prompt) setInput(prompt);
+      if (detail?.prompt) setInput(detail.prompt);
+      if (detail?.hint === "attach-statement") setHighlightAttach(true);
       inputRef.current?.focus();
     }
     window.addEventListener("budgetapp:open-chat", handleOpenChat);
@@ -1021,6 +1121,8 @@ export function FinancesChat() {
       inputRef.current = el;
     },
     inConversation,
+    highlightAttach,
+    onAttachButtonUsed: () => setHighlightAttach(false),
   };
 
   return (

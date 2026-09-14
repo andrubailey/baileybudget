@@ -23,6 +23,7 @@ export function CategorySelect({
   className = FIELD_CLASS,
   autoFocus = false,
   onBlur,
+  searchable,
 }: {
   categories: Category[];
   kind: "income" | "expense";
@@ -38,6 +39,10 @@ export function CategorySelect({
   // open, which manages its own focus).
   autoFocus?: boolean;
   onBlur?: () => void;
+  // Passed to the Dropdown — false for a plain scrollable list with no
+  // search box (the add-transaction forms). Defaults to the Dropdown's own
+  // "search when the list is long" behavior.
+  searchable?: boolean;
 }) {
   const [localCategories, setLocalCategories] = useState<Category[]>([]);
   const [adding, setAdding] = useState(false);
@@ -131,6 +136,7 @@ export function CategorySelect({
       value={value}
       autoFocus={autoFocus}
       onBlur={onBlur}
+      searchable={searchable}
       variant={className.includes("p-0") ? "panel" : className.includes("rounded-md") ? "compact" : "field"}
       onChange={(next) => {
         if (next === NEW_OPTION_VALUE) {

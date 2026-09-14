@@ -55,7 +55,9 @@ export function ReconcileModal({
   function findDiscrepancy() {
     if (entered === null || diff === null) return;
     const prompt = `I'm missing a transaction somewhere in ${account.name}. The app shows a balance of ${formatMoney(account.balance)}, but the account actually shows ${formatMoney(entered)} — a difference of ${formatMoney(Math.abs(diff))} (${diff > 0 ? "the app is missing income or a deposit" : "the app is missing an expense or a charge"}). I'm going to paste in the bank statement for this account — find the transaction(s) that account for the difference and log whatever's missing.`;
-    window.dispatchEvent(new CustomEvent("budgetapp:open-chat", { detail: { prompt } }));
+    window.dispatchEvent(
+      new CustomEvent("budgetapp:open-chat", { detail: { prompt, hint: "attach-statement" } }),
+    );
     onClose();
   }
 

@@ -12,6 +12,7 @@ import {
 } from "@/lib/transaction-presentation";
 import { Money } from "@/app/(app)/money";
 import { CategoryChip } from "@/app/(app)/category-chip";
+import { isQueuedTransaction } from "@/app/(app)/pending-transactions";
 
 // The one way a transaction is drawn as a list row. The dashboard's recent
 // list, the transactions page's mobile cards, and ⌘K results all render
@@ -65,13 +66,26 @@ export function TransactionAmount({
 // Static markers a row can carry beside its description.
 export function RowFlags({
   transaction: t,
+  queued,
   onApprove,
 }: {
   transaction: Pick<Transaction, "recurring_transaction_id" | "pending_approval">;
+  // True for an optimistic row staged in the offline queue (no connection
+  // when it was submitted) — as opposed to a plain in-flight save, which
+  // reads as an ordinary dimmed/pulsing row with no flag of its own.
+  queued?: boolean;
   onApprove?: () => void;
 }) {
   return (
     <>
+      {queued && (
+        <span
+          className="shrink-0 rounded-full bg-caution-bg px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap text-caution-strong"
+          title="No connection when this was saved — it'll send automatically once you're back online"
+        >
+          Queued — offline
+        </span>
+      )}
       {t.recurring_transaction_id && (
         <span className="shrink-0 text-text-faint" title="Recurring" aria-label="Recurring">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -165,7 +179,7 @@ export const TransactionRow = forwardRef<HTMLButtonElement, RowProps>(function T
       <div className="min-w-0 flex-1">
         <p className="flex min-w-0 items-center gap-1.5">
           <span className="truncate text-sm font-medium text-text">{p.displayDescription}</span>
-          <RowFlags transaction={t} onApprove={onApprove} />
+          <RowFlags transaction={t} queued={isQueuedTransaction(t)} onApprove={onApprove} />
         </p>
         <p className="text-metadata flex min-w-0 items-center gap-1.5 truncate">
           {showDate && <span className="shrink-0">{formatDate(t.txn_date)}</span>}

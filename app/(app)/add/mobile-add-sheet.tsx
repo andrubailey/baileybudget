@@ -12,10 +12,15 @@ import { accountChoices } from "@/app/(app)/dropdown-options";
 import { FIELD_CLASS as fieldClass } from "@/lib/ui";
 import {
   announcePendingTransaction,
+  markPendingQueued,
   withdrawPendingTransaction,
 } from "@/app/(app)/pending-transactions";
+import { enqueueJob, formDataToFields } from "@/lib/offline-queue";
 
 type Kind = "expense" | "transfer" | "income";
+
+// Matches .animate-sheet-out (--duration-base) in globals.css.
+const SHEET_EXIT_MS = 200;
 
 const TYPES: { key: Kind; label: string }[] = [
   { key: "expense", label: "Expense" },
@@ -49,10 +54,14 @@ export function MobileAddSheet({
   periodId,
   accounts,
   categories,
+  onClose,
 }: {
   periodId: string;
   accounts: Account[];
   categories: Category[];
+  // Set when opened in place as a modal (the mobile tab bar's Add button).
+  // Without it — the standalone /add page — closing goes back instead.
+  onClose?: () => void;
 }) {
   const router = useRouter();
   const showToast = useToast();
@@ -74,8 +83,15 @@ export function MobileAddSheet({
     type === "transfer" ? "expense" : isDebtAccount ? (type === "expense" ? "income" : "expense") : type;
   const actionWord = isDebtAccount ? (type === "expense" ? "charge" : "payment") : type;
 
+  // Plays the sheet's slide-out before it actually closes.
+  const [closing, setClosing] = useState(false);
   function close() {
-    router.back();
+    if (closing) return;
+    setClosing(true);
+    setTimeout(() => {
+      if (onClose) onClose();
+      else router.back();
+    }, SHEET_EXIT_MS);
   }
 
   async function handleSubmit(formData: FormData) {
@@ -109,13 +125,23 @@ export function MobileAddSheet({
       fd.set("from_account_id", fromId);
       fd.set("to_account_id", toId);
       fd.set("period_id", periodId);
-      const result = await createTransfer(fd);
-      if (!result.ok) {
-        withdrawPendingTransaction(pendingId);
-        showToast(result.error ? `Couldn't save: ${result.error}` : "Couldn't save transfer");
-        return;
+      try {
+        const result = await createTransfer(fd);
+        if (!result.ok) {
+          withdrawPendingTransaction(pendingId);
+          showToast(result.error ? `Couldn't save: ${result.error}` : "Couldn't save transfer");
+          return;
+        }
+        showToast("Transfer logged");
+      } catch {
+        // The request itself never reached the server (no connection) —
+        // this is different from the server rejecting it above, and isn't
+        // something retyping would fix, so it's staged to send on its own
+        // instead of being discarded.
+        enqueueJob({ id: pendingId, kind: "transfer", pendingId, fields: formDataToFields(fd), label: "Transfer" });
+        markPendingQueued(pendingId);
+        showToast("No connection — transfer queued, will send automatically.");
       }
-      showToast("Transfer logged");
       close();
       return;
     }
@@ -140,24 +166,42 @@ export function MobileAddSheet({
     fd.set("account_id", accountId);
     fd.set("category_id", categoryId);
     fd.set("period_id", periodId);
-    const result = await createTransaction(fd);
-    if (!result.ok) {
-      withdrawPendingTransaction(pendingId);
-      showToast(result.error ? `Couldn't save: ${result.error}` : "Couldn't save transaction");
-      return;
+    try {
+      const result = await createTransaction(fd);
+      if (!result.ok) {
+        withdrawPendingTransaction(pendingId);
+        showToast(result.error ? `Couldn't save: ${result.error}` : "Couldn't save transaction");
+        return;
+      }
+      showToast(`${actionWord[0].toUpperCase()}${actionWord.slice(1)} logged`);
+    } catch {
+      // No connection — see the transfer branch above for why this is
+      // queued instead of just showing an error.
+      enqueueJob({
+        id: pendingId,
+        kind: "transaction",
+        pendingId,
+        fields: formDataToFields(fd),
+        label: fd.get("description") as string,
+      });
+      markPendingQueued(pendingId);
+      showToast("No connection — saved, will send automatically.");
     }
-    showToast(`${actionWord[0].toUpperCase()}${actionWord.slice(1)} logged`);
     close();
   }
 
   return (
     <div
-      className="animate-modal-backdrop fixed inset-0 z-50 flex items-end bg-black/40"
+      className={`fixed inset-0 z-50 flex items-end bg-black/40 ${
+        closing ? "animate-modal-backdrop-out" : "animate-modal-backdrop"
+      }`}
       onClick={close}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="animate-sheet-in flex max-h-[92vh] w-full flex-col overflow-y-auto rounded-t-2xl bg-surface"
+        className={`flex max-h-[92dvh] w-full flex-col overflow-y-auto rounded-t-2xl bg-surface ${
+          closing ? "animate-sheet-out" : "animate-sheet-in"
+        }`}
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         <div className="flex items-center justify-center pt-2.5 pb-1" aria-hidden="true">
@@ -247,6 +291,7 @@ export function MobileAddSheet({
                   value={categoryId}
                   onChange={setCategoryId}
                   className={fieldClass}
+                  searchable={false}
                 />
               </div>
             )}

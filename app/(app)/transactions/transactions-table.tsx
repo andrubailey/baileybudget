@@ -9,6 +9,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useExitingPanel } from "@/app/(app)/use-exiting-panel";
 import {
   bulkDeleteTransactions,
+  bulkRestoreTransactions,
   bulkUpdateTransactions,
   deleteTransaction,
   restoreTransaction,
@@ -26,7 +27,7 @@ import { useToast } from "@/app/(app)/toast";
 import { PeriodSwitcher } from "@/app/(app)/period-switcher";
 import { TransactionDetailModal } from "@/app/(app)/transaction-detail-modal";
 import { CategoryChip } from "@/app/(app)/category-chip";
-import { isPendingTransaction, usePendingTransactions } from "@/app/(app)/pending-transactions";
+import { isPendingTransaction, isQueuedTransaction, usePendingTransactions } from "@/app/(app)/pending-transactions";
 import {
   RowFlags,
   TransactionAmount,
@@ -261,6 +262,7 @@ export function TransactionsTable({
     id: string;
     description: string;
   } | null>(null);
+  const [bulkUndo, setBulkUndo] = useState<{ ids: string[] } | null>(null);
   // Marks a row as fading out the instant delete is clicked — the row's
   // actual removal from `transactions` only lands once the server action's
   // revalidation round-trips back, which would otherwise mean the row just
@@ -460,18 +462,45 @@ export function TransactionsTable({
 
   async function handleBulkDelete() {
     if (selectedIds.size === 0) return;
-    if (!window.confirm(`Delete ${selectedIds.size} transaction${selectedIds.size === 1 ? "" : "s"}? This can be undone from each one's own undo toast right after — not in bulk.`)) {
+    if (!window.confirm(`Delete ${selectedIds.size} transaction${selectedIds.size === 1 ? "" : "s"}? You can undo this right after.`)) {
       return;
     }
+    const ids = [...selectedIds];
     setBulkBusy(true);
-    const result = await bulkDeleteTransactions([...selectedIds]);
+    const result = await bulkDeleteTransactions(ids);
     setBulkBusy(false);
     if (!result.ok) {
       showToast(result.error ? `Couldn't delete: ${result.error}` : "Couldn't delete transactions");
       return;
     }
-    showToast(`${selectedIds.size} transaction${selectedIds.size === 1 ? "" : "s"} deleted`);
+    showToast(`${ids.length} transaction${ids.length === 1 ? "" : "s"} deleted`);
     setSelectedIds(new Set());
+    setDeletingIds((current) => {
+      const next = new Set(current);
+      ids.forEach((id) => next.add(id));
+      return next;
+    });
+    setBulkUndo({ ids });
+    setTimeout(() => {
+      setBulkUndo((current) => (current && current.ids.join(",") === ids.join(",") ? null : current));
+    }, 8000);
+  }
+
+  async function handleBulkUndo() {
+    if (!bulkUndo) return;
+    const { ids } = bulkUndo;
+    setBulkUndo(null);
+    const result = await bulkRestoreTransactions(ids);
+    if (!result.ok) {
+      showToast(result.error ? `Couldn't restore: ${result.error}` : "Couldn't restore transactions");
+      return;
+    }
+    showToast(`${ids.length} transaction${ids.length === 1 ? "" : "s"} restored`);
+    setDeletingIds((current) => {
+      const next = new Set(current);
+      ids.forEach((id) => next.delete(id));
+      return next;
+    });
   }
 
   async function handleBulkAccountChange(account_id: string) {
@@ -524,6 +553,12 @@ export function TransactionsTable({
   const exportHref = (() => {
     const params = new URLSearchParams();
     if (categoryFilter) params.set("category", categoryFilter);
+    if (accountFilter) params.set("account", accountFilter);
+    if (kindFilter) params.set("kind", kindFilter);
+    if (flagFilter) params.set("flag", flagFilter);
+    if (search) params.set("q", search);
+    if (amountMin) params.set("amount_min", amountMin);
+    if (amountMax) params.set("amount_max", amountMax);
     const qs = params.toString();
     return qs ? `/api/export?${qs}` : null;
   })();
@@ -630,7 +665,7 @@ export function TransactionsTable({
             <span aria-hidden="true">✕</span>
           </button>
         )}
-        {(search || accountFilter || categoryFilter || kindFilter || flagFilter) && (
+        {(search || accountFilter || categoryFilter || kindFilter || flagFilter || amountMin || amountMax) && (
           <span className="text-xs text-text-faint">
             {filtered.length} of {transactions.length}
           </span>
@@ -640,7 +675,7 @@ export function TransactionsTable({
             href={exportHref}
             className="ml-auto text-xs font-medium text-accent underline underline-offset-2"
           >
-            Export this filter
+            Export this filter (CSV)
           </a>
         )}
       </div>
@@ -653,6 +688,21 @@ export function TransactionsTable({
           <button
             type="button"
             onClick={handleUndo}
+            className="font-semibold text-accent underline underline-offset-2 hover:text-accent-bright"
+          >
+            Undo
+          </button>
+        </div>
+      )}
+
+      {bulkUndo && (
+        <div className="mb-4 flex items-center justify-between rounded-lg border border-accent-border bg-accent-soft px-4 py-2.5 text-sm">
+          <span className="text-accent">
+            Deleted {bulkUndo.ids.length} transaction{bulkUndo.ids.length === 1 ? "" : "s"}.
+          </span>
+          <button
+            type="button"
+            onClick={handleBulkUndo}
             className="font-semibold text-accent underline underline-offset-2 hover:text-accent-bright"
           >
             Undo
@@ -816,7 +866,7 @@ export function TransactionsTable({
             </tr>
           </thead>
           <tbody>
-            {sortedFiltered.map((t) => {
+            {sortedFiltered.map((t, rowIndex) => {
                 const p = presentTransaction(t, accountsById);
                 const displayDescription = p.displayDescription;
                 return (
@@ -826,11 +876,30 @@ export function TransactionsTable({
                       if (el) rowRefs.current.set(t.id, el);
                       else rowRefs.current.delete(t.id);
                     }}
+                    tabIndex={0}
                     onClick={() => openDetail(t.id)}
                     onContextMenu={(e) => contextMenu.open(e, rowMenuItems(t))}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        openDetail(t.id);
+                        return;
+                      }
+                      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+                      e.preventDefault();
+                      const nextIndex = e.key === "ArrowDown" ? rowIndex + 1 : rowIndex - 1;
+                      const next = sortedFiltered[nextIndex];
+                      if (next) rowRefs.current.get(next.id)?.focus();
+                    }}
                     className={`h-16 cursor-pointer overflow-hidden border-b border-border transition-[opacity,background-color] duration-300 last:border-b-0 hover:bg-bg even:bg-bg/40 ${
                       deletingIds.has(t.id) ? "opacity-0" : "opacity-100"
-                    } ${isPendingTransaction(t) ? "animate-pulse pointer-events-none opacity-60" : ""} ${newIds.has(t.id) ? "animate-row-highlight" : ""} ${
+                    } ${
+                      isQueuedTransaction(t)
+                        ? "pointer-events-none opacity-70"
+                        : isPendingTransaction(t)
+                          ? "animate-pulse pointer-events-none opacity-60"
+                          : ""
+                    } ${newIds.has(t.id) ? "animate-row-highlight" : ""} ${
                       selectedIds.has(t.id) ? "bg-accent-soft/60" : ""
                     }`}
                   >
@@ -862,6 +931,7 @@ export function TransactionsTable({
                               </span>
                               <RowFlags
                                 transaction={t}
+                                queued={isQueuedTransaction(t)}
                                 onApprove={() => toggleTransactionPendingApproval(t.id, false)}
                               />
                             </div>

@@ -12,8 +12,10 @@ import { SubmitButton } from "@/app/(app)/submit-button";
 import { useToast } from "@/app/(app)/toast";
 import {
   announcePendingTransaction,
+  markPendingQueued,
   withdrawPendingTransaction,
 } from "@/app/(app)/pending-transactions";
+import { enqueueJob, formDataToFields } from "@/lib/offline-queue";
 import { FIELD_CLASS as fieldClass } from "@/lib/ui";
 
 // Keeps the default date inside the period this transfer is being filed
@@ -54,14 +56,29 @@ export function QuickAddTransferButton({
       period_id: periodId,
       notes: String(formData.get("notes") ?? "").trim() || null,
     });
-    const result = await createTransfer(formData);
-    if (!result.ok) {
-      withdrawPendingTransaction(pendingId);
-      showToast(result.error ? `Couldn't save: ${result.error}` : "Couldn't save transfer");
-      return;
+    try {
+      const result = await createTransfer(formData);
+      if (!result.ok) {
+        withdrawPendingTransaction(pendingId);
+        showToast(result.error ? `Couldn't save: ${result.error}` : "Couldn't save transfer");
+        return;
+      }
+      showToast("Transfer logged");
+    } catch {
+      // The request itself never reached the server (no connection) — see
+      // the identical branch in mobile-add-sheet.tsx for why this is staged
+      // to send on its own instead of being discarded.
+      enqueueJob({
+        id: pendingId,
+        kind: "transfer",
+        pendingId,
+        fields: formDataToFields(formData),
+        label: "Transfer",
+      });
+      markPendingQueued(pendingId);
+      showToast("No connection — transfer queued, will send automatically.");
     }
     setOpen(false);
-    showToast("Transfer logged");
   }
 
   return (

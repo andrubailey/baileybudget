@@ -163,6 +163,14 @@ export function BudgetEditor({
                 <p className="text-metadata">{formatMoney(lastMonthTotal)} last month</p>
               </div>
             </div>
+            {sorted.length === 0 && (
+              <div className="px-4 py-8 text-center">
+                <p className="text-sm text-text-muted">No expense categories budgeted yet.</p>
+                <p className="mt-1 text-xs text-text-faint">
+                  Add your first one below — Rent, Groceries, whatever you actually spend on.
+                </p>
+              </div>
+            )}
             <ul>
               {sorted.map((r, i) => {
                 const showGroup = r.group && sorted[i - 1]?.group !== r.group;

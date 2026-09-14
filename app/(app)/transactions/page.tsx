@@ -8,6 +8,7 @@ import {
   getDueRecurringRows,
   type SplitDetail,
 } from "@/lib/queries";
+import Link from "next/link";
 import { RecurringPoster } from "./recurring-poster";
 import { TransactionsTable } from "./transactions-table";
 import { PageHeader } from "@/app/(app)/page-header";
@@ -57,6 +58,14 @@ export default async function TransactionsPage({
       <PageHeader
         title="Spending"
         description="Every income, expense and transfer. Click a row to see or edit it."
+        actions={
+          <Link
+            href="/transactions/deleted"
+            className="text-xs font-medium text-text-faint transition-colors hover:text-text"
+          >
+            Recently deleted
+          </Link>
+        }
       />
       <SpendingTabs />
 

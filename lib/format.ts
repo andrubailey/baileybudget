@@ -8,7 +8,12 @@ export function firstNameFromEmail(email: string): string {
 }
 
 export function formatMoney(value: number): string {
-  return value.toLocaleString("en-US", {
+  // Balances are sums of many float additions, so a settled account can come
+  // out as -0 or -0.0000000001, which toLocaleString prints as "-$0.00".
+  // Round to the cent first, and turn any zero (including -0) into a plain 0.
+  const cents = Math.round(value * 100) / 100;
+  const normalized = cents === 0 ? 0 : cents;
+  return normalized.toLocaleString("en-US", {
     style: "currency",
     currency: "USD",
     maximumFractionDigits: 2,

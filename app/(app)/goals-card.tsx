@@ -12,6 +12,7 @@ import { useContextMenu, type ContextMenuItem } from "@/app/(app)/context-menu";
 import { MenuGlyph } from "@/app/(app)/transaction-menu";
 import { Celebration, useCelebration } from "@/app/(app)/celebration";
 import { AddObjectiveForm, EditObjectiveForm } from "@/app/(app)/objectives-section";
+import { EmptyState } from "@/app/(app)/empty-state";
 import { SegmentedProgress } from "@/app/(app)/segmented-progress";
 import { useToast } from "@/app/(app)/toast";
 
@@ -196,13 +197,20 @@ export function GoalsCard({
       )}
 
       {objectives.length === 0 ? (
-        <button
-          type="button"
-          onClick={() => setModal({ mode: "add" })}
-          className="w-full rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-text-muted transition-colors hover:bg-bg"
-        >
-          Set your first goal
-        </button>
+        <EmptyState
+          compact
+          icon="chart"
+          message="No goals yet."
+          action={
+            <button
+              type="button"
+              onClick={() => setModal({ mode: "add" })}
+              className="text-xs font-medium text-accent underline underline-offset-2"
+            >
+              Set your first goal
+            </button>
+          }
+        />
       ) : (
         <>
           {open.length === 0 && (
@@ -311,11 +319,18 @@ function GoalRow({
     >
       <button type="button" onClick={onOpen} className="group block w-full text-left">
         <div className="flex items-start gap-2">
-          <span
-            className={`mt-1.5 size-1.5 shrink-0 rounded-full ${STATUS_DOT[o.status] ?? "bg-neutral"}`}
-            title={o.status}
-            aria-label={o.status}
-          />
+          {o.image_url ? (
+            <span className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-bg">
+              {/* eslint-disable-next-line @next/next/no-img-element -- user-supplied external URL, not a local/known-domain asset */}
+              <img src={o.image_url} alt="" className="size-full object-cover" />
+            </span>
+          ) : (
+            <span
+              className={`mt-1.5 size-1.5 shrink-0 rounded-full ${STATUS_DOT[o.status] ?? "bg-neutral"}`}
+              title={o.status}
+              aria-label={o.status}
+            />
+          )}
           <span className="min-w-0 flex-1 text-sm font-medium text-balance text-text group-hover:underline">
             {o.name}
           </span>

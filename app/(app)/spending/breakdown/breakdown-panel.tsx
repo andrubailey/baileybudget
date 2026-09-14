@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { formatMoney } from "@/lib/format";
-import { getCategoryColor } from "@/lib/category-colors";
 import type { Account, Category } from "@/lib/types";
 import { CategoryChip } from "@/app/(app)/category-chip";
 import { EmptyState } from "@/app/(app)/empty-state";
+import { SegmentedProgress } from "@/app/(app)/segmented-progress";
 import { CategoryDetailDrawer } from "./category-detail-drawer";
 import { useContextMenu } from "@/app/(app)/context-menu";
 import { categoryMenuItems, useCategoryQuickActions } from "@/app/(app)/category-menu";
@@ -21,13 +21,19 @@ export type IncomeRow = { id: string; name: string; icon: string | null; actual:
 
 // Budget lives on its own subpage (/spending/budget), so it isn't a tab here.
 type Tab = "expenses" | "income";
-type SortKey = "actual" | "planned" | "available" | "pct";
 
-// Number of tick marks in the Expenses tab's radial dial — dense enough to
-// read as a smooth ring at a glance, coarse enough that each tick is still
-// individually clickable.
-const TICK_COUNT = 56;
+// "$38.00 left" in muted text, or "$34.00 over" in red.
+function LeftOrOver({ amount }: { amount: number }) {
+  return amount >= 0 ? (
+    <span className="tabular text-text-muted">{formatMoney(amount)} left</span>
+  ) : (
+    <span className="tabular font-medium text-negative">{formatMoney(-amount)} over</span>
+  );
+}
 
+// The Spending page's category breakdown, in the same style as the
+// Overview's Budget card: each category is spent vs. its budget, with the
+// app's pill bar and how much is left or over. Largest spend first.
 export function BreakdownPanel({
   periodId,
   periodName,
@@ -46,7 +52,6 @@ export function BreakdownPanel({
   categories: Category[];
 }) {
   const [tab, setTab] = useState<Tab>("expenses");
-  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "actual", dir: "desc" });
   const [openId, setOpenId] = useState<string | null>(null);
 
   // Right-click menu, shared with the Overview's Budget card. "Set budget"
@@ -65,42 +70,18 @@ export function BreakdownPanel({
     );
   }
 
-  const totalSpent = rows.reduce((s, r) => s + r.actual, 0);
-
-  const spentRows = useMemo(() => rows.filter((r) => r.actual > 0), [rows]);
-
-  function sortRows(list: CategoryRow[]) {
-    const dir = sort.dir === "asc" ? 1 : -1;
-    return [...list].sort((a, b) => {
-      const av = sortValue(a, sort.key);
-      const bv = sortValue(b, sort.key);
-      return (av - bv) * dir || a.name.localeCompare(b.name);
-    });
-  }
-  function toggleSort(key: SortKey) {
-    setSort((s) => (s.key === key ? { key, dir: s.dir === "desc" ? "asc" : "desc" } : { key, dir: "desc" }));
-  }
-
-  // Which category owns each point around the ring, as a 0-1 fraction of
-  // the circle — drives both the tick colors below and their click/hover
-  // targets, so the dial stays a real (if chunky) breakdown and not just
-  // decoration.
-  const categoryFractions = useMemo(() => {
-    const sorted = spentRows.slice().sort((a, b) => b.actual - a.actual);
-    return sorted.reduce<{ id: string; name: string; start: number; end: number; color: string }[]>(
-      (acc, r) => {
-        const frac = totalSpent > 0 ? r.actual / totalSpent : 0;
-        const start = acc.length > 0 ? acc[acc.length - 1].end : 0;
-        acc.push({ id: r.id, name: r.name, start, end: start + frac, color: getCategoryColor(r.id) });
-        return acc;
-      },
-      [],
-    );
-  }, [spentRows, totalSpent]);
-
-  function categoryAt(frac: number) {
-    return categoryFractions.find((c) => frac >= c.start && frac < c.end) ?? null;
-  }
+  const monthName = periodName.split(" ")[0];
+  // Every category with money attached this month — budgeted or spent.
+  const budgetRows = useMemo(
+    () =>
+      rows
+        .filter((r) => r.planned > 0 || r.actual > 0)
+        .sort((a, b) => b.actual - a.actual || a.name.localeCompare(b.name)),
+    [rows],
+  );
+  const totalSpent = budgetRows.reduce((s, r) => s + r.actual, 0);
+  const totalPlanned = rows.reduce((s, r) => s + Math.max(0, r.planned), 0);
+  const totalPct = totalPlanned > 0 ? (totalSpent / totalPlanned) * 100 : 0;
 
   const openRow = openId ? (rows.find((r) => r.id === openId) ?? null) : null;
 
@@ -137,131 +118,122 @@ export function BreakdownPanel({
 
         {/* ---- Expenses ---- */}
         {tab === "expenses" && (
-          <div className="px-5 py-6">
-            <div className="relative mx-auto size-[240px]">
-              <svg viewBox="0 0 200 200" className="size-full">
-                {Array.from({ length: TICK_COUNT }).map((_, i) => {
-                  const frac = (i + 0.5) / TICK_COUNT;
-                  const owner = categoryAt(frac);
-                  const angle = -90 + (i / TICK_COUNT) * 360;
-                  return (
-                    // The rotation has to live on this wrapping <g> rather
-                    // than directly on the <line> — the animate-donut-slice
-                    // class below sets a CSS `transform` (via its keyframe),
-                    // and a CSS transform silently replaces an element's own
-                    // `transform` attribute instead of combining with it, so
-                    // a rotate on the animated element itself gets dropped.
-                    <g key={i} transform={`rotate(${angle} 100 100)`}>
-                      <line
-                        x1="100"
-                        y1="10"
-                        x2="100"
-                        y2="24"
-                        stroke={owner?.color ?? "var(--neutral-track)"}
-                        strokeWidth={5}
-                        strokeLinecap="round"
-                        className={`animate-donut-slice ${owner ? "cursor-pointer" : ""}`}
-                        style={{ animationDelay: `${i * 6}ms` }}
-                        onClick={owner ? () => setOpenId(owner.id) : undefined}
-                      >
-                        {owner && <title>{owner.name}</title>}
-                      </line>
-                    </g>
-                  );
-                })}
-              </svg>
-              {/* The ring's ticks only reach in to radius 76 (out of 100),
-                  leaving a clear circle behind this — sized so even a
-                  large total stays clear of the ticks instead of crowding
-                  them, which is what "text-balance-display" (34px) did
-                  here before. */}
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-center">
-                <div className="flex size-9 items-center justify-center rounded-full bg-bg text-text-faint">
-                  <WalletIcon />
-                </div>
-                <div>
-                  <p className="text-sm text-text-muted">Spent this month</p>
-                  <p className="tabular text-balance-sm text-text">{formatMoney(totalSpent)}</p>
-                </div>
+          <div className="px-5 py-5">
+            <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
+              <div>
+                <p className="text-sm text-text-muted">Spent in {monthName}</p>
+                <p className="tabular text-balance-display mt-0.5 text-text">{formatMoney(totalSpent)}</p>
               </div>
+              {totalPlanned > 0 && (
+                <p className="tabular pb-1 text-sm text-text-muted">of {formatMoney(totalPlanned)} budget</p>
+              )}
             </div>
+            {totalPlanned > 0 && (
+              <>
+                <SegmentedProgress pct={totalPct} overBudget={totalSpent > totalPlanned} className="mt-3" />
+                <div className="mt-1.5 flex items-center justify-between text-xs">
+                  <span className="tabular text-text-faint">{Math.round(totalPct)}% used</span>
+                  <LeftOrOver amount={totalPlanned - totalSpent} />
+                </div>
+              </>
+            )}
 
-            {spentRows.length === 0 ? (
+            {budgetRows.length === 0 ? (
               <div className="mt-6">
-                <EmptyState compact message={`No spending logged for ${periodName} yet.`} shortcut={{ keys: ["⌥", "E"], label: "to log an expense" }} />
+                <EmptyState
+                  compact
+                  message={`No spending or budget for ${periodName} yet.`}
+                  shortcut={{ keys: ["⌥", "E"], label: "to log an expense" }}
+                />
               </div>
             ) : (
-              <div className="mt-6 overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="border-b border-border text-xs font-medium text-text-muted">
-                      <th className="py-2 pr-3 font-medium">Category</th>
-                      <SortHeader label="Amount spent" active={sort.key === "actual"} dir={sort.dir} onClick={() => toggleSort("actual")} />
-                      <SortHeader label="% of expenses" active={sort.key === "pct"} dir={sort.dir} onClick={() => toggleSort("pct")} />
-                      <th className="py-2 pl-3 text-right font-medium">vs last month</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortRows(spentRows).map((r) => {
-                      const delta = r.lastMonth > 0 ? ((r.actual - r.lastMonth) / r.lastMonth) * 100 : null;
-                      return (
-                        <tr
-                          key={r.id}
-                          onClick={() => setOpenId(r.id)}
-                          onContextMenu={(e) => openMenu(e, r)}
-                          className="cursor-pointer border-b border-border transition-colors last:border-b-0 hover:bg-bg"
-                        >
-                          <td className="py-3 pr-3">
-                            <CategoryChip id={r.id} name={r.name} icon={r.icon} />
-                          </td>
-                          <td className="tabular py-3 text-right text-sm font-medium text-text">{formatMoney(r.actual)}</td>
-                          <td className="tabular py-3 text-right text-sm text-text-muted">
-                            {totalSpent > 0 ? ((r.actual / totalSpent) * 100).toFixed(1) : "0.0"}%
-                          </td>
-                          <td className="tabular py-3 pl-3 text-right text-sm">
-                            {delta === null ? (
-                              <span className="text-text-faint">—</span>
-                            ) : (
-                              <span className={delta > 0 ? "text-negative" : "text-positive"}>
-                                {delta > 0 ? "+" : ""}
-                                {delta.toFixed(0)}%
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <ul className="mt-5 divide-y divide-border border-t border-border">
+                {budgetRows.map((r, i) => {
+                  const hasBudget = r.planned > 0;
+                  const pct = hasBudget ? (r.actual / r.planned) * 100 : 100;
+                  const over = hasBudget && r.actual > r.planned;
+                  return (
+                    <li key={r.id} className="animate-fade-in-up" style={{ animationDelay: `${i * 12}ms` }}>
+                      <button
+                        type="button"
+                        onClick={() => setOpenId(r.id)}
+                        onContextMenu={(e) => openMenu(e, r)}
+                        className="-mx-2 block w-[calc(100%+1rem)] rounded-lg px-2 py-3 text-left transition-colors hover:bg-bg"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <CategoryChip id={r.id} name={r.name} icon={r.icon} className="min-w-0" />
+                          <span className="tabular shrink-0 text-sm">
+                            <span className={`font-medium ${over ? "text-negative" : "text-text"}`}>
+                              {formatMoney(r.actual)}
+                            </span>
+                            {hasBudget && <span className="text-text-faint"> of {formatMoney(r.planned)}</span>}
+                          </span>
+                        </div>
+                        <SegmentedProgress
+                          pct={pct}
+                          overBudget={over}
+                          // Spending with no budget gets a neutral bar, not a
+                          // red "over" one — nothing was planned to go over.
+                          color={hasBudget ? undefined : "var(--text-faint)"}
+                          className="mt-2.5"
+                        />
+                        <div className="mt-1.5 flex items-center justify-between text-xs">
+                          <span className="tabular text-text-faint">
+                            {hasBudget ? `${Math.round(pct)}% used` : "No budget set"}
+                          </span>
+                          {hasBudget ? (
+                            <LeftOrOver amount={r.planned - r.actual} />
+                          ) : (
+                            <span className="text-text-faint">Unbudgeted</span>
+                          )}
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
           </div>
         )}
 
         {/* ---- Income ---- */}
         {tab === "income" && (
-          <div className="px-5 py-6">
-            <p className="text-center">
-              <span className="tabular text-balance-display block text-text">{formatMoney(totalIncome)}</span>
-              <span className="mt-1 block text-sm text-text-muted">Earned this month</span>
-            </p>
+          <div className="px-5 py-5">
+            <div>
+              <p className="text-sm text-text-muted">Earned in {monthName}</p>
+              <p className="tabular text-balance-display mt-0.5 text-text">{formatMoney(totalIncome)}</p>
+            </div>
             {incomeRows.length === 0 ? (
               <div className="mt-6">
-                <EmptyState compact message={`No income logged for ${periodName} yet.`} shortcut={{ keys: ["⌥", "I"], label: "to log income" }} />
+                <EmptyState
+                  compact
+                  message={`No income logged for ${periodName} yet.`}
+                  shortcut={{ keys: ["⌥", "I"], label: "to log income" }}
+                />
               </div>
             ) : (
-              <ul className="mt-6 divide-y divide-border">
-                {incomeRows.map((r) => (
-                  <li key={r.id} className="flex items-center justify-between gap-3 py-3">
-                    <CategoryChip id={r.id} name={r.name} icon={r.icon} />
-                    <span className="flex items-center gap-3">
-                      <span className="tabular text-xs text-text-muted">
-                        {totalIncome > 0 ? ((r.actual / totalIncome) * 100).toFixed(0) : 0}%
-                      </span>
-                      <span className="tabular text-sm font-medium text-positive">+{formatMoney(r.actual)}</span>
-                    </span>
-                  </li>
-                ))}
+              <ul className="mt-5 divide-y divide-border border-t border-border">
+                {incomeRows.map((r, i) => {
+                  const share = totalIncome > 0 ? (r.actual / totalIncome) * 100 : 0;
+                  return (
+                    <li
+                      key={r.id}
+                      className="animate-fade-in-up py-3"
+                      style={{ animationDelay: `${i * 12}ms` }}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <CategoryChip id={r.id} name={r.name} icon={r.icon} className="min-w-0" />
+                        <span className="tabular shrink-0 text-sm font-medium text-positive">
+                          +{formatMoney(r.actual)}
+                        </span>
+                      </div>
+                      <SegmentedProgress pct={share} overBudget={false} color="var(--positive)" className="mt-2.5" />
+                      <p className="tabular mt-1.5 text-right text-xs text-text-faint">
+                        {Math.round(share)}% of income
+                      </p>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>
@@ -280,62 +252,6 @@ export function BreakdownPanel({
         />
       )}
     </>
-  );
-}
-
-function sortValue(r: CategoryRow, key: SortKey) {
-  switch (key) {
-    case "actual":
-      return r.actual;
-    case "planned":
-      return r.planned;
-    case "available":
-      return r.planned - r.actual;
-    case "pct":
-      return r.actual;
-  }
-}
-
-function SortHeader({
-  label,
-  active,
-  dir,
-  onClick,
-  wide,
-}: {
-  label: string;
-  active: boolean;
-  dir: "asc" | "desc";
-  onClick: () => void;
-  wide?: boolean;
-}) {
-  return (
-    <th className={`py-2 font-medium ${wide ? "" : "text-right"}`}>
-      <button
-        type="button"
-        onClick={onClick}
-        className={`inline-flex items-center gap-1 transition-colors hover:text-text ${active ? "text-text" : ""}`}
-      >
-        {label}
-        <span aria-hidden="true" className="text-[10px]">
-          {active ? (dir === "desc" ? "↓" : "↑") : "↕"}
-        </span>
-      </button>
-    </th>
-  );
-}
-
-function WalletIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M3 8a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v1h1.5A1.5 1.5 0 0 1 21 10.5v6a1.5 1.5 0 0 1-1.5 1.5H5a2 2 0 0 1-2-2V8Z M16 13h2"
-        stroke="currentColor"
-        strokeWidth={1.6}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }
 

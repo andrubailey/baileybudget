@@ -4,7 +4,7 @@ import { Dropdown } from "@/app/(app)/dropdown";
 import { accountTypeChoices, bankChoices } from "@/app/(app)/dropdown-options";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   removeAccountLogo,
   updateAccountDetails,
@@ -79,9 +79,25 @@ export function AccountList({
   const [reconcilingId, setReconcilingId] = useState<string | null>(null);
   const showToast = useToast();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const contextMenu = useContextMenu();
   const accountActions = useAccountQuickActions();
   const [confirmingDeactivate, setConfirmingDeactivate] = useState<AccountWithBalance | null>(null);
+
+  // ⌘K search can jump straight here with "?reconcile=<id>" (matching an
+  // account by name) instead of landing on the plain page and making
+  // whoever searched find the right card themselves.
+  useEffect(() => {
+    const id = searchParams.get("reconcile");
+    if (id && accounts.some((a) => a.id === id)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reacting to the URL this page was opened with, an external system, after mount
+      setReconcilingId(id);
+      router.replace("/accounts", { scroll: false });
+    }
+    // Only ever meant to fire off the URL this page was first opened
+    // with — replacing the URL right after is what prevents it re-firing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const deactivatedCount = accounts.filter((a) => !a.is_active).length;
   const visible = showDeactivated ? accounts : accounts.filter((a) => a.is_active);

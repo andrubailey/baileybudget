@@ -48,6 +48,7 @@ export function recurringMenuItems(
   rule: RecurringTransaction,
   opts: {
     onEdit: () => void;
+    onDelete: () => void;
     // The rule's account, for "View <account> transactions".
     accountName: string | null;
     actions: ReturnType<typeof useRecurringQuickActions>;
@@ -97,6 +98,13 @@ export function recurringMenuItems(
       label: rule.is_active ? "Pause" : "Resume",
       icon: rule.is_active ? <MenuGlyph d="M9 6v12M15 6v12" /> : <MenuGlyph d="M6 4v16l14-8Z" />,
       onSelect: () => toggleActive(rule),
+    },
+    { type: "divider" },
+    {
+      label: "Delete",
+      tone: "danger",
+      icon: <MenuGlyph d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3" />,
+      onSelect: opts.onDelete,
     },
   );
   return items;

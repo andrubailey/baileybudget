@@ -83,6 +83,16 @@ export function AddObjectiveForm({
           goal instead of time elapsed.
         </p>
       </div>
+      <div className="space-y-1.5 sm:col-span-2">
+        <label className="text-sm font-medium text-text">Image URL (optional)</label>
+        <input
+          name="image_url"
+          type="url"
+          placeholder="https://…"
+          className={fieldClass}
+        />
+        <p className="text-xs text-text-faint">Shown as a small thumbnail next to the goal.</p>
+      </div>
       <div className="flex gap-2 sm:col-span-2">
         <SubmitButton pendingText="Adding…">Add Goal</SubmitButton>
         <button
@@ -161,6 +171,17 @@ export function EditObjectiveForm({
           defaultValue={objective.linked_account_id ?? ""}
           options={accountChoices(accounts, "Track manually")}
         />
+      </div>
+      <div className="space-y-1.5 sm:col-span-2">
+        <label className="text-sm font-medium text-text">Image URL (optional)</label>
+        <input
+          name="image_url"
+          type="url"
+          placeholder="https://…"
+          defaultValue={objective.image_url ?? ""}
+          className={fieldClass}
+        />
+        <p className="text-xs text-text-faint">Shown as a small thumbnail next to the goal.</p>
       </div>
       <div className="flex gap-2 sm:col-span-2">
         <SubmitButton pendingText="Saving…">Save changes</SubmitButton>

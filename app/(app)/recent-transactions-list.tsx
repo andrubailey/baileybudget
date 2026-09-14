@@ -6,7 +6,7 @@ import type { SplitDetail } from "@/lib/queries";
 import { toAccountLookup } from "@/lib/transaction-presentation";
 import { TransactionDetailModal } from "@/app/(app)/transaction-detail-modal";
 import { TransactionRow } from "@/app/(app)/transaction-row";
-import { isPendingTransaction, usePendingTransactions } from "@/app/(app)/pending-transactions";
+import { isPendingTransaction, isQueuedTransaction, usePendingTransactions } from "@/app/(app)/pending-transactions";
 import { deleteTransaction, restoreTransaction } from "@/app/actions";
 import { useContextMenu } from "@/app/(app)/context-menu";
 import { transactionMenuItems, useTransactionQuickActions } from "@/app/(app)/transaction-menu";
@@ -181,7 +181,13 @@ export function RecentTransactionsList({
                           }),
                         )
                 }
-                className={isPendingTransaction(t) ? "animate-pulse opacity-60" : ""}
+                className={
+                  isQueuedTransaction(t)
+                    ? "opacity-70"
+                    : isPendingTransaction(t)
+                      ? "animate-pulse opacity-60"
+                      : ""
+                }
                 index={i}
               />
             );
