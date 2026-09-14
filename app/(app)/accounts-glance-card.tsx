@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import type { AccountWithBalance } from "@/lib/queries";
 import { formatMoney, isOwed } from "@/lib/format";
 import { BankLogo } from "@/app/(app)/accounts/bank-logo";
@@ -11,6 +12,7 @@ import {
   accountMenuItems,
   useAccountQuickActions,
 } from "@/app/(app)/accounts/account-menu";
+import { AccountDetailPanel } from "@/app/(app)/account-detail-panel";
 
 // Preferred display order for the Personal group — checking first as the
 // day-to-day account, then the two savings goals in the order they matter
@@ -40,8 +42,11 @@ function byPersonalOrder(a: AccountWithBalance, b: AccountWithBalance) {
 export function AccountsGlanceCard({ accounts }: { accounts: AccountWithBalance[] }) {
   // Right-click a row for the same account menu as the Accounts page, minus
   // editing/deactivating (no edit panel here) plus a link to that page.
+  // A plain click instead opens a read-only detail panel — everything a
+  // card can't fit (progress, recent activity) without leaving the page.
   const contextMenu = useContextMenu();
   const accountActions = useAccountQuickActions();
+  const [detailAccount, setDetailAccount] = useState<AccountWithBalance | null>(null);
 
   if (accounts.length === 0) {
     return (
@@ -108,12 +113,31 @@ export function AccountsGlanceCard({ accounts }: { accounts: AccountWithBalance[
               <p className="text-section-label mb-2.5">
                 {group.label}
               </p>
-              <div className="divide-y divide-border">
+              {/* No divide-y here on purpose — each row already gets its own
+                  rounded hover/press background (inset via -mx-3/px-3
+                  below), and a hairline divider drawn across that rounded
+                  shape read as a broken corner rather than a clean pill. The
+                  rows' own py-3 padding is enough separation without one —
+                  and every row keeps that same py-3 on both edges (no
+                  first:/last: reset), so a group with only one account
+                  doesn't end up with both resets firing at once and
+                  collapsing that row's box to a different size than
+                  everyone else's. */}
+              <div>
                 {group.accounts.map((a) => {
                   const i = rowIndex++;
                   return (
                     <div
                       key={a.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setDetailAccount(a)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setDetailAccount(a);
+                        }
+                      }}
                       onContextMenu={(e) =>
                         contextMenu.open(
                           e,
@@ -126,7 +150,7 @@ export function AccountsGlanceCard({ accounts }: { accounts: AccountWithBalance[
                         )
                       }
                       style={{ animationDelay: `${i * 12}ms` }}
-                      className="animate-fade-in-up -mx-3 flex items-center gap-3 rounded-lg px-3 py-3 transition-colors first:pt-0 last:pb-0 hover:bg-bg"
+                      className="animate-fade-in-up -mx-3 flex cursor-pointer items-center gap-3 rounded-lg px-3 py-3 transition-colors hover:bg-bg"
                     >
                       {a.logo_url ? (
                         <span className="inline-flex size-5 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-white">
@@ -173,6 +197,14 @@ export function AccountsGlanceCard({ accounts }: { accounts: AccountWithBalance[
         })()}
       </div>
       {contextMenu.menu}
+      {detailAccount && (
+        <AccountDetailPanel
+          key={detailAccount.id}
+          account={detailAccount}
+          accounts={accounts}
+          onClose={() => setDetailAccount(null)}
+        />
+      )}
     </div>
   );
 }

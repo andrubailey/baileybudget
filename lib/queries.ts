@@ -1134,6 +1134,21 @@ export async function getAllTransactions(): Promise<Transaction[]> {
   return data ?? [];
 }
 
+// An account's own history for its detail panel — either side of a
+// transfer counts (a transfer into this account is still something that
+// happened to it), which the snapshot query builder can't express as a
+// single eq() filter, so this pulls every transaction and filters in memory
+// like the rest of this file's ad hoc aggregations do.
+export async function getRecentTransactionsForAccount(
+  accountId: string,
+  limit = 8,
+): Promise<Transaction[]> {
+  const all = await getAllTransactions();
+  return all
+    .filter((t) => t.account_id === accountId || t.to_account_id === accountId)
+    .slice(0, limit);
+}
+
 // Same account, same exact amount, within 2 days either way — catches the
 // classic "we both logged it" double-entry without being so loose it flags
 // unrelated same-amount purchases weeks apart.
