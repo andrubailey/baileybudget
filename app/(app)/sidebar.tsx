@@ -9,6 +9,7 @@ import { ProfileModal } from "@/app/(app)/profile-modal";
 import { NewTransactionButton } from "@/app/(app)/new-transaction-button";
 import { getAvatarColors } from "@/lib/avatar-colors";
 import { CooliconPaths } from "@/app/(app)/coolicon";
+import { SPARKLE_PATH } from "@/app/(app)/sparkle-icon";
 
 function initialsFor(name: string) {
   return name.trim()[0]?.toUpperCase() ?? "?";
@@ -29,6 +30,11 @@ const PRIMARY_LINKS = [
     href: "/spending",
     label: "Spending",
     icon: <CooliconPaths name="Credit_Card_01" />,
+  },
+  {
+    href: "/insights",
+    label: "Insights",
+    icon: <path d={SPARKLE_PATH} stroke="currentColor" strokeWidth={2} strokeLinejoin="round" />,
   },
 ];
 

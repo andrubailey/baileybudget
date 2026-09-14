@@ -2,18 +2,22 @@ import { getPeriods, pickPeriod } from "@/lib/periods";
 import {
   getTransactions,
   getAllTransactions,
+  getTransactionsForRange,
   getCategories,
   getAccountsWithBalances,
   getSplitsByTransaction,
   getDueRecurringRows,
   type SplitDetail,
 } from "@/lib/queries";
+import { formatDate } from "@/lib/format";
 import Link from "next/link";
 import { RecurringPoster } from "./recurring-poster";
 import { TransactionsTable } from "./transactions-table";
 import { PageHeader } from "@/app/(app)/page-header";
 import { SpendingTabs } from "@/app/(app)/spending/spending-tabs";
 import type { Period, Transaction } from "@/lib/types";
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export default async function TransactionsPage({
   searchParams,
@@ -25,6 +29,11 @@ export default async function TransactionsPage({
     q?: string;
     flag?: string;
     highlight?: string;
+    // A date range and money-in/money-out filter — how every figure on the
+    // Insights page links to exactly the transactions behind it.
+    start?: string;
+    end?: string;
+    flow?: string;
   }>;
 }) {
   const {
@@ -34,9 +43,15 @@ export default async function TransactionsPage({
     q: initialSearch,
     flag,
     highlight: highlightId,
+    start,
+    end,
+    flow,
   } = await searchParams;
   const initialFlag =
     flag === "pending" || flag === "uncategorized" ? flag : undefined;
+  const dateRange =
+    start && end && ISO_DATE.test(start) && ISO_DATE.test(end) && start <= end ? { start, end } : null;
+  const flowFilter = flow === "in" || flow === "out" ? flow : null;
 
   // accounts/categories don't depend on which period is selected, so they
   // run alongside the whole period → recurring-generation → transactions →
@@ -45,13 +60,32 @@ export default async function TransactionsPage({
   // previously serialized just because they lived in the same component
   // tree, and that alone was adding a full extra round-trip's worth of
   // latency to the page every single load.
-  const [periodData, accounts, categories] = await Promise.all([
-    loadPeriodData(requestedPeriod),
+  const [periodData, accounts, categories, rangeTransactions] = await Promise.all([
+    loadPeriodData(dateRange ? "all" : requestedPeriod, !dateRange),
     getAccountsWithBalances(),
     getCategories(),
+    dateRange ? getTransactionsForRange(dateRange.start, dateRange.end) : Promise.resolve(null),
   ]);
-  const { period, periods, transactions, splitsByTransaction, dueRecurringCount, selectedPeriodId } =
-    periodData;
+  const { period, periods, dueRecurringCount } = periodData;
+  let { transactions, splitsByTransaction, selectedPeriodId } = periodData;
+
+  if (rangeTransactions) {
+    // Same money-in/money-out rule as the rest of the app: a charge on a
+    // debt account is stored as "income" but is money out, and a payment to
+    // one isn't new spending at all.
+    const debtIds = new Set(accounts.filter((a) => a.is_debt).map((a) => a.id));
+    transactions = rangeTransactions.filter((t) => {
+      if (!flowFilter) return true;
+      if (t.kind !== "income" && t.kind !== "expense") return false;
+      const isDebt = t.account_id ? debtIds.has(t.account_id) : false;
+      const direction = !isDebt ? (t.kind === "income" ? "in" : "out") : t.kind === "income" ? "out" : null;
+      return direction === flowFilter;
+    });
+    splitsByTransaction = await getSplitsByTransaction(
+      transactions.filter((t) => t.category_id === null).map((t) => t.id),
+    );
+    selectedPeriodId = "all";
+  }
 
   return (
     <div className="space-y-6">
@@ -68,6 +102,22 @@ export default async function TransactionsPage({
         }
       />
       <SpendingTabs />
+
+      {dateRange && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm">
+          <span className="text-text-muted">
+            Showing{" "}
+            <span className="font-medium text-text">
+              {flowFilter === "in" ? "money in" : flowFilter === "out" ? "money out" : "all transactions"}
+            </span>{" "}
+            from <span className="tabular text-text">{formatDate(dateRange.start)}</span> to{" "}
+            <span className="tabular text-text">{formatDate(dateRange.end)}</span>
+          </span>
+          <Link href="/transactions" className="text-xs font-medium text-accent hover:underline">
+            Show this month instead
+          </Link>
+        </div>
+      )}
 
       {!period ? (
         <p className="text-sm text-text-muted">
@@ -102,7 +152,11 @@ export default async function TransactionsPage({
 // included), which has to happen before reading their splits (so their ids
 // are known). Isolated into its own function so the caller can run it
 // alongside the unrelated accounts/categories fetches instead of after them.
-async function loadPeriodData(requestedPeriod: string | undefined): Promise<{
+// `loadTransactions` is false when a date range supplies the rows instead.
+async function loadPeriodData(
+  requestedPeriod: string | undefined,
+  loadTransactions = true,
+): Promise<{
   period: Period | null;
   periods: Period[];
   transactions: Transaction[];
@@ -133,7 +187,7 @@ async function loadPeriodData(requestedPeriod: string | undefined): Promise<{
   // made here wouldn't show up until something else changed. This read is
   // free (cached snapshot), and it's zero on the vast majority of loads.
   const [transactions, dueRows] = await Promise.all([
-    allTime ? getAllTransactions() : getTransactions(period.id),
+    !loadTransactions ? Promise.resolve([] as Transaction[]) : allTime ? getAllTransactions() : getTransactions(period.id),
     getDueRecurringRows(period.id),
   ]);
   const splitsByTransaction = await getSplitsByTransaction(

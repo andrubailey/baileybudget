@@ -23,6 +23,10 @@ export function PeriodSwitcher({
   function handleChange(id: string) {
     const params = new URLSearchParams(searchParams.toString());
     params.set("period", id);
+    // Picking a month replaces any date range an Insights link opened with.
+    params.delete("start");
+    params.delete("end");
+    params.delete("flow");
     router.push(`${pathname}?${params.toString()}`);
   }
 
