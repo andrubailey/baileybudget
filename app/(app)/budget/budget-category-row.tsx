@@ -42,15 +42,15 @@ export function BudgetCategoryRow({
   const row = (
     <div
       style={{ animationDelay: `${index * 12}ms` }}
-      className="animate-fade-in-up flex items-center gap-3 px-3 py-3 first:pt-0 last:pb-0"
+      className="animate-fade-in-up flex flex-col gap-2.5 px-3 py-4 first:pt-0 last:pb-0"
     >
-      <CategoryChip id={id} name={name} icon={icon} className="min-w-0 flex-1" />
-      <div className="w-24 shrink-0">
-        <SegmentedProgress pct={pct} overBudget={overBudget} className="w-full" />
+      <div className="flex items-center justify-between gap-3">
+        <CategoryChip id={id} name={name} icon={icon} className="min-w-0 flex-1" />
+        <span className="tabular shrink-0 text-sm font-medium whitespace-nowrap text-text-muted">
+          <Money amount={actual} className="text-text" /> of <Money amount={of} />
+        </span>
       </div>
-      <span className="tabular shrink-0 text-xs font-medium whitespace-nowrap text-text-muted">
-        <Money amount={actual} className="text-text" /> of <Money amount={of} />
-      </span>
+      <SegmentedProgress pct={pct} overBudget={overBudget} className="w-full" />
     </div>
   );
 
