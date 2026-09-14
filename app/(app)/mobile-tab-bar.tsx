@@ -7,21 +7,22 @@ import type { Account, Category } from "@/lib/types";
 import { MOBILE_LINKS, MOBILE_ADD_LINK } from "./sidebar";
 import { MobileAddSheet } from "./add/mobile-add-sheet";
 
-// Native-app-style bottom tab bar for mobile, scoped to the five jobs
-// mobile is for: Overview, Budget, Accounts, Recent, Add — five flat tabs
-// in a row, Add on the far right. Everything else stays desktop-only; see
-// MOBILE_LINKS/MOBILE_ADD_LINK in sidebar.tsx.
-const TAB_COUNT = MOBILE_LINKS.length + 1;
-
 // "/" would otherwise match every path via startsWith — same exact-match
 // carve-out the desktop dock's isActiveLink uses for its own Overview link.
 function isActiveTab(href: string, pathname: string) {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
-const TAB_CLASS =
-  "relative flex flex-col items-center justify-center gap-1.5 py-4 text-xs font-medium transition-colors";
+// Shared "glass" surface for the capsule and the Add button: translucent,
+// blurred, with a faint light edge and a soft floating shadow — the iOS 27
+// floating tab bar look.
+const GLASS =
+  "border border-white/10 bg-hero-bg/80 shadow-[0_10px_30px_-8px_rgba(0,0,0,0.45)] backdrop-blur-xl backdrop-saturate-150";
 
+// Mobile navigation as a floating capsule (iOS 27 style) instead of a bar
+// pinned edge to edge: Overview, Budget, Accounts and Recent in one pill,
+// with a highlight that slides behind the active tab, and Add as its own
+// round button beside it that opens the add sheet in place.
 export function MobileTabBar({
   periodId,
   accounts,
@@ -39,62 +40,62 @@ export function MobileTabBar({
   return (
     <>
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 lg:hidden"
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        aria-label="Main"
+        className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-3 lg:hidden"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.5rem)" }}
       >
-        <div className="relative border-t border-hero-border bg-hero-bg">
-          {/* Slides between tabs instead of the active state just swapping
-              color instantly — same idea as the desktop sidebar's active pill. */}
-          {activeIndex !== -1 && (
-            <div
-              aria-hidden="true"
-              className="absolute top-0 h-0.5 bg-accent-bright transition-[left] duration-200 ease-out"
-              style={{ left: `${activeIndex * (100 / TAB_COUNT)}%`, width: `${100 / TAB_COUNT}%` }}
-            />
-          )}
-          <div className="grid grid-cols-5">
-            {MOBILE_LINKS.map((link, i) => {
-              const active = isActiveTab(link.href, pathname);
-              return (
-                // Default prefetching, not prefetch={true}: every tab has a
-                // loading.tsx, so a tap still shows that tab's skeleton
-                // instantly, without fully rendering all four tab pages in
-                // the background on every single page view.
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  transitionTypes={
-                    activeIndex === -1 || activeIndex === i
-                      ? undefined
-                      : [i > activeIndex ? "nav-forward" : "nav-back"]
-                  }
-                  className={`${TAB_CLASS} ${
-                    active ? "text-accent-bright" : "text-hero-text-muted hover:text-hero-text"
-                  }`}
-                >
-                  <svg width="27" height="27" viewBox="0 0 24 24" fill="none" className="shrink-0">
-                    {link.icon}
-                  </svg>
-                  <span className="truncate">{link.label}</span>
-                </Link>
-              );
-            })}
-            {/* Add opens the add sheet right here as a modal, instead of
-                navigating to a separate /add page. */}
-            <button
-              type="button"
-              onClick={() => setAdding(true)}
-              disabled={!periodId}
-              className={`${TAB_CLASS} ${
-                adding ? "text-accent-bright" : "text-hero-text-muted hover:text-hero-text"
-              } disabled:opacity-40`}
-            >
-              <svg width="27" height="27" viewBox="0 0 24 24" fill="none" className="shrink-0">
-                {MOBILE_ADD_LINK.icon}
-              </svg>
-              <span className="truncate">{MOBILE_ADD_LINK.label}</span>
-            </button>
+        <div className="flex items-center gap-2">
+          <div className={`pointer-events-auto relative flex-1 rounded-full p-1 ${GLASS}`}>
+            {activeIndex !== -1 && (
+              <div
+                aria-hidden="true"
+                className="absolute inset-y-1 rounded-full bg-white/12 transition-[left] duration-300 ease-out"
+                style={{
+                  left: `calc(0.25rem + ${activeIndex} * (100% - 0.5rem) / ${MOBILE_LINKS.length})`,
+                  width: `calc((100% - 0.5rem) / ${MOBILE_LINKS.length})`,
+                }}
+              />
+            )}
+            <div className="relative grid" style={{ gridTemplateColumns: `repeat(${MOBILE_LINKS.length}, 1fr)` }}>
+              {MOBILE_LINKS.map((link, i) => {
+                const active = i === activeIndex;
+                return (
+                  // Default prefetching, not prefetch={true}: every tab has a
+                  // loading.tsx, so a tap still shows that tab's skeleton
+                  // instantly, without fully rendering all four tab pages in
+                  // the background on every single page view.
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    aria-current={active ? "page" : undefined}
+                    transitionTypes={
+                      activeIndex === -1 || active ? undefined : [i > activeIndex ? "nav-forward" : "nav-back"]
+                    }
+                    className={`flex flex-col items-center justify-center gap-0.5 rounded-full py-2 text-[10px] font-semibold transition-colors ${
+                      active ? "text-accent-bright" : "text-hero-text-muted active:text-hero-text"
+                    }`}
+                  >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="shrink-0">
+                      {link.icon}
+                    </svg>
+                    <span className="truncate">{link.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
           </div>
+
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            disabled={!periodId}
+            aria-label="Add transaction"
+            className={`pointer-events-auto flex size-[3.75rem] shrink-0 items-center justify-center rounded-full text-accent-bright transition-transform active:scale-95 disabled:opacity-40 ${GLASS}`}
+          >
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" className="shrink-0">
+              {MOBILE_ADD_LINK.icon}
+            </svg>
+          </button>
         </div>
       </nav>
       {adding && periodId && (
