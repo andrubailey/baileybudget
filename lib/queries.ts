@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { snapshotClient } from "@/lib/snapshot";
+import { getPeriods, pickPeriod } from "@/lib/periods";
 import type {
   Account,
   BudgetLine,
@@ -1313,6 +1314,7 @@ export async function getRecurringTransactions(): Promise<
   const { data, error } = await supabase
     .from("recurring_transactions")
     .select("*")
+    .is("deleted_at", null)
     .order("day_of_month");
   if (error) throw error;
   return data ?? [];
@@ -1578,6 +1580,7 @@ export async function getSafeToSpend(periodId: string): Promise<number> {
       .select("id, amount, day_of_month")
       .eq("kind", "expense")
       .eq("is_active", true)
+      .is("deleted_at", null)
       .gt("day_of_month", todayDay),
     getPostedRecurringIds(periodId),
   ]);
@@ -1612,7 +1615,8 @@ export async function getUpcomingBills(
       .from("recurring_transactions")
       .select("id, description, amount, day_of_month, account_id, category_id")
       .eq("kind", "expense")
-      .eq("is_active", true),
+      .eq("is_active", true)
+      .is("deleted_at", null),
     getPostedRecurringIds(periodId),
   ]);
 
@@ -1623,6 +1627,60 @@ export async function getUpcomingBills(
       if (a.due !== b.due) return a.due ? -1 : 1;
       return a.day_of_month - b.day_of_month;
     });
+}
+
+// How many days from today until this rule's next occurrence — unlike the
+// `due` flag above (same-period-only: "has day_of_month passed yet"), this
+// crosses the month boundary, so a bill due the 3rd is correctly "5 days
+// out" when today is the 28th instead of reading as already-passed.
+function daysUntilNextOccurrence(dayOfMonth: number, today: Date): number {
+  const year = today.getFullYear();
+  const month = today.getMonth();
+  const daysInThisMonth = new Date(year, month + 1, 0).getDate();
+  const diffThisMonth = Math.min(dayOfMonth, daysInThisMonth) - today.getDate();
+  if (diffThisMonth >= 0) return diffThisMonth;
+
+  const daysInNextMonth = new Date(year, month + 2, 0).getDate();
+  return daysInThisMonth - today.getDate() + Math.min(dayOfMonth, daysInNextMonth);
+}
+
+// Count of active expense bills posting within the next `days` days, for the
+// data-quality banner's "bills due soon" line — a forward-looking nudge
+// distinct from the Recurring page's own Upcoming/Posted badge, which only
+// answers "has this posted yet this period," not "how soon."
+export async function getBillsDueSoonCount(days = 5): Promise<number> {
+  const periods = await getPeriods();
+  const period = pickPeriod(periods);
+  if (!period) return 0;
+
+  const supabase = snapshotClient();
+  const [{ data: recurring }, postedIds] = await Promise.all([
+    supabase
+      .from("recurring_transactions")
+      .select("id, day_of_month")
+      .eq("kind", "expense")
+      .eq("is_active", true)
+      .is("deleted_at", null),
+    getPostedRecurringIds(period.id),
+  ]);
+
+  const today = new Date();
+  return (recurring ?? []).filter((r) => {
+    if (postedIds.has(r.id)) return false;
+    const daysUntil = daysUntilNextOccurrence(r.day_of_month, today);
+    return daysUntil <= days;
+  }).length;
+}
+
+// Count of active, non-debt accounts currently below their own low-balance
+// threshold — the account card's "Below your $X alert" pill (account-list.tsx)
+// only surfaces this to whoever happens to be looking at that card; this
+// powers a banner version that's visible without opening the Accounts page.
+export async function getLowBalanceAccountCount(): Promise<number> {
+  const accounts = await getAccountsWithBalances();
+  return accounts.filter(
+    (a) => a.is_active && !a.is_debt && a.low_balance_alert !== null && a.balance < a.low_balance_alert,
+  ).length;
 }
 
 export type RecurringPricePoint = { txn_date: string; amount: number };

@@ -75,6 +75,21 @@ export function SpendPaceChart({
         role="img"
         aria-label="Running total of this month's spending compared with last month and the budget"
       >
+        {/* Soft fill under this month's line, same treatment as the Overview's
+            net worth graph. */}
+        <defs>
+          <linearGradient id="spend-pace-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.28} />
+            <stop offset="100%" stopColor="var(--accent)" stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        {current.length > 1 && (
+          <path
+            d={`${pathFor(current)} L${x(lastIndex).toFixed(1)},${PAD_TOP + plotHeight} L${x(0).toFixed(1)},${PAD_TOP + plotHeight} Z`}
+            fill="url(#spend-pace-fill)"
+            stroke="none"
+          />
+        )}
         {budget ? (
           <>
             <line
@@ -103,6 +118,8 @@ export function SpendPaceChart({
         {current.length > 1 && (
           <path
             d={pathFor(current)}
+            pathLength={1}
+            className="animate-draw-line"
             fill="none"
             stroke="var(--accent)"
             strokeWidth={2.25}

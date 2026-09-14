@@ -909,6 +909,22 @@ export async function restoreTransaction(id: string) {
   revalidateHousehold(["transactions"]);
 }
 
+// Bulk counterpart to restoreTransaction, for undoing a bulkDeleteTransactions
+// call in one round trip instead of N.
+export async function bulkRestoreTransactions(
+  ids: string[],
+): Promise<{ ok: boolean; error?: string }> {
+  if (ids.length === 0) return { ok: true };
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("transactions")
+    .update({ deleted_at: null })
+    .in("id", ids);
+  if (error) return { ok: false, error: error.message };
+  revalidateHousehold(["transactions"]);
+  return { ok: true };
+}
+
 // Copies every planned amount from one period's budget onto another,
 // skipping categories that already have a planned amount set in the target
 // period so it never clobbers edits you've already made there.
@@ -959,6 +975,25 @@ export async function copyBudgetForward(
 export async function toggleRecurringActive(id: string, is_active: boolean) {
   const supabase = await createClient();
   await supabase.from("recurring_transactions").update({ is_active }).eq("id", id);
+  revalidateHousehold(["recurring_transactions"]);
+}
+
+// Soft delete, matching the transactions/objectives deleted_at pattern, so a
+// rule set up by mistake can be undone the same way a mistaken transaction
+// can — pause (toggleRecurringActive) is for "stop this for now," this is
+// for "this shouldn't exist."
+export async function deleteRecurringTransaction(id: string) {
+  const supabase = await createClient();
+  await supabase
+    .from("recurring_transactions")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", id);
+  revalidateHousehold(["recurring_transactions"]);
+}
+
+export async function restoreRecurringTransaction(id: string) {
+  const supabase = await createClient();
+  await supabase.from("recurring_transactions").update({ deleted_at: null }).eq("id", id);
   revalidateHousehold(["recurring_transactions"]);
 }
 

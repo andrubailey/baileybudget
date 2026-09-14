@@ -223,6 +223,12 @@ export default async function DashboardPage({
           stacked. Same cards feed the desktop dashboard's own five-column
           row below at lg+ (Net Worth spans 2), so nothing here is
           duplicated — this is the only place they render. */}
+      {/* Main content + the Accounts/Goals rail on the right, which starts
+          level with the metric cards (the top row). The rail is a true side
+          column only at xl+ — below that there's no room for a third column
+          next to the metric cards, so it drops to full width below instead. */}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_260px] xl:items-start">
+        <div className="min-w-0 space-y-6">
       <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:gap-4 2xl:grid-cols-5">
         <MetricCard
               label="Net Worth"
@@ -316,12 +322,8 @@ export default async function DashboardPage({
 
           {/* Everything below is desktop-only — mobile's Overview tab is
               just the four cards above, nothing else; Budget/Recent Transactions/
-              Accounts/Goals each live on their own dedicated mobile tab instead.
-              The rail only appears as a true side column at xl+ — below that
-              there's no room for a third column next to the metric cards, so it
-              drops to full width below everything else instead. */}
-          <div className="hidden lg:grid lg:grid-cols-1 lg:gap-6 xl:grid-cols-[minmax(0,1fr)_260px] xl:items-start">
-            <div className="min-w-0 space-y-6">
+              Accounts/Goals each live on their own dedicated mobile tab instead. */}
+            <div className="hidden min-w-0 lg:block">
               {/* Budget categories + recent transactions, side by side. Budget
                   dictates the pair's height (its own natural content size);
                   Recent Transactions is measured against it and trims to what
@@ -368,12 +370,13 @@ export default async function DashboardPage({
                 }
               />
             </div>
+        </div>
 
-            <div className="space-y-6">
-              <AccountsGlanceCard accounts={activeAccounts} />
-              <GoalsCard objectives={objectives} accounts={activeAccounts} />
-            </div>
-          </div>
+        <div className="hidden space-y-6 lg:block">
+          <AccountsGlanceCard accounts={activeAccounts} />
+          <GoalsCard objectives={objectives} accounts={activeAccounts} />
+        </div>
+      </div>
     </div>
   );
 }

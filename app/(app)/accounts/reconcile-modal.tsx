@@ -30,7 +30,7 @@ export function ReconcileModal({
   const diff = entered !== null ? Math.round((entered - account.balance) * 100) / 100 : null;
 
   async function saveAdjustment() {
-    if (entered === null) return;
+    if (entered === null || diff === null) return;
     setSaving(true);
     const result = await reconcileAccountBalance(account.id, entered);
     setSaving(false);
@@ -38,7 +38,13 @@ export function ReconcileModal({
       showToast(result.error ? `Couldn't save: ${result.error}` : "Couldn't update balance");
       return;
     }
-    showToast("Balance updated");
+    // Says what actually happened (a plug transaction got inserted, not a
+    // silent edit) so it isn't a mystery "Balance adjustment" line later.
+    showToast(
+      diff === 0
+        ? "Balance confirmed"
+        : `Logged a ${formatMoney(Math.abs(diff))} balance adjustment`,
+    );
     onClose();
   }
 

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { WeeklyRecapAlert, useIsRecapReviewed } from "@/app/(app)/weekly-recap-alert";
+import { WeeklyRecapAlert, useShowRecap } from "@/app/(app)/weekly-recap-alert";
 import type { RecapData } from "@/app/(app)/weekly-recap-card";
 
 export type DataQualityIssue = {
@@ -56,12 +56,12 @@ export function DataQualityBanner({
   const issuesDismissed =
     dismissedSignature === "__unresolved__" || dismissedSignature === signature;
   const showIssues = active.length > 0 && !issuesDismissed;
-  // Same reviewed-this-week check WeeklyRecapAlert uses internally to decide
-  // whether to render its own trigger — needed here too so the bar doesn't
-  // keep rendering an empty shell once the recap's already been reviewed and
-  // there are no data-quality issues to show alongside it.
-  const recapReviewed = useIsRecapReviewed(recap?.weekKey);
-  const showRecap = !!recap && recapReviewed === false;
+  // Same check WeeklyRecapAlert uses to decide whether to render its own
+  // trigger (Saturday, and not yet reviewed) — needed here too so the bar
+  // doesn't render an empty shell when the recap isn't showing and there are
+  // no data-quality issues to show alongside it.
+  const recapShown = useShowRecap(recap?.weekKey);
+  const showRecap = !!recap && recapShown === true;
 
   // Held true for one beat after "Dismiss" so the issues content (and, if
   // nothing else is left to show, the whole bar) can fade out instead of
@@ -86,9 +86,17 @@ export function DataQualityBanner({
     }, 150);
   }
 
+  // Actual data-quality issues ("fix this") get the amber caution treatment;
+  // the recap riding along with nothing else to show ("fyi, whenever") gets
+  // a plain, quieter bar instead — sharing one look made a "your recap is
+  // ready" nudge read as urgent as an uncategorized transaction.
+  const toneClasses = issuesVisible
+    ? "border-caution-border bg-caution-bg text-caution-strong"
+    : "border-border bg-surface text-text-muted";
+
   return (
     <div
-      className={`animate-fade-in-up flex flex-wrap items-center gap-x-4 gap-y-2 overflow-hidden border-b border-caution-border bg-caution-bg px-4 text-sm text-caution-strong transition-[max-height,opacity,padding] duration-200 ease-in sm:px-6 lg:px-8 ${
+      className={`animate-fade-in-up flex flex-wrap items-center gap-x-4 gap-y-2 overflow-hidden border-b px-4 text-sm transition-[max-height,opacity,padding] duration-200 ease-in sm:px-6 lg:px-8 ${toneClasses} ${
         dismissing && !showRecap ? "max-h-0 py-0 opacity-0" : "max-h-20 py-2.5 opacity-100"
       }`}
     >

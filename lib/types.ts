@@ -114,6 +114,7 @@ export type RecurringTransaction = {
   day_of_month: number;
   is_active: boolean;
   created_at: string;
+  deleted_at: string | null;
 };
 
 export type TransactionSplit = {

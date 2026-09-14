@@ -7,7 +7,6 @@ import { getCategoryColor } from "@/lib/category-colors";
 import type { Account, Category } from "@/lib/types";
 import { CategoryChip } from "@/app/(app)/category-chip";
 import { EmptyState } from "@/app/(app)/empty-state";
-import { SegmentedProgress } from "@/app/(app)/segmented-progress";
 import { CategoryDetailDrawer } from "./category-detail-drawer";
 import { useContextMenu } from "@/app/(app)/context-menu";
 import { categoryMenuItems, useCategoryQuickActions } from "@/app/(app)/category-menu";
@@ -20,10 +19,10 @@ export type { CategoryRow };
 
 export type IncomeRow = { id: string; name: string; icon: string | null; actual: number };
 
-type Tab = "expenses" | "budget" | "income";
+// Budget lives on its own subpage (/spending/budget), so it isn't a tab here.
+type Tab = "expenses" | "income";
 type SortKey = "actual" | "planned" | "available" | "pct";
 
-const ARC = "M 15 100 A 85 85 0 0 1 185 100";
 // Number of tick marks in the Expenses tab's radial dial — dense enough to
 // read as a smooth ring at a glance, coarse enough that each tick is still
 // individually clickable.
@@ -67,16 +66,8 @@ export function BreakdownPanel({
   }
 
   const totalSpent = rows.reduce((s, r) => s + r.actual, 0);
-  const totalPlanned = rows.reduce((s, r) => s + Math.max(0, r.planned), 0);
-  const pctOfBudget = totalPlanned > 0 ? (totalSpent / totalPlanned) * 100 : 0;
-  const overBudget = totalPlanned > 0 && totalSpent > totalPlanned;
 
   const spentRows = useMemo(() => rows.filter((r) => r.actual > 0), [rows]);
-  const budgetRows = useMemo(
-    // A deactivated category only shows here if it still has money on it.
-    () => rows.filter((r) => r.planned > 0 || r.actual > 0),
-    [rows],
-  );
 
   function sortRows(list: CategoryRow[]) {
     const dir = sort.dir === "asc" ? 1 : -1;
@@ -127,8 +118,8 @@ export function BreakdownPanel({
           </Link>
         </div>
 
-        <div role="tablist" className="grid grid-cols-3 border-b border-border">
-          {(["expenses", "budget", "income"] as const).map((t) => (
+        <div role="tablist" className="grid grid-cols-2 border-b border-border">
+          {(["expenses", "income"] as const).map((t) => (
             <button
               key={t}
               type="button"
@@ -236,101 +227,6 @@ export function BreakdownPanel({
                                 {delta.toFixed(0)}%
                               </span>
                             )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ---- Budget ---- */}
-        {tab === "budget" && (
-          <div className="px-5 py-6">
-            <div className="relative mx-auto w-full max-w-[260px]">
-              <svg viewBox="0 0 200 110" className="block w-full" aria-hidden="true">
-                <path d={ARC} fill="none" stroke="var(--neutral-track)" strokeWidth={14} strokeLinecap="round" pathLength={100} />
-                {pctOfBudget > 0 && (
-                  <path
-                    d={ARC}
-                    fill="none"
-                    stroke={overBudget ? "var(--negative)" : "var(--accent)"}
-                    strokeWidth={14}
-                    strokeLinecap="round"
-                    pathLength={100}
-                    strokeDasharray={`${Math.min(100, pctOfBudget)} 100`}
-                  />
-                )}
-              </svg>
-              <div className="absolute inset-x-0 bottom-0 text-center">
-                <p className="tabular text-xs text-text-muted">{pctOfBudget.toFixed(1)}%</p>
-                <p className="tabular text-balance-display text-text">{formatMoney(totalSpent)}</p>
-                <p className="tabular text-xs text-text-faint">{formatMoney(totalPlanned)} budget</p>
-              </div>
-            </div>
-
-            <div className="mt-6 flex items-center justify-between">
-              <Link
-                href="/spending/budget"
-                className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-text transition-colors hover:bg-bg"
-              >
-                <PencilIcon /> Edit budget
-              </Link>
-            </div>
-
-            {budgetRows.length === 0 ? (
-              <div className="mt-4">
-                <EmptyState
-                  compact
-                  icon="chart"
-                  message="No budget set for this month."
-                  action={
-                    <Link href="/spending/budget" className="text-xs font-medium text-accent underline underline-offset-2">
-                      Set one up
-                    </Link>
-                  }
-                />
-              </div>
-            ) : (
-              <div className="mt-4 overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="border-b border-border text-xs font-medium text-text-muted">
-                      <th className="py-2 pr-3 font-medium">Category &amp; group</th>
-                      <SortHeader label="Amount spent" active={sort.key === "actual"} dir={sort.dir} onClick={() => toggleSort("actual")} wide />
-                      <SortHeader label="Budget" active={sort.key === "planned"} dir={sort.dir} onClick={() => toggleSort("planned")} />
-                      <SortHeader label="Available" active={sort.key === "available"} dir={sort.dir} onClick={() => toggleSort("available")} />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortRows(budgetRows).map((r) => {
-                      const available = r.planned - r.actual;
-                      const pct = r.planned > 0 ? Math.min(100, (r.actual / r.planned) * 100) : r.actual > 0 ? 100 : 0;
-                      const over = r.actual > r.planned;
-                      return (
-                        <tr
-                          key={r.id}
-                          onClick={() => setOpenId(r.id)}
-                          onContextMenu={(e) => openMenu(e, r)}
-                          className="cursor-pointer border-b border-border transition-colors last:border-b-0 hover:bg-bg"
-                        >
-                          <td className="py-3 pr-3">
-                            <CategoryChip id={r.id} name={r.name} icon={r.icon} />
-                            {r.group && <p className="text-metadata mt-0.5 pl-9">{r.group}</p>}
-                          </td>
-                          <td className="py-3">
-                            <div className="flex items-center gap-3">
-                              <span className="tabular w-16 shrink-0 text-right text-sm font-medium text-text">{formatMoney(r.actual)}</span>
-                              <SegmentedProgress pct={pct} overBudget={over} className="min-w-16 flex-1" />
-                            </div>
-                          </td>
-                          <td className="tabular py-3 text-right text-sm text-text">{formatMoney(r.planned)}</td>
-                          <td className={`tabular py-3 pl-3 text-right text-sm font-medium ${available < 0 ? "text-negative" : "text-text"}`}>
-                            {available < 0 ? "-" : ""}
-                            {formatMoney(Math.abs(available))}
                           </td>
                         </tr>
                       );

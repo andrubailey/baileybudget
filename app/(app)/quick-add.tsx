@@ -89,7 +89,6 @@ export function QuickAddButton({
   const [duplicates, setDuplicates] = useState<DuplicateMatch[] | null>(null);
   const [pendingFormData, setPendingFormData] = useState<FormData | null>(null);
   const [accountId, setAccountId] = useState("");
-  const [keepOpen, setKeepOpen] = useState(false);
   const [makeRecurring, setMakeRecurring] = useState(false);
   const [lastOpen, setLastOpen] = useState(open);
   const descriptionRef = useRef<HTMLInputElement>(null);
@@ -183,22 +182,6 @@ export function QuickAddButton({
     setDuplicates(null);
     setPendingFormData(null);
     setAccountId("");
-    setKeepOpen(false);
-  }
-
-  // For batch-entering a stack of receipts: keeps the modal open, keeps the
-  // account/category (usually the same for a run of similar purchases), and
-  // only clears the fields that change per-transaction.
-  function resetForNextEntry() {
-    setSplitRows([{ category_id: "", amount: "" }]);
-    setDuplicates(null);
-    setPendingFormData(null);
-    // make_recurring used to be an uncontrolled checkbox, which form.reset()
-    // below cleared for free — now that it's a controlled ToggleSwitch (so
-    // it can render as one), that reset has to happen explicitly here too.
-    setMakeRecurring(false);
-    descriptionRef.current?.form?.reset();
-    descriptionRef.current?.focus();
   }
 
   async function submitFormData(formData: FormData) {
@@ -235,11 +218,7 @@ export function QuickAddButton({
 
     rememberChoices();
     showToast(`${actionLabel[0].toUpperCase()}${actionLabel.slice(1)} logged`);
-    if (keepOpen) {
-      resetForNextEntry();
-    } else {
-      resetForm();
-    }
+    resetForm();
   }
 
   async function handleSubmit(formData: FormData) {
@@ -524,11 +503,6 @@ export function QuickAddButton({
                   </div>
                 </div>
               )}
-
-              <div className="flex items-center justify-between gap-3 sm:col-span-2">
-                <span className="text-sm text-text-muted">Keep open to add another</span>
-                <ToggleSwitch checked={keepOpen} onChange={setKeepOpen} label="Keep open to add another" />
-              </div>
 
               {/* Sticky, not just the last grid item — stays reachable at
                   the bottom of the scrollable panel instead of scrolling

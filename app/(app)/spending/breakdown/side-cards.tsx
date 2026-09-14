@@ -1,7 +1,5 @@
-import { formatMoney, formatDate } from "@/lib/format";
-import type { Transaction } from "@/lib/types";
-import { TransactionAvatar } from "@/app/(app)/transaction-row";
-import { EmptyState } from "@/app/(app)/empty-state";
+import { formatMoney } from "@/lib/format";
+import { SegmentedProgress } from "@/app/(app)/segmented-progress";
 
 export function CashFlowCard({ income, expenses }: { income: number; expenses: number }) {
   const max = Math.max(income, expenses, 1);
@@ -24,6 +22,8 @@ export function CashFlowCard({ income, expenses }: { income: number; expenses: n
   );
 }
 
+// One cash-flow line: label and amount over the app's segmented pill bar,
+// scaled against whichever of income/expenses is larger.
 function Bar({
   label,
   amount,
@@ -46,67 +46,7 @@ function Bar({
           {formatMoney(amount)}
         </span>
       </div>
-      <div className="mt-1.5 h-1.5 w-full rounded-full bg-neutral-track">
-        <div
-          className="animate-bar-grow-x h-full rounded-full"
-          style={{ width: `${Math.max(amount > 0 ? 2 : 0, pct)}%`, backgroundColor: color }}
-        />
-      </div>
-    </div>
-  );
-}
-
-export function LargestTransactionsCard({ transactions }: { transactions: Transaction[] }) {
-  return (
-    <div className="card">
-      <p className="text-section-label mb-3">Largest transactions</p>
-      {transactions.length === 0 ? (
-        <EmptyState compact message="No spending this month yet." />
-      ) : (
-        <ul className="divide-y divide-border">
-          {transactions.map((t) => (
-            <li key={t.id} className="flex items-center gap-3 py-2.5">
-              <TransactionAvatar label={t.description} size="sm" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-text">{t.description}</p>
-                <p className="text-metadata">{formatDate(t.txn_date)}</p>
-              </div>
-              <span className="tabular text-amount text-text">{formatMoney(t.amount)}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-export function MostFrequentCard({
-  items,
-}: {
-  items: { name: string; count: number; total: number }[];
-}) {
-  return (
-    <div className="card">
-      <p className="text-section-label mb-3">Most frequent expenses</p>
-      {items.length === 0 ? (
-        <EmptyState compact message="No repeat merchants yet." />
-      ) : (
-        <div className="grid grid-cols-2 gap-3">
-          {items.map((item) => (
-            <div
-              key={item.name}
-              className="flex flex-col items-center rounded-xl border border-border px-3 py-4 text-center"
-            >
-              <TransactionAvatar label={item.name} size="sm" />
-              <p className="mt-2 text-sm font-semibold text-text">{item.count}×</p>
-              <p className="w-full truncate text-xs text-text-muted" title={item.name}>
-                {item.name}
-              </p>
-              <p className="text-metadata tabular mt-0.5">{formatMoney(item.total)}</p>
-            </div>
-          ))}
-        </div>
-      )}
+      <SegmentedProgress pct={pct} overBudget={false} color={color} className="mt-2 w-full" />
     </div>
   );
 }

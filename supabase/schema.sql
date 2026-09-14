@@ -79,8 +79,10 @@ create table if not exists recurring_transactions (
   category_id uuid references categories(id) on delete set null,
   day_of_month integer not null check (day_of_month between 1 and 28),
   is_active boolean not null default true,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  deleted_at timestamptz
 );
+create index if not exists recurring_transactions_deleted_at_idx on recurring_transactions(deleted_at);
 
 -- kind='transfer' moves money between two of the household's own accounts
 -- (account_id -> to_account_id) without counting as income or expense.

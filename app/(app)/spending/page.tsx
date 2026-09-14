@@ -20,10 +20,10 @@ import { RecentTransactionsList } from "@/app/(app)/recent-transactions-list";
 import { SpendingTabs } from "./spending-tabs";
 import { SpendPaceChart } from "./spend-pace-chart";
 import { UpcomingCalendar, buildUpcomingDays } from "./upcoming-calendar";
-import { buildCategoryRows, isIncomeTransaction, isSpendTransaction } from "./build-category-rows";
+import { buildCategoryRows, isIncomeTransaction } from "./build-category-rows";
 import { PeriodStrip } from "./breakdown/period-strip";
 import { BreakdownPanel } from "./breakdown/breakdown-panel";
-import { CashFlowCard, LargestTransactionsCard, MostFrequentCard } from "./breakdown/side-cards";
+import { CashFlowCard } from "./breakdown/side-cards";
 
 // On a debt account (credit card, loan) a charge is stored as "income" and a
 // payment as "expense", so spending is "expense on a normal account, or
@@ -170,29 +170,14 @@ export default async function SpendingPage({
     incomeRows.push({ id: "uncategorized", name: "Uncategorized", icon: "income", actual: uncategorizedIncome });
   }
 
-  const spendTransactions = transactions.filter((t) => isSpendTransaction(t, debtIds));
-  const largest = [...spendTransactions].sort((a, b) => b.amount - a.amount).slice(0, 5);
-  const frequency = new Map<string, { count: number; total: number }>();
-  for (const t of spendTransactions) {
-    const key = t.description.trim().toLowerCase();
-    const entry = frequency.get(key) ?? { count: 0, total: 0 };
-    entry.count += 1;
-    entry.total += t.amount;
-    frequency.set(key, entry);
-  }
-  const mostFrequent = [...frequency.entries()]
-    .map(([key, v]) => ({
-      name: spendTransactions.find((t) => t.description.trim().toLowerCase() === key)?.description ?? key,
-      ...v,
-    }))
-    .sort((a, b) => b.count - a.count || b.total - a.total)
-    .slice(0, 4);
-
   const strip = flow.map((f) => ({ periodId: f.periodId, label: f.label, expense: f.expense, income: f.income }));
   const stripWithNames = strip.map((s) => {
     const p = periods.find((x) => x.id === s.periodId);
     return { ...s, name: p?.name ?? s.label, startDate: p?.start_date ?? "" };
   });
+  // The month selector only offers the past 12 months, ending with this
+  // month — never months that haven't started yet.
+  const lastTwelveMonths = stripWithNames.filter((m) => m.startDate !== "" && m.startDate <= today).slice(-12);
 
   return (
     <div className="space-y-6">
@@ -202,7 +187,7 @@ export default async function SpendingPage({
       />
       <SpendingTabs />
 
-      <PeriodStrip months={stripWithNames} selectedId={period.id} />
+      <PeriodStrip months={lastTwelveMonths} selectedId={period.id} />
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">
         <div className="min-w-0 space-y-6">
@@ -256,39 +241,36 @@ export default async function SpendingPage({
             accounts={accounts}
             categories={categories}
           />
-
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <div className="card flex h-full flex-col">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <h2 className="text-heading text-text">Recent Transactions</h2>
-                <Link
-                  href="/transactions"
-                  className="text-xs font-medium text-text-faint transition-colors hover:text-text"
-                >
-                  View All
-                </Link>
-              </div>
-              {transactions.length === 0 ? (
-                <EmptyState compact message="Nothing logged this month yet." />
-              ) : (
-                <RecentTransactionsList
-                  transactions={recentTransactions}
-                  accounts={accounts}
-                  categories={categories}
-                  maxRows={7}
-                  splitsByTransaction={splitsByTransaction}
-                />
-              )}
-            </div>
-
-            <UpcomingCalendar days={upcomingDays} accounts={accounts} categories={categories} />
-          </div>
         </div>
 
         <div className="space-y-6">
           <CashFlowCard income={summary.income} expenses={summary.expense} />
-          <LargestTransactionsCard transactions={largest} />
-          <MostFrequentCard items={mostFrequent} />
+          {/* Newest first; click a row to open it, right-click for the same
+              menu as every other transaction list. */}
+          <div className="card">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <p className="text-section-label">Recent transactions</p>
+              <Link
+                href={`/transactions?period=${period.id}`}
+                className="text-xs font-medium text-text-faint transition-colors hover:text-text"
+              >
+                View All
+              </Link>
+            </div>
+            {transactions.length === 0 ? (
+              <EmptyState compact message="Nothing logged this month yet." />
+            ) : (
+              <RecentTransactionsList
+                transactions={recentTransactions}
+                accounts={accounts}
+                categories={categories}
+                maxRows={6}
+                splitsByTransaction={splitsByTransaction}
+              />
+            )}
+          </div>
+
+          <UpcomingCalendar days={upcomingDays} accounts={accounts} categories={categories} />
         </div>
       </div>
     </div>

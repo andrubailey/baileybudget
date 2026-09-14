@@ -51,6 +51,14 @@ export function buildUpcomingDays(
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+// A day square is only ~38px wide in the Spending page's side column, so it
+// shows a short amount ("$39", "$2.7k"); the list under the calendar and
+// the square's hover title have the exact figure.
+function compactMoney(amount: number) {
+  if (amount >= 1000) return `$${(amount / 1000).toFixed(amount >= 10000 ? 0 : 1)}k`;
+  return `$${Math.round(amount)}`;
+}
+
 export function UpcomingCalendar({
   days,
   accounts,
@@ -98,12 +106,13 @@ export function UpcomingCalendar({
             {d.items.slice(0, 1).map((r) => (
               <span
                 key={r.id}
+                title={`${r.description}: ${formatMoney(r.amount)}`}
                 className={`tabular max-w-full truncate text-[11px] font-medium ${
                   r.kind === "income" ? "text-positive" : "text-text"
                 }`}
               >
                 {r.kind === "income" ? "+" : ""}
-                {formatMoney(r.amount)}
+                {compactMoney(r.amount)}
               </span>
             ))}
             {d.items.length > 1 && (

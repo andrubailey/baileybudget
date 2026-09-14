@@ -125,7 +125,7 @@ export function BudgetCategoriesCard({
           )}
         </div>
         <Link
-          href="/transactions?view=categories"
+          href="/spending/budget"
           className="text-xs font-medium text-text-faint hover:text-text"
         >
           View All
