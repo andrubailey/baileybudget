@@ -9,7 +9,9 @@ import { MobileAddSheet } from "./add/mobile-add-sheet";
 
 // "/" would otherwise match every path via startsWith — same exact-match
 // carve-out the desktop dock's isActiveLink uses for its own Overview link.
-function isActiveTab(href: string, pathname: string) {
+// Exported so SwipeNav can find "which tab, if any, is this page" using the
+// exact same rule this bar uses to highlight itself.
+export function isActiveTab(href: string, pathname: string) {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
@@ -42,8 +44,12 @@ export function MobileTabBar({
     <>
       <nav
         aria-label="Main"
+        // --mobile-tabbar-gap here is the same token globals.css's
+        // --content-bottom-safe adds on top of this bar's own height — the
+        // two have to move together or the page's bottom padding and this
+        // bar's own bottom gap drift out of sync.
         className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-3 lg:hidden"
-        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.5rem)" }}
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + var(--mobile-tabbar-gap))" }}
       >
         <div className="flex items-center gap-2">
           <div className={`pointer-events-auto relative flex-1 rounded-full p-1 ${GLASS}`}>

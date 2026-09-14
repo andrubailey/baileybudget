@@ -27,6 +27,11 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: "#5b8a00",
+  // Without this, every env(safe-area-inset-*) call in the app (the mobile
+  // tab bar, the add sheet, this layout's own content padding) silently
+  // resolves to 0 — the browser only reports real safe-area insets once the
+  // page opts into rendering edge-to-edge under the notch/home indicator.
+  viewportFit: "cover",
 };
 
 // Applies a saved Light/Dark theme choice (see ThemeToggle in Settings)

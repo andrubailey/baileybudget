@@ -157,7 +157,13 @@ export function NewCategoryDrawer({
           <FieldError error={error} className="text-xs text-negative" />
         </div>
 
-        <div className="flex justify-end border-t border-border px-5 py-4">
+        {/* The actual bottom edge of this full-height drawer — a fixed
+            action button, not scrolling content, so it gets its own
+            safe-area clearance rather than a flat py-4. */}
+        <div
+          className="flex justify-end border-t border-border px-5 pt-4"
+          style={{ paddingBottom: "var(--safe-bottom)" }}
+        >
           <button
             type="button"
             onClick={create}

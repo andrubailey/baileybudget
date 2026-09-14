@@ -5,6 +5,7 @@ import { ToastProvider } from "./toast";
 import { GlobalShortcuts } from "./global-shortcuts";
 import { ShortcutsModal } from "./shortcuts-modal";
 import { PullToRefresh } from "./pull-to-refresh";
+import { SwipeNav } from "./swipe-nav";
 import { PageTransition } from "./page-transition";
 import { FinancesChat } from "./finances-chat";
 import { DataQualityBanner, type DataQualityIssue } from "./data-quality-banner";
@@ -106,11 +107,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="flex min-w-0 flex-1 flex-col">
           <OfflineQueueBanner />
           <DataQualityBanner issues={dataQualityIssues} recap={recap} />
-          <main className="w-full min-w-0 flex-1 px-4 pt-10 pb-28 sm:px-6 lg:px-8 lg:pt-16 lg:pb-32">
+          {/* pt-[...]/pb-[...] carry the phone's safe-area clearance (see
+              --content-bottom-safe in globals.css) below the floating tab
+              bar; lg: overrides both back to a flat value once that bar and
+              the safe area stop existing on desktop. */}
+          <main className="w-full min-w-0 flex-1 px-4 pt-[calc(env(safe-area-inset-top)+2.5rem)] pb-[var(--content-bottom-safe)] sm:px-6 lg:px-8 lg:pt-16 lg:pb-32">
             <PullToRefresh>
-              <div className="mx-auto max-w-[1600px]">
-                <PageTransition enabled={!isPhone}>{children}</PageTransition>
-              </div>
+              <SwipeNav>
+                <div className="mx-auto max-w-[1600px]">
+                  <PageTransition enabled={!isPhone}>{children}</PageTransition>
+                </div>
+              </SwipeNav>
             </PullToRefresh>
           </main>
         </div>

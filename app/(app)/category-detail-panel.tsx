@@ -132,7 +132,13 @@ export function CategoryDetailPanel({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+        {/* Full-height drawer — see the identical note in
+            account-detail-panel.tsx for why this needs its own bottom
+            safe-area clearance rather than the flat p-5. */}
+        <div
+          className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5"
+          style={{ paddingBottom: "var(--safe-bottom)" }}
+        >
           <section className="rounded-xl border border-border p-4">
             <CategoryChip id={c.id} name={c.name} icon={c.icon} />
             <p className="mt-3 text-sm text-text-muted">

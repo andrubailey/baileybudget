@@ -75,9 +75,14 @@ export function CategoryDetailDrawer({
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-label={`${row.name} details`}
+        // Full-height, true bottom edge — see the identical note in
+        // account-detail-panel.tsx. This aside is itself the scroll
+        // container (no separate inner content div), so the padding goes
+        // directly on it.
         className={`flex h-full w-full max-w-md flex-col overflow-y-auto border-l border-border bg-surface shadow-modal ${
           closing ? "animate-drawer-out" : "animate-drawer-in"
         }`}
+        style={{ paddingBottom: "var(--safe-bottom)" }}
       >
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <p className="text-section-label">Category detail</p>

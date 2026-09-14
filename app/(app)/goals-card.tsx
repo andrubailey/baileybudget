@@ -384,7 +384,9 @@ function GoalModal({
         aria-modal="true"
         aria-label={title}
         onClick={(e) => e.stopPropagation()}
-        className={`max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-border bg-surface shadow-modal sm:rounded-xl ${
+        // dvh (not vh) so this actually shrinks when the on-screen keyboard
+        // opens — see the identical fix in quick-add-transfer.tsx.
+        className={`max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-border bg-surface shadow-modal sm:rounded-xl ${
           closing ? "animate-modal-panel-out" : "animate-modal-panel"
         }`}
       >
@@ -399,7 +401,12 @@ function GoalModal({
             ✕
           </button>
         </div>
-        <div className="p-5">{children}</div>
+        {/* This is a real bottom sheet on mobile (items-end above) — its
+            last row (usually a submit button in `children`) needs the same
+            safe-area clearance as any other sheet, not the flat p-5. */}
+        <div className="p-5 sm:pb-5" style={{ paddingBottom: "var(--safe-bottom)" }}>
+          {children}
+        </div>
       </div>
     </div>,
     document.body,

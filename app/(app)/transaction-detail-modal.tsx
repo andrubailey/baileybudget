@@ -241,7 +241,11 @@ export function TransactionDetailModal({
           <span className="size-9 shrink-0" aria-hidden="true" />
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        {/* Full-height drawer, true bottom edge — see the identical note in
+            account-detail-panel.tsx. Padding here (not on whichever section
+            happens to render last) so it holds regardless of which of the
+            collapsible sections below is open. */}
+        <div className="min-h-0 flex-1 overflow-y-auto" style={{ paddingBottom: "var(--safe-bottom)" }}>
           {/* Receipt-style header: the amount and (for a real transaction)
               its category, centered — mirrors the reference design's big
               centered figure instead of the old inline row header. */}

@@ -115,7 +115,13 @@ export function AccountDetailPanel({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+        {/* A full-height drawer, so its own scroll ends at the true bottom
+            edge — pb-[...] instead of the flat p-5 bottom so the last
+            section clears the home indicator, not just the visual edge. */}
+        <div
+          className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5"
+          style={{ paddingBottom: "var(--safe-bottom)" }}
+        >
           <section className="rounded-xl border border-border p-4">
             <div className="flex items-center gap-2.5">
               {a.bank && <BankLogo bank={a.bank} size="sm" />}

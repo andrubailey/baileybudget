@@ -565,6 +565,10 @@ function AdvisorInput({
     <form
       onSubmit={onSend}
       className={`shrink-0 ${compact ? "border-t border-border p-3" : "px-6 pt-2 pb-5"}`}
+      // compact is the full-screen mobile sheet (fixed inset-0) — its send
+      // bar sits at the true bottom edge, same as any bottom sheet, so it
+      // needs the same safe-area clearance rather than the flat p-3.
+      style={compact ? { paddingBottom: "var(--safe-bottom)" } : undefined}
     >
       <div className={compact ? "" : "mx-auto max-w-2xl"}>
         {attachments.length > 0 && (
@@ -1183,8 +1187,15 @@ export function FinancesChat() {
         type="button"
         onClick={() => setMobileOpen(true)}
         aria-label="Open AI Advisor"
-        className="fixed right-4 bottom-24 z-40 flex size-14 items-center justify-center rounded-full bg-accent text-white shadow-raised transition-transform duration-150 active:scale-95 lg:hidden"
-        style={{ marginBottom: "env(safe-area-inset-bottom)" }}
+        className="fixed right-4 z-40 flex size-14 items-center justify-center rounded-full bg-accent text-white shadow-raised transition-transform duration-150 active:scale-95 lg:hidden"
+        // Sits just above the floating tab bar: its height/gap/safe-area
+        // tokens (see globals.css) plus a little breathing room, instead of
+        // the flat bottom-24 guess this used to be, which had no idea how
+        // tall the bar actually is or how deep this phone's home-indicator
+        // inset is.
+        style={{
+          bottom: "calc(var(--mobile-tabbar-h) + var(--mobile-tabbar-gap) + env(safe-area-inset-bottom) + 0.75rem)",
+        }}
       >
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
           <path
@@ -1199,7 +1210,10 @@ export function FinancesChat() {
 
       {mobileOpen && (
         <div className="fixed inset-0 z-50 flex flex-col bg-surface lg:hidden">
-          <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
+          <div
+            className="flex min-h-14 shrink-0 items-center justify-between border-b border-border px-4"
+            style={{ paddingTop: "env(safe-area-inset-top)" }}
+          >
             <p className="card-label text-text-muted">AI Advisor</p>
             <button
               type="button"

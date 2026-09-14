@@ -148,6 +148,40 @@
   --duration-fast: 150ms;
   --duration-base: 200ms;
   --duration-slow: 300ms;
+
+  /* ============================================================
+     SAFE-AREA / MOBILE LAYOUT — one shared answer to "how much
+     bottom clearance does this need", instead of every fixed
+     element guessing its own number. Requires viewport-fit=cover
+     on the root viewport meta (see app/layout.tsx) — without it,
+     every env(safe-area-inset-*) below silently resolves to 0 and
+     nothing here does anything, which is exactly the bug this
+     section fixes.
+
+     --mobile-tabbar-h is the floating tab bar's own content height
+     (see MobileTabBar) — a fixed, device-independent constant, not
+     a safe-area value: it's the same physical size on every phone,
+     only the home-indicator inset beneath it changes device to
+     device. Keep this in sync with that component's sizing.
+
+     --safe-bottom is for anything that reaches the true bottom
+     edge on its own (a full-height drawer, the mobile chat sheet, a
+     floating action button) — the physical inset plus one spacing-
+     scale increment of breathing room, never just the raw inset by
+     itself (a widget flush against the inset line still reads as
+     "no margin").
+
+     --content-bottom-safe is for the main scrollable content behind
+     the floating tab bar specifically — the same breathing room,
+     plus the tab bar's own height and its own bottom gap, so the
+     last row of any list actually clears the tappable bar above it
+     rather than sitting half-hidden beneath it. */
+  --mobile-tabbar-h: 4rem;
+  --mobile-tabbar-gap: 0.5rem;
+  --safe-bottom: calc(env(safe-area-inset-bottom) + 1.25rem);
+  --content-bottom-safe: calc(
+    env(safe-area-inset-bottom) + var(--mobile-tabbar-h) + var(--mobile-tabbar-gap) + 1.25rem
+  );
 }
 
 /* Dark mode — follows the OS/browser preference by default, overridable by
@@ -258,10 +292,15 @@
    <body> (not <html>) had the app's own background color set.
    overscroll-behavior-y stops the bounce itself from happening at all;
    matching background-color on <html> is a defensive fallback for any
-   older engine that still lets a sliver of it show through anyway. */
+   older engine that still lets a sliver of it show through anyway.
+   overscroll-behavior-x does the equivalent job on the horizontal axis — the
+   mobile tabs now have their own left/right swipe gesture (see swipe-nav.tsx),
+   and this is what keeps a swipe at the very edge of the screen from also
+   triggering the browser's own edge-swipe back/forward gesture on top of it. */
 html {
   background-color: var(--bg);
   overscroll-behavior-y: none;
+  overscroll-behavior-x: none;
 }
 
 body {
@@ -269,6 +308,7 @@ body {
   color: var(--text);
   font-family: var(--font-main), ui-sans-serif, system-ui, sans-serif;
   overscroll-behavior-y: none;
+  overscroll-behavior-x: none;
 }
 
 .tabular {
