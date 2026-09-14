@@ -6,13 +6,16 @@ import { formatMoney, isOwed } from "@/lib/format";
 import { CurrencyInput } from "@/app/(app)/currency-input";
 import { Money } from "@/app/(app)/money";
 import { useToast } from "@/app/(app)/toast";
+import { BankLogo } from "@/app/(app)/accounts/bank-logo";
+import { ReconcileModal } from "@/app/(app)/accounts/reconcile-modal";
 import type { AccountWithBalance } from "@/lib/queries";
 
-// A fast way to correct a stale balance right there — no drawer, no
-// navigating to account settings. Tapping the balance swaps it for an
-// editable field, pre-filled with what the app currently computes, so
-// confirming a balance that's already right is just "tap, see it's
-// correct, tap the check" — same number of taps as fixing a wrong one.
+// One account on the mobile Accounts tab. Two ways to square it with the
+// bank: "Reconcile" opens the same check-against-the-bank window as the
+// desktop account cards (with "find the discrepancy"), and tapping the
+// balance swaps it for an editable field pre-filled with what the app
+// computes — so confirming a balance that's already right is just "tap,
+// see it's correct, tap the check."
 export function AccountReconcileRow({
   account: a,
   index = 0,
@@ -21,6 +24,7 @@ export function AccountReconcileRow({
   index?: number;
 }) {
   const [editing, setEditing] = useState(false);
+  const [reconciling, setReconciling] = useState(false);
   const [isPending, startTransition] = useTransition();
   const showToast = useToast();
 
@@ -44,65 +48,86 @@ export function AccountReconcileRow({
   }
 
   return (
-    <div
-      style={{ animationDelay: `${index * 12}ms` }}
-      className="animate-fade-in-up flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
-    >
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-text">{a.name}</p>
-      </div>
+    <>
+      <div
+        style={{ animationDelay: `${index * 12}ms` }}
+        className="animate-fade-in-up flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-2.5">
+          {a.logo_url ? (
+            <span className="inline-flex size-5 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-white">
+              {/* eslint-disable-next-line @next/next/no-img-element -- user-uploaded storage URL, not a local/known-domain asset */}
+              <img src={a.logo_url} alt="" className="size-full object-cover" />
+            </span>
+          ) : a.bank ? (
+            <BankLogo bank={a.bank} size="sm" />
+          ) : null}
+          <div className="min-w-0">
+            <p className="truncate text-sm text-text">{a.name}</p>
+            <button
+              type="button"
+              onClick={() => setReconciling(true)}
+              aria-label={`Reconcile ${a.name}`}
+              className="-my-1 py-1 text-xs font-medium text-text-muted transition-colors hover:text-accent hover:underline"
+            >
+              Reconcile
+            </button>
+          </div>
+        </div>
 
-      {editing ? (
-        <form action={save} className="flex shrink-0 items-center gap-1.5">
-          <CurrencyInput
-            name="balance"
-            defaultValue={a.balance}
-            autoFocus
-            dollarPosition="left-2"
-            className="tabular no-spinner w-28 rounded-md border border-border bg-bg py-1.5 pr-2 pl-6 text-right text-sm text-text outline-none focus:border-accent"
-          />
-          <button
-            type="submit"
-            disabled={isPending}
-            aria-label="Save balance"
-            className="-m-1 flex size-9 shrink-0 items-center justify-center rounded-full text-positive-strong transition-colors hover:bg-positive-bg disabled:opacity-60"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
+        {editing ? (
+          <form action={save} className="flex shrink-0 items-center gap-1.5">
+            <CurrencyInput
+              name="balance"
+              defaultValue={a.balance}
+              autoFocus
+              dollarPosition="left-2"
+              className="tabular no-spinner w-28 rounded-md border border-border bg-bg py-1.5 pr-2 pl-6 text-right text-sm text-text outline-none focus:border-accent"
+            />
+            <button
+              type="submit"
+              disabled={isPending}
+              aria-label="Save balance"
+              className="-m-1 flex size-9 shrink-0 items-center justify-center rounded-full text-positive-strong transition-colors hover:bg-positive-bg disabled:opacity-60"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditing(false)}
+              aria-label="Cancel"
+              className="-m-1 flex size-9 shrink-0 items-center justify-center rounded-full text-text-faint transition-colors hover:bg-bg"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path d="M6 6l12 12M18 6 6 18" stroke="currentColor" strokeWidth={2} strokeLinecap="round" />
+              </svg>
+            </button>
+          </form>
+        ) : (
           <button
             type="button"
-            onClick={() => setEditing(false)}
-            aria-label="Cancel"
-            className="-m-1 flex size-9 shrink-0 items-center justify-center rounded-full text-text-faint transition-colors hover:bg-bg"
+            onClick={() => setEditing(true)}
+            className="-m-2 flex shrink-0 items-center gap-1.5 rounded-lg p-2 text-right transition-colors hover:bg-bg"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-              <path d="M6 6l12 12M18 6 6 18" stroke="currentColor" strokeWidth={2} strokeLinecap="round" />
+            <Money
+              amount={a.balance}
+              tone={a.is_debt && isOwed(a.balance) ? "negative" : undefined}
+              className="tabular text-sm font-semibold text-text"
+            />
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" className="shrink-0 text-text-faint">
+              <path
+                d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3Z"
+                stroke="currentColor"
+                strokeWidth={1.6}
+                strokeLinejoin="round"
+              />
             </svg>
           </button>
-        </form>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          className="-m-2 flex shrink-0 items-center gap-1.5 rounded-lg p-2 text-right transition-colors hover:bg-bg"
-        >
-          <Money
-            amount={a.balance}
-            tone={a.is_debt && isOwed(a.balance) ? "negative" : undefined}
-            className="tabular text-sm font-semibold text-text"
-          />
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" className="shrink-0 text-text-faint">
-            <path
-              d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3Z"
-              stroke="currentColor"
-              strokeWidth={1.6}
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
-      )}
-    </div>
+        )}
+      </div>
+      {reconciling && <ReconcileModal account={a} onClose={() => setReconciling(false)} />}
+    </>
   );
 }

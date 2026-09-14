@@ -13,21 +13,7 @@ import {
   useAccountQuickActions,
 } from "@/app/(app)/accounts/account-menu";
 import { AccountDetailPanel } from "@/app/(app)/account-detail-panel";
-
-// Preferred display order for the Personal group — checking first as the
-// day-to-day account, then the two savings goals in the order they matter
-// most. Anything not in this list (a new personal account added later)
-// just falls after these, alphabetically.
-const PERSONAL_ACCOUNT_ORDER = ["Personal Checking", "Car Maintenance Fund", "Emergency Fund"];
-
-function byPersonalOrder(a: AccountWithBalance, b: AccountWithBalance) {
-  const ai = PERSONAL_ACCOUNT_ORDER.indexOf(a.name);
-  const bi = PERSONAL_ACCOUNT_ORDER.indexOf(b.name);
-  if (ai !== -1 && bi !== -1) return ai - bi;
-  if (ai !== -1) return -1;
-  if (bi !== -1) return 1;
-  return a.name.localeCompare(b.name);
-}
+import { groupAccounts } from "@/app/(app)/accounts/account-groups";
 
 // Grouped by Personal vs. Business, with debt accounts pulled into their own
 // group regardless of which side they're on — "here's what you have" vs.
@@ -66,33 +52,8 @@ export function AccountsGlanceCard({ accounts }: { accounts: AccountWithBalance[
     );
   }
 
-  const debt = accounts.filter((a) => a.is_debt);
-  const groups: {
-    key: string;
-    label: string;
-    accounts: AccountWithBalance[];
-  }[] = [
-    {
-      key: "business",
-      label: "Business",
-      accounts: accounts
-        .filter((a) => !a.is_debt && a.is_business)
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    },
-    {
-      key: "personal",
-      label: "Personal",
-      accounts: accounts.filter((a) => !a.is_debt && !a.is_business).sort(byPersonalOrder),
-    },
-  ].filter((g) => g.accounts.length > 0);
-
-  if (debt.length > 0) {
-    groups.push({
-      key: "debt",
-      label: "Debt",
-      accounts: debt.slice().sort((a, b) => a.name.localeCompare(b.name)),
-    });
-  }
+  // Business, Personal, then Debt — same grouping as the mobile Accounts tab.
+  const groups = groupAccounts(accounts);
 
   return (
     <div className="card">
