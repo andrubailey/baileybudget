@@ -35,10 +35,11 @@ import {
   TransactionRow,
 } from "@/app/(app)/transaction-row";
 
-// The ✓ and action columns stay pinned first/last — everything between is
-// this fixed set, in this order. (This used to be drag-to-reorder and
-// drag-to-resize; neither ever got used, so it's just a plain fixed layout
-// now — see COLUMN_WIDTHS below.)
+// The ✓ column stays pinned first — everything after it is this set of
+// columns, in this default order. Drag a header to reorder; the chosen order
+// is remembered per browser (COLUMN_ORDER_KEY). Widths stay fixed —
+// see COLUMN_WIDTHS below.
+const COLUMN_ORDER_KEY = "transactions-column-order";
 const TABLE_COLUMNS = [
   "description",
   "category",
@@ -180,6 +181,41 @@ export function TransactionsTable({
   const [amountMax, setAmountMax] = useState("");
   // Which column's filter popover is open, if any — only one at a time.
   const [openFilterCol, setOpenFilterCol] = useState<ColumnKey | null>(null);
+  // Starts as the default order (what the server rendered) and swaps to the
+  // saved one after mount, so hydration never mismatches.
+  const [columnOrder, setColumnOrder] = useState<ColumnKey[]>([...TABLE_COLUMNS]);
+  const [draggedColumn, setDraggedColumn] = useState<ColumnKey | null>(null);
+  const [dragOverColumn, setDragOverColumn] = useState<ColumnKey | null>(null);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(COLUMN_ORDER_KEY) ?? "null");
+      // Only trust a saved order that's still exactly today's column set —
+      // a column added or removed since it was saved falls back to default.
+      if (
+        Array.isArray(saved) &&
+        saved.length === TABLE_COLUMNS.length &&
+        TABLE_COLUMNS.every((c) => saved.includes(c))
+      ) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing with localStorage, an external system, after mount
+        setColumnOrder(saved as ColumnKey[]);
+      }
+    } catch {
+      // ignore — localStorage unavailable or corrupt
+    }
+  }, []);
+
+  function handleColumnDrop(target: ColumnKey) {
+    if (!draggedColumn || draggedColumn === target) return;
+    const next = columnOrder.filter((c) => c !== draggedColumn);
+    next.splice(next.indexOf(target) + (columnOrder.indexOf(draggedColumn) < columnOrder.indexOf(target) ? 1 : 0), 0, draggedColumn);
+    setColumnOrder(next);
+    try {
+      localStorage.setItem(COLUMN_ORDER_KEY, JSON.stringify(next));
+    } catch {
+      // ignore
+    }
+  }
 
   function columnHasFilter(col: ColumnKey): boolean {
     switch (col) {
@@ -765,14 +801,42 @@ export function TransactionsTable({
                   className="h-4 w-4 accent-[var(--accent)]"
                 />
               </th>
-              {TABLE_COLUMNS.map((col) => (
+              {columnOrder.map((col) => (
                 <th
                   key={col}
                   style={{ width: COLUMN_WIDTHS[col] }}
-                  className={`sticky top-0 z-10 bg-bg px-4 py-2 text-xs font-medium text-text-muted select-none ${
+                  draggable
+                  onDragStart={(e) => {
+                    setDraggedColumn(col);
+                    e.dataTransfer.effectAllowed = "move";
+                  }}
+                  onDragOver={(e) => {
+                    if (!draggedColumn) return;
+                    e.preventDefault();
+                    setDragOverColumn(col);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    handleColumnDrop(col);
+                    setDraggedColumn(null);
+                    setDragOverColumn(null);
+                  }}
+                  onDragEnd={() => {
+                    setDraggedColumn(null);
+                    setDragOverColumn(null);
+                  }}
+                  className={`sticky top-0 z-10 cursor-grab bg-bg px-4 py-2 text-xs font-medium text-text-muted select-none ${
                     col === "amount" ? "text-right" : ""
+                  } ${draggedColumn === col ? "opacity-40" : ""} ${
+                    dragOverColumn === col && draggedColumn && draggedColumn !== col
+                      ? "shadow-[inset_2px_0_0_var(--accent)]"
+                      : ""
                   }`}
-                  title={SORTABLE_COLUMNS.has(col) ? "Click to sort" : undefined}
+                  title={
+                    SORTABLE_COLUMNS.has(col)
+                      ? "Click to sort · drag to move"
+                      : "Drag to move"
+                  }
                 >
                   <span
                     className={`relative flex items-center gap-1 ${
@@ -912,7 +976,7 @@ export function TransactionsTable({
                         className="h-4 w-4 accent-[var(--accent)]"
                       />
                     </td>
-                    {TABLE_COLUMNS.map((col) => (
+                    {columnOrder.map((col) => (
                       <td
                         key={col}
                         style={{ width: COLUMN_WIDTHS[col] }}

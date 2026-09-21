@@ -9,7 +9,7 @@ import { BankLogo } from "@/app/(app)/accounts/bank-logo";
 import { Money } from "@/app/(app)/money";
 import { ReconcileModal } from "@/app/(app)/accounts/reconcile-modal";
 import { SegmentedProgress } from "@/app/(app)/segmented-progress";
-import { formatDate, isOwed } from "@/lib/format";
+import { formatDate, isOverdrawn, isOwed } from "@/lib/format";
 import {
   presentTransaction,
   toAccountLookup,
@@ -76,6 +76,7 @@ export function AccountDetailPanel({
   }
 
   const owed = a.is_debt && isOwed(a.balance);
+  const overdrawn = !a.is_debt && isOverdrawn(a.balance);
   const goalProgress =
     !a.is_debt && a.goal && a.goal > 0
       ? Math.min(100, Math.max(0, (a.balance / a.goal) * 100))
@@ -137,8 +138,8 @@ export function AccountDetailPanel({
               <Money
                 amount={a.balance}
                 variant="balance"
-                signDisplay={owed ? "-" : "none"}
-                className={`text-balance-sm ${owed ? "text-negative" : "text-text"}`}
+                signDisplay={owed || overdrawn ? "-" : "none"}
+                className={`text-balance-sm ${owed || overdrawn ? "text-negative" : "text-text"}`}
               />
               {a.is_debt && (
                 <span className="text-sm font-normal text-text-faint">{owed ? "owed" : "paid off"}</span>

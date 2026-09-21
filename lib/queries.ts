@@ -23,11 +23,20 @@ type SplitRow = {
 // (called from a Server Action, since a write during render couldn't
 // invalidate the cache). Skips entries that already have a transaction
 // generated for this period (tracked via recurring_transaction_id).
+//
+// A rule only comes due on its own day: never before that date arrives, and
+// never for a date on or before the day the rule was created — a rule added
+// today for "the 5th" first posts on the next 5th, not immediately with a
+// date already in the past (or a bill for later this month posted early).
 export async function getDueRecurringRows(periodId: string) {
   const supabase = snapshotClient();
   const [{ data: period }, { data: recurring }, { data: existing }] = await Promise.all([
     supabase.from("periods").select("*").eq("id", periodId).single(),
-    supabase.from("recurring_transactions").select("*").eq("is_active", true),
+    supabase
+      .from("recurring_transactions")
+      .select("*")
+      .eq("is_active", true)
+      .is("deleted_at", null),
     supabase
       .from("transactions")
       .select("recurring_transaction_id")
@@ -43,22 +52,26 @@ export async function getDueRecurringRows(periodId: string) {
   const year = periodStart.getFullYear();
   const month = periodStart.getMonth();
 
+  const today = new Date().toISOString().slice(0, 10);
+  const monthStr = String(month + 1).padStart(2, "0");
+  const dateFor = (r: RecurringTransaction) =>
+    `${year}-${monthStr}-${String(r.day_of_month).padStart(2, "0")}`;
+
   return (recurring as RecurringTransaction[])
-    .filter((r) => !alreadyGenerated.has(r.id))
-    .map((r) => {
-      const day = String(r.day_of_month).padStart(2, "0");
-      const monthStr = String(month + 1).padStart(2, "0");
-      return {
-        kind: r.kind,
-        description: r.description,
-        amount: r.amount,
-        txn_date: `${year}-${monthStr}-${day}`,
-        account_id: r.account_id,
-        category_id: r.category_id,
-        period_id: periodId,
-        recurring_transaction_id: r.id,
-      };
-    });
+    .filter((r) => {
+      const date = dateFor(r);
+      return !alreadyGenerated.has(r.id) && date <= today && date > r.created_at.slice(0, 10);
+    })
+    .map((r) => ({
+      kind: r.kind,
+      description: r.description,
+      amount: r.amount,
+      txn_date: dateFor(r),
+      account_id: r.account_id,
+      category_id: r.category_id,
+      period_id: periodId,
+      recurring_transaction_id: r.id,
+    }));
 }
 
 // Inserts whatever getDueRecurringRows says is due. Only ever called from

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { isOwed } from "@/lib/format";
+import { isOverdrawn, isOwed } from "@/lib/format";
 import { Money } from "@/app/(app)/money";
 import { BankLogo } from "@/app/(app)/accounts/bank-logo";
 import { ReconcileModal } from "@/app/(app)/accounts/reconcile-modal";
@@ -50,7 +50,8 @@ export function AccountReconcileRow({
 
         <Money
           amount={a.balance}
-          tone={a.is_debt && isOwed(a.balance) ? "negative" : undefined}
+          signDisplay={!a.is_debt && isOverdrawn(a.balance) ? "-" : "none"}
+          tone={(a.is_debt && isOwed(a.balance)) || (!a.is_debt && isOverdrawn(a.balance)) ? "negative" : undefined}
           className="tabular shrink-0 text-sm font-semibold text-text"
         />
       </div>

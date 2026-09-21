@@ -10,7 +10,7 @@ import {
   updateAccountDetails,
   uploadAccountLogo,
 } from "@/app/actions";
-import { formatMoney, isOwed, progressColor } from "@/lib/format";
+import { formatMoney, isOverdrawn, isOwed, progressColor } from "@/lib/format";
 import { Money } from "@/app/(app)/money";
 import { SegmentedProgress } from "@/app/(app)/segmented-progress";
 import type { AccountWithBalance } from "@/lib/queries";
@@ -283,7 +283,12 @@ export function AccountList({
                     <Money
                       amount={a.balance}
                       variant="balance"
-                      tone={a.is_debt && !paidOff ? "negative" : undefined}
+                      signDisplay={!a.is_debt && isOverdrawn(a.balance) ? "-" : "none"}
+                      tone={
+                        (a.is_debt && !paidOff) || (!a.is_debt && isOverdrawn(a.balance))
+                          ? "negative"
+                          : undefined
+                      }
                       className="text-balance-sm text-text"
                     />
                     {a.is_debt && (

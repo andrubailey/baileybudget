@@ -29,6 +29,12 @@ export function isOwed(balance: number): boolean {
   return Math.round(balance * 100) / 100 > 0;
 }
 
+// A checking/savings account that's actually below zero. Rounded to the cent
+// for the same reason as isOwed — a -0.004 float shouldn't read as "-$0.00".
+export function isOverdrawn(balance: number): boolean {
+  return Math.round(balance * 100) / 100 < 0;
+}
+
 // Formats a "YYYY-MM-DD" date string for display without shifting timezone
 // (parsing as UTC keeps the day the same regardless of the viewer's locale).
 export function formatDate(iso: string): string {

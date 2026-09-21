@@ -106,7 +106,7 @@ export function accountMenuItems(
     {
       label: "Copy balance",
       icon: <MenuGlyph d={ICONS.copy} />,
-      hint: formatMoney(Math.abs(a.balance)),
+      hint: formatMoney(a.balance),
       onSelect: () => copyText(a.balance.toFixed(2), "Balance"),
     },
     { label: "Copy account name", icon: <MenuGlyph d={ICONS.copy} />, onSelect: () => copyText(a.name, "Account name") },

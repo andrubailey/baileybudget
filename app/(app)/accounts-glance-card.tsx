@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { AccountWithBalance } from "@/lib/queries";
-import { formatMoney, isOwed } from "@/lib/format";
+import { formatMoney, isOverdrawn, isOwed } from "@/lib/format";
 import { BankLogo } from "@/app/(app)/accounts/bank-logo";
 import { EmptyState } from "@/app/(app)/empty-state";
 import { useContextMenu } from "@/app/(app)/context-menu";
@@ -141,11 +141,15 @@ export function AccountsGlanceCard({ accounts }: { accounts: AccountWithBalance[
                       </span>
                       <span
                         className={`tabular shrink-0 text-sm font-semibold ${
-                          a.is_debt && isOwed(a.balance) ? "text-negative" : "text-text"
+                          (a.is_debt && isOwed(a.balance)) || (!a.is_debt && isOverdrawn(a.balance))
+                            ? "text-negative"
+                            : "text-text"
                         }`}
                       >
                         {/* Owed money reads red and negative; a paid-off
-                            card is just a plain $0.00. */}
+                            card is just a plain $0.00. An overdrawn
+                            checking/savings account is red with its own
+                            minus sign (formatMoney adds it). */}
                         {a.is_debt && isOwed(a.balance) ? "-" : ""}
                         {formatMoney(a.balance)}
                       </span>
