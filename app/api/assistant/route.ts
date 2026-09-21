@@ -13,11 +13,9 @@ import {
   suggestCategoryForDescription,
 } from "@/lib/queries";
 
-const MODEL = "claude-opus-5";
-// If Opus 5 declines a request, the API reruns the same request on Opus 4.8
-// inside this call instead of just stopping.
-const FALLBACK_BETA = "server-side-fallback-2026-06-01";
-const FALLBACK_MODEL = "claude-opus-4-8";
+// Haiku keeps the Advisor's API bill small — logging transactions and
+// answering budget questions doesn't need a frontier model.
+const MODEL = "claude-haiku-4-5-20251001";
 // Room for a lookup or two, a batch of logs, and the final answer.
 const MAX_STEPS = 8;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -674,9 +672,6 @@ Answering: lead with the direct answer and the key number, then only the detail 
     const response = await client.beta.messages.create({
       model: MODEL,
       max_tokens: 16000,
-      betas: [FALLBACK_BETA],
-      fallbacks: [{ model: FALLBACK_MODEL }],
-      output_config: { effort: "medium" },
       system,
       tools: [LOG_TRANSACTION_TOOL, ...WRITE_TOOLS, ...READ_TOOLS],
       messages,
