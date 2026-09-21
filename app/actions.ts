@@ -1006,6 +1006,45 @@ export async function restoreRecurringTransaction(id: string) {
   revalidateHousehold(["recurring_transactions"]);
 }
 
+// Creates a recurring bill/income rule directly from the Recurring page,
+// without needing an existing transaction to seed it from. The database
+// only allows days 1-28 (so a rule always lands on a real date in every
+// month, February included).
+export async function createRecurringTransaction(data: {
+  kind: "income" | "expense";
+  description: string;
+  amount: number;
+  day_of_month: number;
+  account_id: string | null;
+  category_id: string | null;
+}): Promise<{ ok: boolean; error?: string }> {
+  const description = data.description.trim();
+  if (!description) return { ok: false, error: "Description is required." };
+  if (data.kind !== "income" && data.kind !== "expense") {
+    return { ok: false, error: "Choose income or expense." };
+  }
+  if (!Number.isFinite(data.amount) || data.amount <= 0) {
+    return { ok: false, error: "Enter a valid amount." };
+  }
+  if (!Number.isInteger(data.day_of_month) || data.day_of_month < 1 || data.day_of_month > 28) {
+    return { ok: false, error: "Day of month must be between 1 and 28." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("recurring_transactions").insert({
+    kind: data.kind,
+    description,
+    amount: Math.round(data.amount * 100) / 100,
+    day_of_month: data.day_of_month,
+    account_id: data.account_id,
+    category_id: data.category_id,
+  });
+  if (error) return { ok: false, error: error.message };
+
+  revalidateHousehold(["recurring_transactions"]);
+  return { ok: true };
+}
+
 // Edits a recurring rule's own details — description, amount, which day of
 // the month it posts on, and which account/category it's attributed to.
 // Doesn't touch any transaction already generated from it (past copies keep
@@ -1028,8 +1067,8 @@ export async function updateRecurringTransaction(
   if (!Number.isFinite(data.amount) || data.amount <= 0) {
     return { ok: false, error: "Enter a valid amount." };
   }
-  if (!Number.isInteger(data.day_of_month) || data.day_of_month < 1 || data.day_of_month > 31) {
-    return { ok: false, error: "Day of month must be between 1 and 31." };
+  if (!Number.isInteger(data.day_of_month) || data.day_of_month < 1 || data.day_of_month > 28) {
+    return { ok: false, error: "Day of month must be between 1 and 28." };
   }
 
   const supabase = await createClient();

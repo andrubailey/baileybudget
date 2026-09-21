@@ -4,6 +4,7 @@ import { PageHeader } from "@/app/(app)/page-header";
 import { EmptyState } from "@/app/(app)/empty-state";
 import { SpendingTabs } from "../spending-tabs";
 import { RecurringList } from "./recurring-list";
+import { AddRecurringButton } from "./add-recurring-button";
 
 export default async function RecurringPage() {
   const periods = await getPeriods();
@@ -32,6 +33,7 @@ export default async function RecurringPage() {
       <PageHeader
         title="Spending"
         description="Bills and income that repeat every month, and whether this month's copy has posted yet."
+        actions={<AddRecurringButton accounts={accounts} categories={categories} />}
       />
       <SpendingTabs />
 
@@ -46,7 +48,7 @@ export default async function RecurringPage() {
         </div>
 
         {rules.length === 0 ? (
-          <EmptyState message="No recurring bills or income set up yet. Mark a transaction as recurring to start one." />
+          <EmptyState message="No recurring bills or income set up yet. Use “Add recurring” above to start one." />
         ) : (
           <div className="divide-y divide-border px-2 py-2 sm:px-4">
             <RecurringList

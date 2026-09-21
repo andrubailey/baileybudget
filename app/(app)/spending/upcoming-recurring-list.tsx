@@ -106,6 +106,10 @@ export function UpcomingRecurringList({
           categories={categories}
           onClose={() => setEditingId(null)}
           onSaved={() => setEditingId(null)}
+          onDelete={() => {
+            setEditingId(null);
+            handleDelete(editingRule);
+          }}
         />
       )}
     </>

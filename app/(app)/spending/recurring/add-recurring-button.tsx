@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { updateRecurringTransaction } from "@/app/actions";
+import { useRouter } from "next/navigation";
+import { createRecurringTransaction } from "@/app/actions";
 import { CurrencyInput } from "@/app/(app)/currency-input";
 import { Dropdown } from "@/app/(app)/dropdown";
 import { accountChoices, categoryChoices } from "@/app/(app)/dropdown-options";
@@ -10,45 +11,60 @@ import { PanelField } from "@/app/(app)/panel-field";
 import { SubmitButton } from "@/app/(app)/submit-button";
 import { useToast } from "@/app/(app)/toast";
 import { PANEL_FIELD_INPUT_CLASS } from "@/lib/ui";
-import type { Account, Category, RecurringTransaction } from "@/lib/types";
+import type { Account, Category } from "@/lib/types";
 
-// Edits a recurring rule's own details — right-clicked open from the
-// Recurring page's row. Only what the rule itself controls (description,
-// amount, which day it posts, account/category) — kind stays fixed, since
-// flipping income/expense would strand the category picked below it (a
-// category is one kind or the other).
-export function RecurringEditModal({
-  rule,
+export function AddRecurringButton({
+  accounts,
+  categories,
+}: {
+  accounts: Account[];
+  categories: Category[];
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-text-muted transition-colors hover:bg-bg"
+      >
+        + Add recurring
+      </button>
+      {open && (
+        <AddRecurringModal
+          accounts={accounts.filter((a) => a.is_active)}
+          categories={categories.filter((c) => c.is_active)}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </>
+  );
+}
+
+function AddRecurringModal({
   accounts,
   categories,
   onClose,
-  onSaved,
-  onDelete,
 }: {
-  rule: RecurringTransaction;
   accounts: Account[];
   categories: Category[];
   onClose: () => void;
-  onSaved: () => void;
-  // Soft-deletes the rule (with the list's undo toast) — closing the panel
-  // is the caller's job.
-  onDelete: () => void;
 }) {
-  const [accountId, setAccountId] = useState(rule.account_id ?? "");
-  const [categoryId, setCategoryId] = useState(rule.category_id ?? "");
-  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
   const showToast = useToast();
-  const kindCategories = categories.filter((c) => c.kind === rule.kind);
+  const [kind, setKind] = useState<"expense" | "income">("expense");
+  const [accountId, setAccountId] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const kindCategories = categories.filter((c) => c.kind === kind);
 
   async function handleSubmit(formData: FormData) {
     setError(null);
-    const description = String(formData.get("description") ?? "");
-    const amount = Number(formData.get("amount") ?? 0);
-    const day_of_month = Number(formData.get("day_of_month") ?? 0);
-    const result = await updateRecurringTransaction(rule.id, {
-      description,
-      amount,
-      day_of_month,
+    const result = await createRecurringTransaction({
+      kind,
+      description: String(formData.get("description") ?? ""),
+      amount: Number(formData.get("amount") ?? 0),
+      day_of_month: Number(formData.get("day_of_month") ?? 0),
       account_id: accountId || null,
       category_id: categoryId || null,
     });
@@ -56,8 +72,9 @@ export function RecurringEditModal({
       setError(result.error ?? "Couldn't save.");
       return;
     }
-    showToast("Recurring bill updated");
-    onSaved();
+    showToast(kind === "income" ? "Recurring income added" : "Recurring bill added");
+    router.refresh();
+    onClose();
   }
 
   return (
@@ -69,11 +86,11 @@ export function RecurringEditModal({
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label="Edit recurring bill"
+        aria-label="Add recurring transaction"
         className="animate-modal-panel flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-modal"
       >
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
-          <h2 className="text-lg font-semibold text-text">Edit recurring {rule.kind === "income" ? "income" : "bill"}</h2>
+          <h2 className="text-lg font-semibold text-text">Add recurring</h2>
           <button
             type="button"
             onClick={onClose}
@@ -86,12 +103,32 @@ export function RecurringEditModal({
 
         <form action={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
+            <div role="tablist" className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-bg p-1">
+              {(["expense", "income"] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  role="tab"
+                  aria-selected={kind === k}
+                  onClick={() => {
+                    setKind(k);
+                    setCategoryId("");
+                  }}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    kind === k ? "bg-surface text-text shadow-card" : "text-text-muted hover:text-text"
+                  }`}
+                >
+                  {k === "expense" ? "Bill / expense" : "Income"}
+                </button>
+              ))}
+            </div>
+
             <PanelField label="Description">
               <input
                 name="description"
                 required
                 autoFocus
-                defaultValue={rule.description}
+                placeholder={kind === "income" ? "Paycheck" : "Rent, Netflix, Insurance…"}
                 className={PANEL_FIELD_INPUT_CLASS}
               />
             </PanelField>
@@ -101,7 +138,6 @@ export function RecurringEditModal({
                 <CurrencyInput
                   name="amount"
                   required
-                  defaultValue={rule.amount}
                   dollarPosition="left-0"
                   className={`${PANEL_FIELD_INPUT_CLASS} pl-4`}
                 />
@@ -114,7 +150,7 @@ export function RecurringEditModal({
                   max={28}
                   step={1}
                   required
-                  defaultValue={rule.day_of_month}
+                  placeholder="1–28"
                   className={`${PANEL_FIELD_INPUT_CLASS} no-spinner`}
                 />
               </PanelField>
@@ -144,20 +180,13 @@ export function RecurringEditModal({
           </div>
 
           <div className="flex shrink-0 items-center gap-3 border-t border-border p-4">
-            <SubmitButton pendingText="Saving…">Save</SubmitButton>
+            <SubmitButton pendingText="Adding…">Add</SubmitButton>
             <button
               type="button"
               onClick={onClose}
               className="rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-text-muted transition-colors hover:bg-bg"
             >
               Cancel
-            </button>
-            <button
-              type="button"
-              onClick={onDelete}
-              className="ml-auto rounded-lg px-4 py-2.5 text-sm font-medium text-negative transition-colors hover:bg-negative-bg"
-            >
-              Delete
             </button>
           </div>
         </form>

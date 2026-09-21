@@ -115,6 +115,7 @@ export function RecurringList({
               account={row.account}
               category={row.category}
               postedThisPeriod={row.postedThisPeriod}
+              onClick={() => setEditingId(row.rule.id)}
               onContextMenu={(e) => openMenu(e, row.rule)}
             />
           ))}
@@ -128,6 +129,10 @@ export function RecurringList({
           categories={categories}
           onClose={() => setEditingId(null)}
           onSaved={() => setEditingId(null)}
+          onDelete={() => {
+            setEditingId(null);
+            handleDelete(editingRule);
+          }}
         />
       )}
     </>
