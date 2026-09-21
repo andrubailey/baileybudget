@@ -34,6 +34,21 @@ select * from (
     ('014_drop_tags (transactions.tags gone)', not exists (select 1 from information_schema.columns where table_name='transactions' and column_name='tags')),
     ('014_drop_tags (recurring_transactions.tags gone)', not exists (select 1 from information_schema.columns where table_name='recurring_transactions' and column_name='tags')),
     ('015_txn_date_index', exists (select 1 from pg_indexes where tablename='transactions' and indexname='transactions_txn_date_idx')),
-    ('016_pending_approval', exists (select 1 from information_schema.columns where table_name='transactions' and column_name='pending_approval'))
+    ('016_pending_approval', exists (select 1 from information_schema.columns where table_name='transactions' and column_name='pending_approval')),
+    ('017_objective_image', exists (select 1 from information_schema.columns where table_name='objectives' and column_name='image_url')),
+    ('018_profiles (table)', exists (select 1 from information_schema.tables where table_name='profiles')),
+    ('019_avatars_bucket', exists (select 1 from storage.buckets where id='avatars')),
+    ('020_account_logo (accounts.logo_url)', exists (select 1 from information_schema.columns where table_name='accounts' and column_name='logo_url')),
+    ('020_account_logo (account-logos bucket)', exists (select 1 from storage.buckets where id='account-logos')),
+    ('021_category_active', exists (select 1 from information_schema.columns where table_name='categories' and column_name='is_active')),
+    ('022_account_is_business', exists (select 1 from information_schema.columns where table_name='accounts' and column_name='is_business')),
+    ('023_objective_soft_delete', exists (select 1 from information_schema.columns where table_name='objectives' and column_name='deleted_at')),
+    ('024_loans (table)', exists (select 1 from information_schema.tables where table_name='loans')),
+    ('025_transaction_updated_at', exists (select 1 from information_schema.columns where table_name='transactions' and column_name='updated_at')),
+    ('026_account_balance_checked', exists (select 1 from information_schema.columns where table_name='accounts' and column_name='balance_checked_at')),
+    ('027_home_value', exists (select 1 from information_schema.columns where table_name='loans' and column_name='estimated_home_value')),
+    ('028_home_purchase_date', exists (select 1 from information_schema.columns where table_name='loans' and column_name='purchase_date')),
+    ('029_recurring_soft_delete', exists (select 1 from information_schema.columns where table_name='recurring_transactions' and column_name='deleted_at')),
+    ('030_profile_insights_prefs', exists (select 1 from information_schema.columns where table_name='profiles' and column_name='insights_prefs'))
 ) as checks(migration, ok)
 order by ok asc, migration asc;
