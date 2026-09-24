@@ -74,12 +74,30 @@ export function UpcomingCalendar({
     .filter((r) => r.kind === "expense")
     .reduce((sum, r) => sum + r.amount, 0);
 
+  // A terse "1 bill · $30 · next one Saturday" line, this week only — the
+  // 14-day grid below answers "what's coming," this answers "do I need to
+  // think about this right now" without reading the whole grid first.
+  const dueThisWeek = days
+    .slice(0, 7)
+    .flatMap((d) => d.items.filter((r) => r.kind === "expense").map((r) => ({ ...r, iso: d.iso })));
+  const dueThisWeekTotal = dueThisWeek.reduce((sum, r) => sum + r.amount, 0);
+  const nextBillDay = days.find((d) => !d.isPast && d.items.some((r) => r.kind === "expense"));
+  const nextBillWeekday = nextBillDay
+    ? WEEKDAYS[new Date(`${nextBillDay.iso}T00:00:00Z`).getUTCDay()]
+    : null;
+
   return (
     <div className="card flex h-full flex-col">
-      <div className="mb-4 flex items-center justify-between gap-3">
+      <div className={`flex items-center justify-between gap-3 ${dueThisWeek.length > 0 ? "mb-1" : "mb-4"}`}>
         <h2 className="text-heading text-text">Upcoming transactions</h2>
         <span className="text-metadata">Next 2 weeks</span>
       </div>
+      {dueThisWeek.length > 0 && (
+        <p className="mb-4 text-sm text-text-muted">
+          {dueThisWeek.length} bill{dueThisWeek.length === 1 ? "" : "s"} · {formatMoney(dueThisWeekTotal)}
+          {nextBillWeekday && ` · next one ${nextBillWeekday}`}
+        </p>
+      )}
 
       <div className="grid grid-cols-7 text-center text-[11px] font-medium text-text-faint">
         {WEEKDAYS.map((w) => (

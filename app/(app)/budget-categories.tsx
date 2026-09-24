@@ -23,6 +23,41 @@ function projectedTotal(actual: number, pace: { daysElapsed: number; daysTotal: 
   return (actual / pace.daysElapsed) * pace.daysTotal;
 }
 
+// "Half the month," "a quarter of the month" — the plain-language fraction
+// a status caption reads more naturally with than a bare percentage.
+function monthFractionLabel(fraction: number): string {
+  if (fraction < 0.15) return "the month just";
+  if (fraction < 0.35) return "a quarter of";
+  if (fraction < 0.65) return "half";
+  if (fraction < 0.85) return "most of";
+  return "nearly all of";
+}
+
+// One qualitative read of a category's spend, replacing a raw number with
+// something closer to what you'd actually tell someone — "barely touched,"
+// "on pace" — the same register the reference design's own category rows
+// use. Reuses the pace-based straight-line projection already computed for
+// the numeric pace figure, so "on pace to go over" reflects the same math,
+// just said in words; falls back to a time-elapsed-vs-spent comparison for
+// the more common not-yet-decided cases.
+function budgetStatusCaption(
+  c: { planned: number; actual: number; overBudget: boolean },
+  projected: number | null,
+  pace?: { daysElapsed: number; daysTotal: number } | null,
+): string | null {
+  if (c.planned <= 0) return null;
+  if (c.overBudget) return "Over budget";
+  if (projected !== null && projected > c.planned) return "On pace to go over";
+  if (!pace || pace.daysTotal <= 0) return null;
+  const timeFraction = pace.daysElapsed / pace.daysTotal;
+  const spentFraction = c.actual / c.planned;
+  const gap = timeFraction - spentFraction;
+  if (gap > 0.35) return `Barely touched with ${monthFractionLabel(timeFraction)} the month gone`;
+  if (gap > 0.12) return "Comfortably under pace";
+  if (gap > -0.12) return "On pace";
+  return "Spending faster than planned";
+}
+
 // Small checkmark that fades in on a successful save and back out a moment
 // later — the planned-amount edit otherwise had zero acknowledgment beyond
 // the input losing focus, so there was no way to tell a save landed.
@@ -250,6 +285,8 @@ function MobileCategoryCard({
   const isUnbudgeted = c.planned === 0 && c.actual === 0;
   const projected =
     pace && c.planned > 0 && !isUnbudgeted ? projectedTotal(c.actual, pace) : null;
+  const pct = c.planned > 0 ? Math.min(100, (c.actual / c.planned) * 100) : c.actual > 0 ? 100 : 0;
+  const caption = isUnbudgeted ? null : budgetStatusCaption(c, projected, pace);
 
   useEffect(() => {
     if (!saved) return;
@@ -298,9 +335,6 @@ function MobileCategoryCard({
           className="shrink-0 text-sm font-semibold"
         />
       </div>
-      {/* No progress bar here — Planned vs. Actual side by side reads
-          faster on a phone than a bar you have to interpret, and the
-          Remaining figure above already carries the over-budget signal. */}
       <div className="mt-2 flex items-center justify-between gap-2">
         <span className="flex items-center gap-1.5 text-xs text-text-faint">
           Planned
@@ -338,14 +372,9 @@ function MobileCategoryCard({
         </span>
         {editablePeriodId && <SavedCheck show={saved} />}
       </div>
-      {projected !== null && (
-        <p
-          className={`mt-1.5 text-xs ${
-            projected > c.planned ? "text-negative" : "text-text-faint"
-          }`}
-        >
-          On pace for <Money amount={projected} className="text-xs font-medium" />
-        </p>
+      {!isUnbudgeted && <SegmentedProgress pct={pct} overBudget={c.overBudget} className="mt-2 w-full" />}
+      {caption && (
+        <p className="mt-1.5 text-[10px] font-semibold tracking-wide text-text-faint uppercase">{caption}</p>
       )}
     </div>
   );
@@ -386,6 +415,7 @@ function CategoryRow({
   const isUnbudgeted = c.planned === 0 && c.actual === 0;
   const projected =
     pace && c.planned > 0 && !isUnbudgeted ? projectedTotal(c.actual, pace) : null;
+  const caption = isUnbudgeted ? null : budgetStatusCaption(c, projected, pace);
 
   useEffect(() => {
     if (!saved) return;
@@ -480,13 +510,9 @@ function CategoryRow({
             >
               <Money amount={c.remaining} /> {c.remaining >= 0 ? "left" : "over"}
             </span>
-            {projected !== null && (
-              <p
-                className={`text-[11px] whitespace-nowrap ${
-                  projected > c.planned ? "text-negative" : "text-text-faint"
-                }`}
-              >
-                Pace: <Money amount={projected} className="text-[11px]" />
+            {caption && (
+              <p className="text-[10px] font-semibold tracking-wide whitespace-nowrap text-text-faint uppercase">
+                {caption}
               </p>
             )}
           </div>

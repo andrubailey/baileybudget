@@ -17,6 +17,8 @@ import type { Period, Transaction } from "@/lib/types";
 import { PageHeader } from "@/app/(app)/page-header";
 import { EmptyState } from "@/app/(app)/empty-state";
 import { RecentTransactionsList } from "@/app/(app)/recent-transactions-list";
+import { AnimatedMoney } from "@/app/(app)/animated-number";
+import { StatusPill } from "@/app/(app)/status-pill";
 import { SpendingTabs } from "./spending-tabs";
 import { SpendPaceChart } from "./spend-pace-chart";
 import { UpcomingCalendar, buildUpcomingDays } from "./upcoming-calendar";
@@ -138,6 +140,27 @@ export default async function SpendingPage({
   const totalBudget = categoryProgress.reduce((sum, c) => sum + Math.max(0, c.planned), 0);
   const previousMonthName = previous ? previous.name.split(" ")[0] : null;
 
+  // Reframes the hero card around "what's left, and what that means per day"
+  // instead of a bare running total — the number that actually answers "can
+  // I still buy this," the way the reference design's own hero card does.
+  // Falls back to the old spent-vs-last-month framing when there's no
+  // budget set at all, since "left" has no meaning without a plan.
+  const daysLeftInMonth = Math.max(0, days - todayDay);
+  const remaining = totalBudget > 0 ? totalBudget - spentSoFar : null;
+  const budgetedDailyRate = totalBudget > 0 ? totalBudget / days : null;
+  const actualDailyRate = todayDay > 0 ? spentSoFar / todayDay : 0;
+  const paceDiffPerDay = budgetedDailyRate !== null ? budgetedDailyRate - actualDailyRate : null;
+  // Bills that'll still post this period get carved out of the daily
+  // allowance up front — otherwise "left" looks more spendable than it
+  // actually is once rent or a subscription still has to come out of it.
+  const upcomingBillsTotal = recurring
+    .filter((r) => r.kind === "expense" && r.is_active && !postedIds.has(r.id))
+    .reduce((sum, r) => sum + r.amount, 0);
+  const dailyAfterBills =
+    remaining !== null && daysLeftInMonth > 0
+      ? Math.max(0, remaining - upcomingBillsTotal) / daysLeftInMonth
+      : null;
+
   const upcomingDays = buildUpcomingDays(recurring, postedIds, period.end_date, today);
   const recentTransactions = transactions.slice(0, 20);
   // So the detail panel can tell a split transaction apart from a plain
@@ -190,35 +213,60 @@ export default async function SpendingPage({
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <PeriodStrip months={lastTwelveMonths} selectedId={period.id} />
 
-        <div className="card flex h-full flex-col">
+        <div className="flex h-full flex-col rounded-xl border border-border bg-bg p-5 shadow-card sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="text-heading text-text">Spend this month</h2>
-              <p className="tabular text-balance-display mt-1 text-text">{formatMoney(spentSoFar)}</p>
-              {paceChange !== null && previousMonthName && (
-                <p className="mt-1 text-sm text-text-muted">
-                  <span className={paceChange > 0 ? "text-negative" : "text-positive"}>
-                    {Math.abs(paceChange).toFixed(0)}% {paceChange > 0 ? "more" : "less"}
-                  </span>{" "}
-                  than {previousMonthName} by this point
-                </p>
-              )}
-            </div>
-            <div className="flex items-center gap-4 text-xs text-text-muted">
+            <p className="text-section-label">{remaining !== null ? "Left this month" : "Spent this month"}</p>
+            {paceDiffPerDay !== null && Math.round(paceDiffPerDay) !== 0 && (
+              <StatusPill variant={paceDiffPerDay > 0 ? "good" : "danger"}>
+                {paceDiffPerDay > 0 && (
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path
+                      d="M5 13l4 4L19 7"
+                      stroke="currentColor"
+                      strokeWidth={3}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                )}
+                {formatMoney(Math.abs(paceDiffPerDay))}/day {paceDiffPerDay > 0 ? "under" : "over"} pace
+              </StatusPill>
+            )}
+          </div>
+          <p className="tabular text-balance-display mt-2 text-text">
+            <AnimatedMoney value={remaining ?? spentSoFar} />
+          </p>
+          {dailyAfterBills !== null ? (
+            <p className="mt-1 text-sm text-text-muted">
+              {formatMoney(dailyAfterBills)} a day for {daysLeftInMonth} more day
+              {daysLeftInMonth === 1 ? "" : "s"}
+              {upcomingBillsTotal > 0 ? ", after bills." : "."}
+            </p>
+          ) : (
+            paceChange !== null &&
+            previousMonthName && (
+              <p className="mt-1 text-sm text-text-muted">
+                <span className={paceChange > 0 ? "text-negative" : "text-positive"}>
+                  {Math.abs(paceChange).toFixed(0)}% {paceChange > 0 ? "more" : "less"}
+                </span>{" "}
+                than {previousMonthName} by this point
+              </p>
+            )
+          )}
+          <div className="mt-3 flex items-center gap-4 text-xs text-text-muted">
+            <span className="flex items-center gap-1.5">
+              <span className="h-0.5 w-4 rounded-full bg-accent" aria-hidden="true" />
+              {period.name.split(" ")[0]}
+            </span>
+            {previousMonthName && (
               <span className="flex items-center gap-1.5">
-                <span className="h-0.5 w-4 rounded-full bg-accent" aria-hidden="true" />
-                {period.name.split(" ")[0]}
+                <span
+                  className="w-4 border-t-2 border-dashed border-text-faint"
+                  aria-hidden="true"
+                />
+                {previousMonthName}
               </span>
-              {previousMonthName && (
-                <span className="flex items-center gap-1.5">
-                  <span
-                    className="w-4 border-t-2 border-dashed border-text-faint"
-                    aria-hidden="true"
-                  />
-                  {previousMonthName}
-                </span>
-              )}
-            </div>
+            )}
           </div>
           <div className="mt-4 min-h-0 flex-1">
             <SpendPaceChart
