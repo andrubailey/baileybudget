@@ -68,12 +68,17 @@ export const BANK_LOGIN_URLS: Record<(typeof BANK_OPTIONS)[number], string> = {
   Amex: "https://www.americanexpress.com/en-us/account/login?inav=en_us_menu_login",
 };
 
+export type BudgetLockSnapshotEntry = { category_id: string; planned_amount: number };
+
 export type Period = {
   id: string;
   name: string;
   start_date: string;
   end_date: string;
   created_at: string;
+  budget_locked_at: string | null;
+  budget_locked_by_email: string | null;
+  budget_lock_snapshot: BudgetLockSnapshotEntry[] | null;
 };
 
 export type Category = {
@@ -179,6 +184,32 @@ export type Profile = {
   display_name: string | null;
   avatar_url: string | null;
   updated_at: string;
+};
+
+export const CALENDAR_ASSIGNEES = [
+  { value: "andru", label: "Andru" },
+  { value: "geralyn", label: "Geralyn" },
+  { value: "kids", label: "Kids" },
+  { value: "family", label: "Family" },
+] as const;
+
+export type CalendarAssignee = (typeof CALENDAR_ASSIGNEES)[number]["value"];
+
+export type CalendarEvent = {
+  id: string;
+  title: string;
+  // "YYYY-MM-DD" — the anchor date; for a weekly recurrence this date's
+  // weekday is the recurrence weekday (see lib/calendar.ts).
+  event_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  notes: string | null;
+  recurrence: "none" | "weekly";
+  assignee: CalendarAssignee | null;
+  created_by: string | null;
+  created_by_email: string | null;
+  deleted_at: string | null;
+  created_at: string;
 };
 
 export const OBJECTIVE_STATUSES = [

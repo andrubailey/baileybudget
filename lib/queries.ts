@@ -5,6 +5,7 @@ import { getPeriods, pickPeriod } from "@/lib/periods";
 import type {
   Account,
   BudgetLine,
+  CalendarEvent,
   Category,
   Objective,
   RecurringTransaction,
@@ -1092,6 +1093,17 @@ export async function getObjectives(): Promise<Objective[]> {
     .is("deleted_at", null)
     .order("start_date", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function getCalendarEvents(): Promise<CalendarEvent[]> {
+  const supabase = snapshotClient();
+  const { data, error } = await supabase
+    .from("calendar_events")
+    .select("*")
+    .is("deleted_at", null)
+    .order("event_date", { ascending: true });
   if (error) throw error;
   return data ?? [];
 }

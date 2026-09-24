@@ -30,6 +30,16 @@ const PRIMARY_LINKS = [
     label: "Spending",
     icon: <CooliconPaths name="Credit_Card_01" />,
   },
+  {
+    href: "/calendar",
+    label: "Calendar",
+    icon: (
+      <>
+        <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" strokeWidth={1.8} />
+        <path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" />
+      </>
+    ),
+  },
 ];
 
 // The Spending item covers all of its tabs — the overview at /spending

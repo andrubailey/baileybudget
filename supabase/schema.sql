@@ -35,7 +35,13 @@ create table if not exists periods (
   name text not null,
   start_date date not null,
   end_date date not null,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- Freezes a snapshot of that month's planned amounts as a reference point;
+  -- editing budget_lines afterward is still allowed, it just no longer
+  -- matches this snapshot (see budget-editor.tsx's "Locked at $X" note).
+  budget_locked_at timestamptz,
+  budget_locked_by_email text,
+  budget_lock_snapshot jsonb
 );
 
 create table if not exists categories (
@@ -186,6 +192,28 @@ create table if not exists profiles (
   updated_at timestamptz not null default now()
 );
 
+-- Shared calendar events. Weekly recurrence needs no extra column — the
+-- anchor event_date's weekday is the recurrence weekday, expanded virtually
+-- at read time (see lib/calendar.ts).
+create table if not exists calendar_events (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  event_date date not null,
+  start_time time,
+  end_time time,
+  notes text,
+  recurrence text not null default 'none' check (recurrence in ('none', 'weekly')),
+  -- Who it's for — a fixed set, not a household-members table, since
+  -- "Kids"/"Family" aren't people who ever log in.
+  assignee text check (assignee in ('andru', 'geralyn', 'kids', 'family')),
+  created_by uuid references auth.users(id) on delete set null,
+  created_by_email text,
+  deleted_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists calendar_events_date_idx on calendar_events(event_date);
+create index if not exists calendar_events_deleted_at_idx on calendar_events(deleted_at);
+
 -- Row Level Security: this is a 2-person shared household budget.
 -- Any authenticated user (you + your wife) can read/write everything —
 -- no per-user partitioning, since the whole point is shared data. profiles
@@ -203,6 +231,7 @@ alter table transaction_history enable row level security;
 alter table objectives enable row level security;
 alter table api_tokens enable row level security;
 alter table profiles enable row level security;
+alter table calendar_events enable row level security;
 
 drop policy if exists "authenticated read accounts" on accounts;
 drop policy if exists "authenticated write accounts" on accounts;
@@ -259,3 +288,8 @@ drop policy if exists "individual write own profile" on profiles;
 create policy "authenticated read profiles" on profiles for select to authenticated using (true);
 create policy "individual write own profile" on profiles for all to authenticated
   using (auth.uid() = id) with check (auth.uid() = id);
+
+drop policy if exists "authenticated read calendar_events" on calendar_events;
+drop policy if exists "authenticated write calendar_events" on calendar_events;
+create policy "authenticated read calendar_events" on calendar_events for select to authenticated using (true);
+create policy "authenticated write calendar_events" on calendar_events for all to authenticated using (true) with check (true);

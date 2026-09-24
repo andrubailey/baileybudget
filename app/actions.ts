@@ -356,6 +356,47 @@ export async function deleteBudgetLine(
   return { ok: true };
 }
 
+// Freezes every expense category's current planned_amount for a period into
+// a snapshot, so "what did we say we'd spend" survives later edits to
+// budget_lines. Deliberately doesn't block those later edits — the point is
+// a comparison to look back at, not an approval gate.
+export async function lockBudgetForPeriod(periodId: string): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const [{ data: lines, error: linesError }, { data: { user } }] = await Promise.all([
+    supabase.from("budget_lines").select("category_id, planned_amount").eq("period_id", periodId),
+    supabase.auth.getUser(),
+  ]);
+  if (linesError) return { ok: false, error: linesError.message };
+
+  const { error } = await supabase
+    .from("periods")
+    .update({
+      budget_locked_at: new Date().toISOString(),
+      budget_locked_by_email: user?.email ?? null,
+      budget_lock_snapshot: lines ?? [],
+    })
+    .eq("id", periodId);
+  if (error) return { ok: false, error: error.message };
+
+  revalidateHousehold(["periods"]);
+  return { ok: true };
+}
+
+// Clears the "locked" flag but keeps the snapshot itself, so an accidental
+// unlock (or "actually let me re-lock this after one more change") doesn't
+// throw away the comparison point — re-locking just overwrites it.
+export async function unlockBudgetForPeriod(periodId: string): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("periods")
+    .update({ budget_locked_at: null, budget_locked_by_email: null })
+    .eq("id", periodId);
+  if (error) return { ok: false, error: error.message };
+
+  revalidateHousehold(["periods"]);
+  return { ok: true };
+}
+
 // Deactivating (rather than deleting) a category keeps its past
 // transactions and planned amounts intact — it just drops out of the
 // Budgets page's default view until reactivated.

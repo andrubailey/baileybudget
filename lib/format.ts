@@ -46,6 +46,17 @@ export function formatDate(iso: string): string {
   });
 }
 
+// Postgres's `time` column comes back as "HH:MM:SS" — a calendar event only
+// ever needs the hour and minute, in the reader's usual 12-hour format.
+export function formatTime(time: string): string {
+  const [hours, minutes] = time.split(":").map(Number);
+  return new Date(Date.UTC(2000, 0, 1, hours, minutes)).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "UTC",
+  });
+}
+
 // "Updated 3 days ago" for the mobile Accounts screen's reconcile
 // timestamps — coarse on purpose (days, not hours/minutes), since the whole
 // point is "is this stale enough to distrust," not a precise duration.

@@ -83,6 +83,9 @@ export default async function SpendingBudgetPage() {
         categories={categories}
         gridRows={gridRows}
         gridPeriods={gridPeriods.filter((p) => p.id !== period.id)}
+        budgetLockedAt={period.budget_locked_at}
+        budgetLockedByEmail={period.budget_locked_by_email}
+        budgetLockSnapshot={period.budget_lock_snapshot}
       />
     </div>
   );

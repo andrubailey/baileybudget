@@ -46,6 +46,7 @@ export const SNAPSHOT_TABLES = [
   "transaction_history",
   "profiles",
   "loans",
+  "calendar_events",
 ] as const;
 export type SnapshotTable = (typeof SNAPSHOT_TABLES)[number];
 
@@ -76,9 +77,14 @@ async function fetchWholeTable(table: SnapshotTable): Promise<Row[]> {
     .order("id", { ascending: true })
     .range(0, PAGE_SIZE - 1);
   if (first.error) {
-    // A table whose migration hasn't been run yet (profiles, history)
-    // shouldn't take every page down — it just reads as empty.
-    if (/does not exist|relation/i.test(first.error.message)) return [];
+    // A table whose migration hasn't been run yet (profiles, history,
+    // calendar_events) shouldn't take every page down — it just reads as
+    // empty. PostgREST's actual phrasing for this ("Could not find the
+    // table ... in the schema cache") doesn't contain "does not exist" or
+    // "relation" at all — confirmed live against calendar_events before its
+    // migration had been run, which is exactly the case this guard exists
+    // for and was silently failing to catch.
+    if (/does not exist|relation|could not find the table/i.test(first.error.message)) return [];
     throw first.error;
   }
 

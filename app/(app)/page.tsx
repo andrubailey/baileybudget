@@ -6,6 +6,7 @@ import { getLoanSummaries } from "@/lib/loans";
 import {
   getAccountsWithBalances,
   getBalanceHistory,
+  getCalendarEvents,
   getCategories,
   getCategoryProgressForRange,
   getObjectives,
@@ -27,6 +28,7 @@ import { DashboardEqualHeightRow } from "@/app/(app)/dashboard-equal-height-row"
 import { AccountsGlanceCard } from "@/app/(app)/accounts-glance-card";
 import { CooliconPaths } from "@/app/(app)/coolicon";
 import { GoalsCard } from "@/app/(app)/goals-card";
+import { TodayCard } from "@/app/(app)/today-card";
 
 type Trend = { pct: number; good: boolean } | null;
 
@@ -81,6 +83,7 @@ export default async function DashboardPage({
     previousSavingsTransfers,
     objectives,
     loans,
+    calendarEvents,
   ] = await Promise.all([
     getCurrentSession(),
     getPeriods(),
@@ -95,6 +98,7 @@ export default async function DashboardPage({
     getSavingsTransferTotal(previousRange.start, previousRange.end),
     getObjectives(),
     getLoanSummaries(),
+    getCalendarEvents(),
   ]);
   const user = session?.user ?? null;
   const profile = user ? await getCurrentUserProfile(user.id) : null;
@@ -320,9 +324,16 @@ export default async function DashboardPage({
             />
           </div>
 
+          {/* The one deliberate exception to "mobile Overview is just the
+              four cards above" — the shared calendar has no mobile tab of
+              its own (Budget/Accounts/Recent already fill the tab bar), so
+              this is how a phone actually reaches it. */}
+          <TodayCard events={calendarEvents} />
+
           {/* Everything below is desktop-only — mobile's Overview tab is
-              just the four cards above, nothing else; Budget/Recent Transactions/
-              Accounts/Goals each live on their own dedicated mobile tab instead. */}
+              just the four cards and this one, nothing else; Budget/Recent
+              Transactions/Accounts/Goals each live on their own dedicated
+              mobile tab instead. */}
             <div className="hidden min-w-0 lg:block">
               {/* Budget categories + recent transactions, side by side. Budget
                   dictates the pair's height (its own natural content size);

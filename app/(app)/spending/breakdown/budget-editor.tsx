@@ -5,12 +5,14 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import {
   copyBudgetForward,
   deleteBudgetLine,
+  lockBudgetForPeriod,
+  unlockBudgetForPeriod,
   updateCategoryActive,
   updateCategorySettings,
   upsertBudgetLine,
 } from "@/app/actions";
-import { formatMoney } from "@/lib/format";
-import type { Category, Period } from "@/lib/types";
+import { formatDate, formatMoney } from "@/lib/format";
+import type { BudgetLockSnapshotEntry, Category, Period } from "@/lib/types";
 import type { BudgetGridRow } from "@/lib/queries";
 import { useToast } from "@/app/(app)/toast";
 import { CategoryIconPicker } from "@/app/(app)/budgets/category-icon-picker";
@@ -35,6 +37,9 @@ export function BudgetEditor({
   categories,
   gridRows,
   gridPeriods,
+  budgetLockedAt,
+  budgetLockedByEmail,
+  budgetLockSnapshot,
 }: {
   periodId: string;
   periodName: string;
@@ -45,6 +50,9 @@ export function BudgetEditor({
   gridRows: BudgetGridRow[];
   // Oldest to newest, excluding the month being edited.
   gridPeriods: Period[];
+  budgetLockedAt: string | null;
+  budgetLockedByEmail: string | null;
+  budgetLockSnapshot: BudgetLockSnapshotEntry[] | null;
 }) {
   const [creating, setCreating] = useState(false);
   const [overrides, setOverrides] = useState<Record<string, number>>({});
@@ -52,7 +60,30 @@ export function BudgetEditor({
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [showDeactivated, setShowDeactivated] = useState(false);
   const [showPast, setShowPast] = useState(false);
+  const [locking, setLocking] = useState(false);
+  const [locked, setLocked] = useState(budgetLockedAt);
   const showToast = useToast();
+
+  const lockedPlannedByCategory = new Map(
+    (budgetLockSnapshot ?? []).map((e) => [e.category_id, e.planned_amount]),
+  );
+
+  async function toggleLock() {
+    setLocking(true);
+    const result = locked ? await unlockBudgetForPeriod(periodId) : await lockBudgetForPeriod(periodId);
+    setLocking(false);
+    if (!result.ok) {
+      showToast(result.error ? `Couldn't save: ${result.error}` : "Couldn't update the lock");
+      return;
+    }
+    if (locked) {
+      setLocked(null);
+      showToast(`${periodName}'s planned amounts unlocked`);
+    } else {
+      setLocked(new Date().toISOString());
+      showToast(`${periodName}'s planned amounts locked`);
+    }
+  }
 
   const planned = (r: CategoryRow) => overrides[r.id] ?? r.planned;
   const activeRows = rows.filter((r) => r.isActive);
@@ -130,6 +161,18 @@ export function BudgetEditor({
                 {copying ? "Copying…" : `Copy from ${previousPeriod.name.split(" ")[0]}`}
               </button>
             )}
+            <button
+              type="button"
+              onClick={toggleLock}
+              disabled={locking}
+              className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50 ${
+                locked
+                  ? "border-border text-text-faint hover:bg-bg hover:text-text"
+                  : "border-border text-text hover:bg-bg"
+              }`}
+            >
+              {locking ? "Saving…" : locked ? "Unlock planned amounts" : "Lock planned amounts"}
+            </button>
             <Link
               href="/spending"
               className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-text transition-colors hover:bg-bg"
@@ -138,6 +181,14 @@ export function BudgetEditor({
             </Link>
           </div>
         </div>
+
+        {locked && (
+          <p className="border-b border-border bg-bg px-5 py-2 text-xs text-text-faint">
+            Planned amounts locked {formatDate(locked.slice(0, 10))}
+            {budgetLockedByEmail ? ` by ${budgetLockedByEmail}` : ""} — editing still works, but any change
+            here won&apos;t match what was locked in.
+          </p>
+        )}
 
         <div className="grid grid-cols-1 gap-6 p-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
           {/* Income − budget = savings */}
@@ -182,6 +233,7 @@ export function BudgetEditor({
                     <BudgetRow
                       row={r}
                       planned={planned(r)}
+                      lockedPlanned={lockedPlannedByCategory.get(r.id)}
                       busy={togglingId === r.id}
                       onSave={(amount) => save(r, amount)}
                       onDeactivate={() => toggleActive(r, false)}
@@ -279,12 +331,16 @@ function GroupLabel({ children }: { children: React.ReactNode }) {
 function BudgetRow({
   row,
   planned,
+  lockedPlanned,
   busy,
   onSave,
   onDeactivate,
 }: {
   row: CategoryRow;
   planned: number;
+  // The amount this category was locked at, if the period is locked and
+  // this category had a budget line at the time — undefined either way.
+  lockedPlanned?: number;
   busy: boolean;
   onSave: (amount: number) => void;
   onDeactivate: () => void;
@@ -326,6 +382,9 @@ function BudgetRow({
           )}
         </p>
         <p className="text-metadata">{formatMoney(row.lastMonth)} last month</p>
+        {lockedPlanned !== undefined && lockedPlanned !== planned && (
+          <p className="text-metadata text-caution">Locked at {formatMoney(lockedPlanned)}</p>
+        )}
       </div>
       <CategorySettingsMenu row={row} busy={busy} onDeactivate={onDeactivate} />
       {editing ? (
