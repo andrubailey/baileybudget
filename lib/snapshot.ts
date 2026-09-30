@@ -47,6 +47,7 @@ export const SNAPSHOT_TABLES = [
   "profiles",
   "loans",
   "calendar_events",
+  "account_reconciliations",
 ] as const;
 export type SnapshotTable = (typeof SNAPSHOT_TABLES)[number];
 

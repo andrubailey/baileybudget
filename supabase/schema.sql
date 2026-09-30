@@ -214,6 +214,34 @@ create table if not exists calendar_events (
 create index if not exists calendar_events_date_idx on calendar_events(event_date);
 create index if not exists calendar_events_deleted_at_idx on calendar_events(deleted_at);
 
+-- Hand reconciliation against the real bank apps. Every confirmation is kept
+-- as its own record so a row can say "confirmed 3 days ago" truthfully and so
+-- the next reconcile knows which window of transactions to show.
+create table if not exists account_reconciliations (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references accounts(id) on delete cascade,
+  reconciled_at timestamptz not null default now(),
+  -- What the bank app showed.
+  statement_balance numeric not null,
+  -- What this app computed at that moment, and the gap between the two. Both
+  -- frozen at reconcile time: recomputing them later would erase the history
+  -- of what was actually wrong.
+  computed_balance numeric not null,
+  difference numeric not null,
+  -- Applied to the account's balance without creating a transaction. A
+  -- reconciliation is not spending, so it must not show up in Activity or in
+  -- any category total -- but it does have to move the balance, which is why
+  -- every balance calculation folds this column in.
+  adjustment_amount numeric not null default 0,
+  resolution text not null default 'matched' check (resolution in ('matched', 'adjusted', 'open')),
+  note text,
+  created_by uuid references auth.users(id) on delete set null,
+  created_by_email text,
+  created_at timestamptz not null default now()
+);
+create index if not exists account_reconciliations_account_idx
+  on account_reconciliations(account_id, reconciled_at desc);
+
 -- Row Level Security: this is a 2-person shared household budget.
 -- Any authenticated user (you + your wife) can read/write everything —
 -- no per-user partitioning, since the whole point is shared data. profiles
@@ -232,6 +260,7 @@ alter table objectives enable row level security;
 alter table api_tokens enable row level security;
 alter table profiles enable row level security;
 alter table calendar_events enable row level security;
+alter table account_reconciliations enable row level security;
 
 drop policy if exists "authenticated read accounts" on accounts;
 drop policy if exists "authenticated write accounts" on accounts;
@@ -293,3 +322,8 @@ drop policy if exists "authenticated read calendar_events" on calendar_events;
 drop policy if exists "authenticated write calendar_events" on calendar_events;
 create policy "authenticated read calendar_events" on calendar_events for select to authenticated using (true);
 create policy "authenticated write calendar_events" on calendar_events for all to authenticated using (true) with check (true);
+
+drop policy if exists "authenticated read account_reconciliations" on account_reconciliations;
+drop policy if exists "authenticated write account_reconciliations" on account_reconciliations;
+create policy "authenticated read account_reconciliations" on account_reconciliations for select to authenticated using (true);
+create policy "authenticated write account_reconciliations" on account_reconciliations for all to authenticated using (true) with check (true);

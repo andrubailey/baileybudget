@@ -28,6 +28,29 @@ export type Account = {
   // null until the first reconcile. Not touched by ordinary transaction
   // entry, since logging a transaction isn't the same as checking a balance.
   balance_checked_at: string | null;
+  // Last four digits of the real account number, shown on the Accounts list
+  // so a row can be matched against the bank app without storing the number.
+  account_mask: string | null;
+};
+
+// One hand reconciliation against a bank app. `computed_balance` and
+// `difference` are frozen at the moment of the check — recomputing them later
+// would erase the record of what was actually wrong. `adjustment_amount` moves
+// the account's balance without creating a transaction, so a reconciliation
+// never lands in Activity or in a category total.
+export type AccountReconciliation = {
+  id: string;
+  account_id: string;
+  reconciled_at: string;
+  statement_balance: number;
+  computed_balance: number;
+  difference: number;
+  adjustment_amount: number;
+  resolution: "matched" | "adjusted" | "open";
+  note: string | null;
+  created_by: string | null;
+  created_by_email: string | null;
+  created_at: string;
 };
 
 export const ACCOUNT_TYPES = [

@@ -1,52 +1,42 @@
-import { getPeriods, pickPeriod } from "@/lib/periods";
-import { getAccounts, getCategories, getSplitsByTransaction, getTransactions } from "@/lib/queries";
+import { getAccounts, getAllTransactions, getCategories } from "@/lib/queries";
+import { getHouseholdMembers } from "@/lib/profile";
+import { PageHeader } from "@/components/ui";
 import { EmptyState } from "@/app/(app)/empty-state";
-import { RecentTransactionsList } from "@/app/(app)/recent-transactions-list";
+import { ActivityList } from "./activity-list";
 
-// The mobile Recent tab — a straight, most-recent-first list for this
-// month, reusing the same row/detail-panel machinery as the desktop
-// dashboard's Recent Transactions card and the Transactions table's mobile
-// cards. Deliberately no filters, no sort, no bulk actions — those are
-// desktop's full /transactions page; this is a look-up, not a management
-// screen.
-export default async function RecentTransactionsPage() {
-  const periods = await getPeriods();
-  const period = pickPeriod(periods);
+// How far back the mobile Activity list reaches. Deep enough that "this month"
+// and "logged by" always have everything they need, shallow enough that the
+// page doesn't ship a year of rows to a phone. The full history, with real
+// searching and bulk edits, is the desktop /transactions page.
+const MAX_ROWS = 250;
 
-  if (!period) {
+// The mobile Activity tab: reverse chronological, grouped by day, tap a row to
+// fix it in place. Not scoped to a single period the way it used to be — an
+// entry logged on the 1st for the 30th of last month is exactly the kind of
+// thing this list exists to catch, and a month-bounded view hid it.
+export default async function ActivityPage() {
+  const [transactions, accounts, categories, members] = await Promise.all([
+    getAllTransactions(),
+    getAccounts(),
+    getCategories(),
+    getHouseholdMembers(),
+  ]);
+
+  if (transactions.length === 0) {
     return (
-      <p className="text-sm text-text-muted">
-        Couldn&apos;t set up this month&apos;s period automatically — try reloading the
-        page.
-      </p>
+      <>
+        <PageHeader title="Activity" />
+        <EmptyState compact message="Nothing logged yet." />
+      </>
     );
   }
 
-  const [transactions, accounts, categories] = await Promise.all([
-    getTransactions(period.id),
-    getAccounts(),
-    getCategories(),
-  ]);
-  const splitsByTransaction = await getSplitsByTransaction(
-    transactions.filter((t) => t.category_id === null).map((t) => t.id),
-  );
-
   return (
-    <div className="mx-auto max-w-md">
-      <div className="card">
-        <p className="mb-4 text-heading text-text">{period.name}</p>
-        {transactions.length === 0 ? (
-          <EmptyState compact message="Nothing logged this month yet." />
-        ) : (
-          <RecentTransactionsList
-            transactions={transactions}
-            accounts={accounts}
-            categories={categories}
-            maxRows={200}
-            splitsByTransaction={splitsByTransaction}
-          />
-        )}
-      </div>
-    </div>
+    <ActivityList
+      transactions={transactions.slice(0, MAX_ROWS)}
+      accounts={accounts}
+      categories={categories}
+      members={members}
+    />
   );
 }

@@ -8,7 +8,6 @@ import {
   findPossibleDuplicateTransactions,
   postRecurringForPeriod,
   getAccounts,
-  getAccountsWithBalances,
   getCategories,
   getTransactionHistory,
   searchAccountsAndCategories as searchAccountsAndCategoriesQuery,
@@ -20,7 +19,7 @@ import {
 } from "@/lib/queries";
 import { getPeriods, pickPeriod } from "@/lib/periods";
 import { cleanMerchantDescription } from "@/lib/merchant-name";
-import { getCurrentSession } from "@/lib/profile";
+import { getCurrentSession, getHouseholdMembers } from "@/lib/profile";
 
 // A transaction amount is only ever entered through the app's own
 // CurrencyInput (which can't produce a minus sign) or an external caller
@@ -113,61 +112,9 @@ export async function updateAccountBank(id: string, bank: string | null) {
   await supabase.from("accounts").update({ bank }).eq("id", id);
   revalidateHousehold(["accounts"]);
 }
-
-// The mobile Accounts screen's reconcile action. Balances are never stored
-// directly (always starting_balance + transaction history), so "correcting"
-// one means logging the difference as a same-day adjustment transaction
-// rather than overwriting a field — that way transaction history stays the
-// single source of truth and the adjustment shows up in the account's own
-// history like any other entry. category_id stays null (and no split rows
-// get created for it), which already keeps it out of every category/budget
-// total the same way an uncategorized transaction would. Always stamps
-// balance_checked_at, even when the entered figure matches exactly — a
-// confirmed-correct balance is worth recording too, not just a corrected one.
-export async function reconcileAccountBalance(
-  accountId: string,
-  actualBalance: number,
-): Promise<{ ok: boolean; error?: string }> {
-  const supabase = await createClient();
-
-  const [accounts, periods] = await Promise.all([getAccountsWithBalances(), getPeriods()]);
-  const account = accounts.find((a) => a.id === accountId);
-  if (!account) return { ok: false, error: "Account not found." };
-
-  const period = pickPeriod(periods);
-  const diff = Math.round((actualBalance - account.balance) * 100) / 100;
-
-  if (diff !== 0) {
-    if (!period) {
-      return { ok: false, error: "Couldn't find a period to log the adjustment in." };
-    }
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    const { error } = await supabase.from("transactions").insert({
-      kind: diff > 0 ? "income" : "expense",
-      description: "Balance adjustment",
-      amount: Math.abs(diff),
-      txn_date: new Date().toISOString().slice(0, 10),
-      account_id: accountId,
-      category_id: null,
-      period_id: period.id,
-      created_by: user?.id ?? null,
-      created_by_email: user?.email ?? null,
-    });
-    if (error) return { ok: false, error: error.message };
-  }
-
-  const { error: stampError } = await supabase
-    .from("accounts")
-    .update({ balance_checked_at: new Date().toISOString() })
-    .eq("id", accountId);
-  if (stampError) return { ok: false, error: stampError.message };
-
-  revalidateHousehold(["accounts", "transactions"]);
-  return { ok: true };
-}
-
+// Reconcile lives in app/(app)/accounts/reconcile-actions.ts now: a check is
+// kept as its own account_reconciliations row rather than plugged into the
+// transactions table as a "Balance adjustment" entry.
 export async function updateAccountGoal(id: string, goal: number | null) {
   const supabase = await createClient();
   await supabase.from("accounts").update({ goal }).eq("id", id);
@@ -575,6 +522,24 @@ async function insertRecurringRule(
     .single();
 }
 
+
+// Who logged it. Defaults to whoever is signed in; the mobile add sheet can
+// attribute an entry to the other person instead, since one of us regularly
+// logs the other's purchase. The id is checked against the household roster
+// rather than trusted from the form — flat RLS would happily write any uuid
+// into created_by, and an unrecognized one would show up as a phantom third
+// person all over Activity.
+async function resolveAuthor(
+  formData: FormData,
+): Promise<{ id: string | null; email: string | null }> {
+  const user = (await getCurrentSession())?.user ?? null;
+  const signedIn = { id: user?.id ?? null, email: user?.email ?? null };
+  const requested = String(formData.get("logged_by") ?? "");
+  if (!requested || requested === signedIn.id) return signedIn;
+  const member = (await getHouseholdMembers()).find((m) => m.id === requested);
+  return member ? { id: member.id, email: member.email } : signedIn;
+}
+
 export async function createTransaction(
   formData: FormData,
 ): Promise<{ ok: boolean; error?: string }> {
@@ -604,7 +569,7 @@ export async function createTransaction(
     return { ok: false, error: "Amount can't be negative." };
   }
 
-  const user = (await getCurrentSession())?.user ?? null;
+  const author = await resolveAuthor(formData);
 
   const { data: inserted, error } = await supabase
     .from("transactions")
@@ -618,8 +583,8 @@ export async function createTransaction(
       period_id,
       notes,
       pending_approval,
-      created_by: user?.id ?? null,
-      created_by_email: user?.email ?? null,
+      created_by: author.id,
+      created_by_email: author.email,
     })
     .select("id")
     .single();
@@ -819,7 +784,7 @@ export async function createTransfer(
     return { ok: false, error: "Missing required fields." };
   }
 
-  const user = (await getCurrentSession())?.user ?? null;
+  const author = await resolveAuthor(formData);
 
   // Every transfer is simply "Transfer" — the row already shows which two
   // accounts it moved between, so the description doesn't repeat them.
@@ -835,8 +800,8 @@ export async function createTransfer(
     category_id: null,
     period_id,
     notes,
-    created_by: user?.id ?? null,
-    created_by_email: user?.email ?? null,
+    created_by: author.id,
+    created_by_email: author.email,
   });
 
   if (error) {

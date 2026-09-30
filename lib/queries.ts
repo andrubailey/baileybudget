@@ -4,6 +4,7 @@ import { snapshotClient } from "@/lib/snapshot";
 import { getPeriods, pickPeriod } from "@/lib/periods";
 import type {
   Account,
+  AccountReconciliation,
   BudgetLine,
   CalendarEvent,
   Category,
@@ -197,10 +198,57 @@ const fetchAllTransactionRows = cache(async (): Promise<
   return rows;
 });
 
+// A reconciliation adjustment moves an account's balance without being a
+// transaction (see supabase/035_account_reconciliations.sql) — reconciling
+// isn't spending, so it must stay out of Activity and out of every category
+// total. The trade-off is that balances are no longer purely
+// transaction-derived: every balance calculation has to fold these in, or the
+// gap someone explicitly resolved would silently reopen.
+export type AdjustmentEvent = {
+  accountId: string;
+  // Date the reconcile happened, so balance-over-time charts place it on the
+  // day it was actually recorded rather than at the start of history.
+  date: string;
+  amount: number;
+};
+
+const fetchAdjustmentEvents = cache(async (): Promise<AdjustmentEvent[]> => {
+  const { data } = await snapshotClient()
+    .from("account_reconciliations")
+    .select("account_id, reconciled_at, adjustment_amount");
+  return (data ?? [])
+    .map((r) => ({
+      accountId: r.account_id as string,
+      date: String(r.reconciled_at).slice(0, 10),
+      amount: Number(r.adjustment_amount ?? 0),
+    }))
+    .filter((a) => a.amount !== 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
+});
+
+// Running sum of adjustments on or before `throughIso`, as a delta to apply
+// to whatever the transaction walk produced. `sign` maps an account's own
+// balance movement onto the total being accumulated: net-worth totals treat a
+// debt account's balance as a liability, debt-only totals treat it as the
+// figure itself.
+function adjustmentsThrough(
+  events: AdjustmentEvent[],
+  throughIso: string,
+  sign: (accountId: string) => number,
+): number {
+  let total = 0;
+  for (const e of events) {
+    if (e.date > throughIso) break;
+    total += sign(e.accountId) * e.amount;
+  }
+  return total;
+}
+
 export async function getAccountsWithBalances(): Promise<AccountWithBalance[]> {
-  const [accounts, transactions] = await Promise.all([
+  const [accounts, transactions, adjustments] = await Promise.all([
     getAllAccountsRaw(),
     fetchAllTransactionRows(),
+    fetchAdjustmentEvents(),
   ]);
 
   // A debt account's `balance` means "amount currently owed," not cash on
@@ -242,9 +290,20 @@ export async function getAccountsWithBalances(): Promise<AccountWithBalance[]> {
     );
   }
 
+  const adjustmentByAccount = new Map<string, number>();
+  for (const a of adjustments) {
+    adjustmentByAccount.set(
+      a.accountId,
+      (adjustmentByAccount.get(a.accountId) ?? 0) + a.amount,
+    );
+  }
+
   return (accounts ?? []).map((a) => ({
     ...a,
-    balance: a.starting_balance + (deltaByAccount.get(a.id) ?? 0),
+    balance:
+      a.starting_balance +
+      (deltaByAccount.get(a.id) ?? 0) +
+      (adjustmentByAccount.get(a.id) ?? 0),
   }));
 }
 
@@ -886,14 +945,16 @@ export async function getPlannedTotalsByPeriod(
 // doesn't move total household net worth.
 export async function getDebtBalanceHistory(): Promise<NetWorthPoint[]> {
   const supabase = snapshotClient();
-  const [accounts, { data: periods }, transactions] = await Promise.all([
-    getAllAccountsRaw(),
-    supabase
-      .from("periods")
-      .select("*")
-      .order("start_date", { ascending: true }),
-    fetchAllTransactionRows(),
-  ]);
+  const [accounts, { data: periods }, transactions, adjustments] =
+    await Promise.all([
+      getAllAccountsRaw(),
+      supabase
+        .from("periods")
+        .select("*")
+        .order("start_date", { ascending: true }),
+      fetchAllTransactionRows(),
+      fetchAdjustmentEvents(),
+    ]);
 
   const debtAccountIds = new Set(
     accounts.filter((a) => a.is_debt).map((a) => a.id),
@@ -947,7 +1008,13 @@ export async function getDebtBalanceHistory(): Promise<NetWorthPoint[]> {
       }
       txnIndex += 1;
     }
-    const total = [...balanceByAccount.values()].reduce((sum, v) => sum + v, 0);
+    // Here the accumulated figure IS the amount owed, so an adjustment
+    // applies with its own sign — and only for the debt accounts in the map.
+    const total =
+      [...balanceByAccount.values()].reduce((sum, v) => sum + v, 0) +
+      adjustmentsThrough(adjustments, period.end_date, (id) =>
+        debtAccountIds.has(id) ? 1 : 0,
+      );
     points.push({
       periodId: period.id,
       periodName: period.name,
@@ -1412,14 +1479,16 @@ export type NetWorthPoint = {
 // oldest first, for a balance-over-time chart.
 export async function getNetWorthHistory(): Promise<NetWorthPoint[]> {
   const supabase = snapshotClient();
-  const [accounts, { data: periods }, transactions] = await Promise.all([
-    getAllAccountsRaw(),
-    supabase
-      .from("periods")
-      .select("*")
-      .order("start_date", { ascending: true }),
-    fetchAllTransactionRows(),
-  ]);
+  const [accounts, { data: periods }, transactions, adjustments] =
+    await Promise.all([
+      getAllAccountsRaw(),
+      supabase
+        .from("periods")
+        .select("*")
+        .order("start_date", { ascending: true }),
+      fetchAllTransactionRows(),
+      fetchAdjustmentEvents(),
+    ]);
 
   // Active-only, matching how the dashboard's "Net Worth" figure this
   // feeds a trend comparison for is computed — otherwise a deactivated
@@ -1446,6 +1515,15 @@ export async function getNetWorthHistory(): Promise<NetWorthPoint[]> {
       (sum, a) => sum + (a.is_debt ? -a.starting_balance : a.starting_balance),
       0,
     );
+  // A reconciliation adjustment moves the account's own balance; for a net
+  // worth total that means the opposite direction on a debt account, and
+  // nothing at all for an inactive one (whose history is excluded above).
+  const netWorthAdjustmentSign = (accountId: string) =>
+    !activeAccountIds.has(accountId)
+      ? 0
+      : debtAccountIds.has(accountId)
+        ? -1
+        : 1;
   const sorted = transactions
     .filter((t) => t.account_id !== null && activeAccountIds.has(t.account_id))
     .slice()
@@ -1474,7 +1552,9 @@ export async function getNetWorthHistory(): Promise<NetWorthPoint[]> {
       periodId: period.id,
       periodName: period.name,
       endDate: period.end_date,
-      netWorth: runningTotal,
+      netWorth:
+        runningTotal +
+        adjustmentsThrough(adjustments, period.end_date, netWorthAdjustmentSign),
     });
   }
 
@@ -1486,9 +1566,10 @@ export type BalancePoint = { date: string; balance: number };
 // Daily running total balance across every account for the last `days` days
 // (today inclusive), for a small balance-over-time sparkline.
 export async function getBalanceHistory(days: number): Promise<BalancePoint[]> {
-  const [accounts, transactions] = await Promise.all([
+  const [accounts, transactions, adjustments] = await Promise.all([
     getAllAccountsRaw(),
     fetchAllTransactionRows(),
+    fetchAdjustmentEvents(),
   ]);
 
   // Match the "Net Worth" figure this graphs — activeAccounts only, so
@@ -1511,6 +1592,15 @@ export async function getBalanceHistory(days: number): Promise<BalancePoint[]> {
       (sum, a) => sum + (a.is_debt ? -a.starting_balance : a.starting_balance),
       0,
     );
+  // A reconciliation adjustment moves the account's own balance; for a net
+  // worth total that means the opposite direction on a debt account, and
+  // nothing at all for an inactive one (whose history is excluded above).
+  const netWorthAdjustmentSign = (accountId: string) =>
+    !activeAccountIds.has(accountId)
+      ? 0
+      : debtAccountIds.has(accountId)
+        ? -1
+        : 1;
   const sorted = transactions
     .filter((t) => t.account_id !== null && activeAccountIds.has(t.account_id))
     .slice()
@@ -1544,7 +1634,12 @@ export async function getBalanceHistory(days: number): Promise<BalancePoint[]> {
       else if (t.kind === "expense") runningTotal += isDebt ? t.amount : -t.amount;
       txnIndex += 1;
     }
-    points.push({ date: iso, balance: runningTotal });
+    points.push({
+      date: iso,
+      balance:
+        runningTotal +
+        adjustmentsThrough(adjustments, iso, netWorthAdjustmentSign),
+    });
   }
 
   return points;
@@ -2030,4 +2125,120 @@ export async function getUndeclaredRecurring(): Promise<UndeclaredRecurringGroup
   }
 
   return results.sort((a, b) => b.occurrenceCount - a.occurrenceCount);
+}
+
+// ---------------------------------------------------------------------------
+// Reconciliation
+// ---------------------------------------------------------------------------
+
+// One account's reconcile history, newest first — the reconcile sheet shows
+// the last check ("confirmed 3 days ago") and the notes on any past gaps.
+export async function getReconciliationsForAccount(
+  accountId: string,
+  limit = 12,
+): Promise<AccountReconciliation[]> {
+  const { data } = await snapshotClient()
+    .from("account_reconciliations")
+    .select("*")
+    .eq("account_id", accountId)
+    .order("reconciled_at", { ascending: false })
+    .limit(limit);
+  return (data ?? []) as AccountReconciliation[];
+}
+
+// Latest reconcile per account, for the Accounts list's freshness stamps.
+// Read from the whole-table snapshot and reduced in memory, like the rest of
+// this file's aggregations — a 2-person household's reconcile log stays tiny.
+export async function getLatestReconciliationByAccount(): Promise<
+  Map<string, AccountReconciliation>
+> {
+  const { data } = await snapshotClient()
+    .from("account_reconciliations")
+    .select("*")
+    .order("reconciled_at", { ascending: false });
+  const latest = new Map<string, AccountReconciliation>();
+  for (const row of (data ?? []) as AccountReconciliation[]) {
+    if (!latest.has(row.account_id)) latest.set(row.account_id, row);
+  }
+  return latest;
+}
+
+// The window to hunt through when the entered balance doesn't match: every
+// transaction touching this account since the last reconcile. Either leg of a
+// transfer counts, and an entry logged late (created after the reconcile but
+// dated before it) is included too — that's exactly the kind of row that
+// causes the gap in the first place.
+export async function getTransactionsSinceReconcile(
+  accountId: string,
+  since: { date: string; at: string } | null,
+  limit = 60,
+): Promise<Transaction[]> {
+  const all = await getAllTransactions();
+  return all
+    .filter((t) => t.account_id === accountId || t.to_account_id === accountId)
+    .filter(
+      (t) =>
+        !since || t.txn_date >= since.date || t.created_at > since.at,
+    )
+    .slice(0, limit);
+}
+
+export type MerchantSuggestion = {
+  description: string;
+  categoryId: string | null;
+  accountId: string | null;
+  lastAmount: number;
+  count: number;
+};
+
+// One-tap chips for the add sheet. Most entries repeat, so ranking by how
+// often a merchant has been used recently beats an alphabetical list: score
+// is the number of uses in the last 120 days, with the most recent use
+// breaking ties. Each suggestion carries the category and account that
+// merchant landed in most recently, so tapping a chip fills all three.
+export async function getFrequentMerchants(
+  limit = 8,
+): Promise<MerchantSuggestion[]> {
+  const all = await getAllTransactions();
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 120);
+  const cutoffIso = cutoff.toISOString().slice(0, 10);
+
+  const byName = new Map<
+    string,
+    MerchantSuggestion & { lastDate: string }
+  >();
+  // getAllTransactions() is already newest-first, so the first sighting of a
+  // name is its most recent one — that's the category/account/amount to keep.
+  for (const t of all) {
+    if (t.kind !== "expense") continue;
+    if (t.txn_date < cutoffIso) continue;
+    const name = t.description.trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    const existing = byName.get(key);
+    if (existing) {
+      existing.count += 1;
+      continue;
+    }
+    byName.set(key, {
+      description: name,
+      categoryId: t.category_id,
+      accountId: t.account_id,
+      lastAmount: t.amount,
+      count: 1,
+      lastDate: t.txn_date,
+    });
+  }
+
+  return [...byName.values()]
+    .sort((a, b) => b.count - a.count || b.lastDate.localeCompare(a.lastDate))
+    .slice(0, limit)
+    .map((m) => ({
+      description: m.description,
+      categoryId: m.categoryId,
+      accountId: m.accountId,
+      lastAmount: m.lastAmount,
+      count: m.count,
+    }));
 }
