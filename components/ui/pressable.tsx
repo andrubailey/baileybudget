@@ -9,12 +9,15 @@ export function Pressable({
   className = "",
   children,
   ariaLabel,
+  hasPopup,
 }: {
   href?: string;
   onPress?: () => void;
   className?: string;
   children: React.ReactNode;
   ariaLabel?: string;
+  // Set when pressing opens a dialog/sheet, so screen readers announce it.
+  hasPopup?: "dialog";
 }) {
   if (href) {
     return (
@@ -25,7 +28,13 @@ export function Pressable({
   }
   if (onPress) {
     return (
-      <button type="button" onClick={onPress} aria-label={ariaLabel} className={`ui-pressable text-left ${className}`}>
+      <button
+        type="button"
+        onClick={onPress}
+        aria-label={ariaLabel}
+        aria-haspopup={hasPopup}
+        className={`ui-pressable text-left ${className}`}
+      >
         {children}
       </button>
     );

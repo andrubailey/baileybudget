@@ -1,74 +1,43 @@
 "use client";
 
 import { useState } from "react";
-import { Money } from "@/app/(app)/money";
+import { ProgressRow } from "@/components/ui";
 import { CategoryChip } from "@/app/(app)/category-chip";
-import { SegmentedProgress } from "@/app/(app)/segmented-progress";
 import { CategoryDetailPanel } from "@/app/(app)/category-detail-panel";
 import type { CategoryProgress } from "@/lib/queries";
 
-// One row: colored category icon + name, a thin progress bar, "$actual of
-// $of" right-aligned. `of` is the row's own denominator — the category's
-// planned amount on the Budget tab, or the tab's running total on Expenses/
-// Income (where "planned" doesn't mean anything), so the row always reads
-// as "how much of this bucket did this category account for."
+// A Money category row: tap opens the same detail panel (edit plan, see
+// transactions) the desktop budget uses.
 export function BudgetCategoryRow({
-  id,
-  name,
-  icon,
-  actual,
-  of,
-  overBudget = false,
-  index = 0,
-  detail,
+  category,
+  caption,
   editablePeriodId,
+  plannedLocked,
 }: {
-  id: string;
-  name: string;
-  icon: string | null;
-  actual: number;
-  of: number;
-  overBudget?: boolean;
-  index?: number;
-  // Full CategoryProgress backs the tap-to-open detail panel — only present
-  // on the Budget/Expenses tabs, which have real planned/remaining figures.
-  // Income rows (no planned concept) render read-only.
-  detail?: CategoryProgress;
-  editablePeriodId?: string | null;
+  category: CategoryProgress;
+  caption: string | null;
+  editablePeriodId: string;
+  plannedLocked: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const pct = of > 0 ? Math.min(100, (actual / of) * 100) : actual > 0 ? 100 : 0;
-
-  // Padding goes on whichever element is the list item: when the row is
-  // wrapped in a button, the inner div is its button's only child, so
-  // first:/last: on it would zero the padding on every row.
-  const itemSpacing = "px-3 py-4 first:pt-1 last:pb-1";
-  const row = (
-    <div
-      style={{ animationDelay: `${index * 12}ms` }}
-      className={`animate-fade-in-up flex flex-col gap-3 ${detail ? "" : itemSpacing}`}
-    >
-      <div className="flex items-center justify-between gap-3">
-        <CategoryChip id={id} name={name} icon={icon} className="min-w-0 flex-1" />
-        <span className="tabular shrink-0 text-sm font-medium whitespace-nowrap text-text-muted">
-          <Money amount={actual} className="text-text" /> of <Money amount={of} />
-        </span>
-      </div>
-      <SegmentedProgress pct={pct} overBudget={overBudget} className="w-full" />
-    </div>
-  );
-
-  if (!detail) return row;
-
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className={`block w-full text-left ${itemSpacing}`}>
-        {row}
-      </button>
+      <ProgressRow
+        icon={<CategoryChip id={category.id} name={category.name} icon={category.icon} showName={false} />}
+        name={category.name}
+        spent={category.actual}
+        limit={category.planned}
+        caption={caption}
+        // Calm by default: the bar only turns caution once actually over.
+        tone={category.overBudget ? "caution" : "positive"}
+        onPress={() => setOpen(true)}
+        hasPopup="dialog"
+      />
       {open && (
         <CategoryDetailPanel
-          category={detail}
-          editablePeriodId={editablePeriodId ?? null}
+          category={category}
+          editablePeriodId={editablePeriodId}
+          plannedLocked={plannedLocked}
           onClose={() => setOpen(false)}
         />
       )}

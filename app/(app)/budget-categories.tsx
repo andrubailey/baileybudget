@@ -90,10 +90,14 @@ export function BudgetCategoriesCard({
   rangeIsSinglePeriod,
   limit,
   pace,
+  plannedLocked = false,
 }: {
   categoryProgress: CategoryProgress[];
   editablePeriodId: string | null;
   rangeIsSinglePeriod: boolean;
+  // The month's plan is locked: planned amounts show read-only here and can
+  // only change through an override on the Budget page.
+  plannedLocked?: boolean;
   // Optionally caps how many rows render, for a context that wants this
   // card to match a sibling panel's height instead of listing every
   // budgeted category.
@@ -139,7 +143,7 @@ export function BudgetCategoriesCard({
   // has ever created, alphabetical so it reads as a scannable list instead
   // of reshuffling by activity every time a number changes.
   const sorted = [...categoryProgress]
-    .filter((c) => c.planned !== 0 || c.actual !== 0)
+    .filter((c) => !c.exclude_from_budget && (c.planned !== 0 || c.actual !== 0))
     .sort((a, b) => a.name.localeCompare(b.name));
   const visible = limit ? sorted.slice(0, limit) : sorted;
   // Total planned is across every budgeted category this month, not just
@@ -194,6 +198,7 @@ export function BudgetCategoriesCard({
                 key={c.id}
                 category={c}
                 editablePeriodId={editablePeriodId}
+                plannedLocked={plannedLocked}
                 index={i}
                 pace={pace}
                 onOpen={() => setDetailId(c.id)}
@@ -231,6 +236,7 @@ export function BudgetCategoriesCard({
                     key={c.id}
                     category={c}
                     editablePeriodId={editablePeriodId}
+                    plannedLocked={plannedLocked}
                     index={i}
                     pace={pace}
                     onOpen={() => setDetailId(c.id)}
@@ -249,6 +255,7 @@ export function BudgetCategoriesCard({
           key={detailCategory.id}
           category={detailCategory}
           editablePeriodId={editablePeriodId}
+          plannedLocked={plannedLocked}
           onClose={() => setDetailId(null)}
         />
       )}
@@ -259,6 +266,7 @@ export function BudgetCategoriesCard({
 function MobileCategoryCard({
   category: c,
   editablePeriodId,
+  plannedLocked = false,
   index = 0,
   pace,
   onOpen,
@@ -266,6 +274,7 @@ function MobileCategoryCard({
 }: {
   category: CategoryProgress;
   editablePeriodId: string | null;
+  plannedLocked?: boolean;
   index?: number;
   pace?: { daysElapsed: number; daysTotal: number } | null;
   onOpen: () => void;
@@ -338,7 +347,7 @@ function MobileCategoryCard({
       <div className="mt-2 flex items-center justify-between gap-2">
         <span className="flex items-center gap-1.5 text-xs text-text-faint">
           Planned
-          {editablePeriodId ? (
+          {editablePeriodId && !plannedLocked ? (
             <label className="relative" onClick={(e) => e.stopPropagation()}>
               <span className="pointer-events-none absolute top-1/2 left-1.5 -translate-y-1/2 text-xs text-text-faint">
                 $
@@ -370,7 +379,7 @@ function MobileCategoryCard({
             className="text-xs font-medium"
           />
         </span>
-        {editablePeriodId && <SavedCheck show={saved} />}
+        {editablePeriodId && !plannedLocked && <SavedCheck show={saved} />}
       </div>
       {!isUnbudgeted && <SegmentedProgress pct={pct} overBudget={c.overBudget} className="mt-2 w-full" />}
       {caption && (
@@ -383,6 +392,7 @@ function MobileCategoryCard({
 function CategoryRow({
   category: c,
   editablePeriodId,
+  plannedLocked = false,
   index = 0,
   pace,
   onOpen,
@@ -390,6 +400,7 @@ function CategoryRow({
 }: {
   category: CategoryProgress;
   editablePeriodId: string | null;
+  plannedLocked?: boolean;
   index?: number;
   pace?: { daysElapsed: number; daysTotal: number } | null;
   onOpen: () => void;
@@ -464,7 +475,7 @@ function CategoryRow({
         <CategoryChip id={c.id} name={c.name} icon={c.icon} />
       </td>
       <td className="px-4 py-3 text-right">
-        {editablePeriodId ? (
+        {editablePeriodId && !plannedLocked ? (
           // The checkmark floats outside the input's box (absolute, not in
           // flow) so it never reserves space and shifts the input off the
           // column's own right edge.

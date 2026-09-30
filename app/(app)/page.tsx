@@ -29,6 +29,10 @@ import { AccountsGlanceCard } from "@/app/(app)/accounts-glance-card";
 import { CooliconPaths } from "@/app/(app)/coolicon";
 import { GoalsCard } from "@/app/(app)/goals-card";
 import { TodayCard } from "@/app/(app)/today-card";
+import { MobileHome } from "@/app/(app)/home/mobile-home";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = { title: "Overview" };
 
 type Trend = { pct: number; good: boolean } | null;
 
@@ -202,10 +206,9 @@ export default async function DashboardPage({
 
   return (
     <div className="min-w-0 space-y-6">
-      {/* Desktop-only — mobile has its own Overview tab (below) that's just
-          the four cards and nothing else; the greeting/New-transaction row
-          and the rest of this dashboard are reachable there via the other
-          mobile tabs (Budget, Accounts, Add) instead. */}
+      {/* Phones get MobileHome instead of everything else on this page; the
+          desktop dashboard's other cards live on their own mobile tabs or
+          stay desktop-only (calendar is reachable at /calendar). */}
       <div className="hidden lg:flex lg:items-start lg:justify-between lg:gap-4">
         <GreetingHeader firstName={firstName} />
         <div className="flex shrink-0 items-center gap-3">
@@ -223,15 +226,16 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      {/* The mobile Overview tab is just this: the four headline cards,
-          stacked. Same cards feed the desktop dashboard's own five-column
-          row below at lg+ (Net Worth spans 2), so nothing here is
-          duplicated — this is the only place they render. */}
-      {/* Main content + the Accounts/Goals rail on the right, which starts
-          level with the metric cards (the top row). The rail is a true side
-          column only at xl+ — below that there's no room for a third column
-          next to the metric cards, so it drops to full width below instead. */}
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_260px] xl:items-start">
+      <div className="lg:hidden">
+        <MobileHome fallbackName={firstName} />
+      </div>
+
+      {/* Desktop dashboard. Main content + the Accounts/Goals rail on the
+          right, which starts level with the metric cards (the top row). The
+          rail is a true side column only at xl+ — below that there's no room
+          for a third column next to the metric cards, so it drops to full
+          width below instead. */}
+      <div className="hidden grid-cols-1 gap-6 lg:grid xl:grid-cols-[minmax(0,1fr)_260px] xl:items-start">
         <div className="min-w-0 space-y-6">
       <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:gap-4 2xl:grid-cols-5">
         <MetricCard
@@ -324,16 +328,8 @@ export default async function DashboardPage({
             />
           </div>
 
-          {/* The one deliberate exception to "mobile Overview is just the
-              four cards above" — the shared calendar has no mobile tab of
-              its own (Budget/Accounts/Recent already fill the tab bar), so
-              this is how a phone actually reaches it. */}
           <TodayCard events={calendarEvents} />
 
-          {/* Everything below is desktop-only — mobile's Overview tab is
-              just the four cards and this one, nothing else; Budget/Recent
-              Transactions/Accounts/Goals each live on their own dedicated
-              mobile tab instead. */}
             <div className="hidden min-w-0 lg:block">
               {/* Budget categories + recent transactions, side by side. Budget
                   dictates the pair's height (its own natural content size);
@@ -346,6 +342,7 @@ export default async function DashboardPage({
                     categoryProgress={categoryProgress}
                     editablePeriodId={editablePeriod?.id ?? null}
                     rangeIsSinglePeriod={Boolean(editablePeriod)}
+                    plannedLocked={Boolean(editablePeriod?.budget_locked_at)}
                   />
                 }
                 recent={

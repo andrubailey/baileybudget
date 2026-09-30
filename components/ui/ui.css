@@ -1,0 +1,324 @@
+/* Styles for components/ui — every value comes from app/tokens.css. */
+
+/* ---------- Type roles ---------- */
+.ui-display {
+  font-size: var(--text-display);
+  line-height: 1.05;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+.ui-display-cents {
+  font-size: 0.55em;
+  letter-spacing: -0.01em;
+}
+.ui-title {
+  font-size: var(--text-title);
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+.ui-body {
+  font-size: var(--text-body);
+  line-height: 1.4;
+}
+.ui-label {
+  font-size: var(--text-label);
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.ui-caption {
+  font-size: var(--text-caption);
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+.ui-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Screen ---------- */
+/* Every page's frame. Owns all four safe-area edges and the bottom
+   clearance for the home indicator + fixed bottom nav, so no page ever
+   pads its own bottom. */
+.ui-screen {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+  min-height: 100dvh;
+  padding-top: calc(env(safe-area-inset-top) + var(--space-6));
+  padding-right: calc(env(safe-area-inset-right) + var(--space-4));
+  padding-bottom: var(--screen-bottom-clearance);
+  padding-left: calc(env(safe-area-inset-left) + var(--space-4));
+}
+@media (min-width: 640px) {
+  .ui-screen {
+    padding-right: calc(env(safe-area-inset-right) + var(--space-6));
+    padding-left: calc(env(safe-area-inset-left) + var(--space-6));
+  }
+}
+/* Desktop has no bottom nav — the sidebar dock owns navigation. */
+@media (min-width: 1024px) {
+  .ui-screen {
+    padding: 4rem var(--space-7) 8rem;
+  }
+}
+
+/* Banners that sit above <Screen> clear the status bar themselves, but
+   only while they actually render something. */
+.ui-shell-top {
+  padding-top: env(safe-area-inset-top);
+}
+.ui-shell-top:empty {
+  display: none;
+}
+@media (min-width: 1024px) {
+  .ui-shell-top {
+    padding-top: 0;
+  }
+}
+
+/* ---------- Press feedback ---------- */
+/* Fires on press (:active), not release. iOS only applies :active when
+   the page has a touch listener — <BottomNav> registers one. */
+.ui-pressable {
+  transition: transform var(--duration-fast) var(--ease-out), opacity var(--duration-fast) var(--ease-out);
+  -webkit-tap-highlight-color: transparent;
+}
+.ui-pressable:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* ---------- Enter ---------- */
+/* For anything that appears after first paint. Transform + opacity only,
+   so it never moves surrounding layout. */
+@keyframes ui-enter {
+  from {
+    opacity: 0;
+    transform: translateY(var(--space-1));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.ui-enter {
+  animation: ui-enter var(--duration-base) var(--ease-out) both;
+}
+
+/* ---------- Progress bar ---------- */
+.ui-progress-track {
+  position: relative;
+  height: var(--space-1);
+  width: 100%;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--border-subtle);
+}
+.ui-progress-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-pill);
+  transform-origin: left center;
+  transition: transform var(--duration-slow) var(--ease-out);
+}
+
+/* ---------- Bottom nav ---------- */
+.ui-bottom-nav {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  padding: 0 calc(env(safe-area-inset-right) + var(--space-4))
+    calc(env(safe-area-inset-bottom) + var(--bottom-nav-gap)) calc(env(safe-area-inset-left) + var(--space-4));
+  pointer-events: none;
+  transition: transform var(--duration-base) var(--ease-out), opacity var(--duration-base) var(--ease-out);
+}
+.ui-bottom-nav[data-hidden="true"] {
+  opacity: 0;
+  transform: translateY(var(--space-4));
+}
+.ui-bottom-nav > * {
+  pointer-events: auto;
+}
+.ui-bottom-nav[data-hidden="true"] > * {
+  pointer-events: none;
+}
+@media (min-width: 1024px) {
+  .ui-bottom-nav {
+    display: none;
+  }
+}
+.ui-bottom-nav-tabs {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(4, 1fr);
+  height: var(--bottom-nav-height);
+  padding: var(--space-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--bg-card);
+  box-shadow: 0 8px 24px -12px rgb(16 24 40 / 0.25);
+}
+.ui-bottom-nav-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  color: var(--text-tertiary);
+  transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+.ui-bottom-nav-tab[aria-current="page"] {
+  background: var(--bg-card-subtle);
+  color: var(--text-primary);
+}
+.ui-bottom-nav-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  height: var(--bottom-nav-height);
+  padding: var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--text-primary);
+  color: var(--bg-card);
+  box-shadow: 0 8px 24px -12px rgb(16 24 40 / 0.35);
+}
+.ui-bottom-nav-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--bottom-nav-height) - 2 * var(--space-1));
+  height: 100%;
+  border-radius: var(--radius-pill);
+  color: inherit;
+}
+.ui-bottom-nav-action:disabled {
+  opacity: 0.4;
+}
+
+/* ---------- Sheet ---------- */
+.ui-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgb(0 0 0 / 0.4);
+  opacity: 0;
+  transition: opacity var(--duration-base) var(--ease-in);
+}
+.ui-sheet-backdrop[data-state="open"] {
+  opacity: 1;
+  transition: opacity var(--duration-slow) var(--ease-out);
+}
+.ui-sheet {
+  position: fixed;
+  inset-inline: 0;
+  bottom: var(--keyboard-inset);
+  z-index: 61;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - var(--keyboard-inset) - env(safe-area-inset-top) - var(--space-4));
+  margin-inline: auto;
+  max-width: 40rem;
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  box-shadow: 0 -8px 32px -12px rgb(16 24 40 / 0.3);
+  transform: translateY(100%);
+  transition: transform var(--duration-base) var(--ease-in);
+  outline: none;
+}
+.ui-sheet[data-state="open"] {
+  transform: translateY(var(--sheet-drag, 0px));
+  transition: transform var(--duration-slow) var(--ease-out), opacity var(--duration-base) var(--ease-out);
+}
+.ui-sheet[data-dragging="true"] {
+  transition: none;
+}
+/* Entry: the sheet mounts already "open"; these are the values it
+   transitions in from. */
+@starting-style {
+  .ui-sheet[data-state="open"] {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  .ui-sheet-backdrop[data-state="open"] {
+    opacity: 0;
+  }
+}
+.ui-sheet[data-state="open"] {
+  opacity: 1;
+}
+.ui-sheet[data-state="closed"] {
+  opacity: 0;
+  transition: transform var(--duration-base) var(--ease-in), opacity var(--duration-base) var(--ease-in);
+}
+.ui-sheet-handle {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-2) 0 var(--space-1);
+  touch-action: none;
+  cursor: grab;
+}
+.ui-sheet-handle::before {
+  content: "";
+  width: 36px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--border-subtle);
+}
+.ui-sheet-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 var(--space-4) var(--space-4);
+}
+.ui-sheet-footer {
+  flex: none;
+  padding: var(--space-3) var(--space-4) calc(env(safe-area-inset-bottom) + var(--space-3));
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+}
+/* The keyboard covers the home indicator, so its inset isn't needed. */
+.ui-sheet[data-keyboard="true"] .ui-sheet-footer {
+  padding-bottom: var(--space-3);
+}
+.ui-sheet[data-keyboard="true"] .ui-sheet-body:last-child {
+  padding-bottom: var(--space-4);
+}
+.ui-sheet-body:last-child {
+  padding-bottom: calc(env(safe-area-inset-bottom) + var(--space-4));
+}
+
+/* Reduced motion: fade instead of slide. */
+@media (prefers-reduced-motion: reduce) {
+  .ui-sheet,
+  .ui-sheet[data-state="open"] {
+    transform: none;
+    opacity: 0;
+  }
+  .ui-sheet[data-state="open"] {
+    opacity: 1;
+  }
+  .ui-pressable:active:not(:disabled) {
+    transform: none;
+    opacity: 0.7;
+  }
+  .ui-enter {
+    animation-name: none;
+  }
+  .ui-bottom-nav[data-hidden="true"] {
+    transform: none;
+  }
+}

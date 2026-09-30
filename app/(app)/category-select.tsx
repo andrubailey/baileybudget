@@ -74,6 +74,7 @@ export function CategorySelect({
         group_name: null,
         icon: null,
         is_active: true,
+        exclude_from_budget: false,
         created_at: new Date().toISOString(),
       },
     ]);

@@ -26,6 +26,19 @@ export const getCurrentUserProfile = cache(async (userId: string) => {
   return data as { display_name: string | null; avatar_url: string | null } | null;
 });
 
+// Every household member's display name, for headers that address both of
+// us rather than whoever happens to be signed in. RLS already lets any
+// authenticated user read all profiles.
+export const getHouseholdNames = cache(async (): Promise<string[]> => {
+  const { data } = await snapshotClient()
+    .from("profiles")
+    .select("display_name")
+    .order("display_name", { ascending: true });
+  return (data ?? [])
+    .map((p) => (p.display_name as string | null)?.trim())
+    .filter((n): n is string => Boolean(n));
+});
+
 export type HouseholdMember = {
   id: string;
   displayName: string | null;

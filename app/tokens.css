@@ -1,0 +1,78 @@
+/* ============================================================
+   DESIGN TOKENS — the mobile shell's contract (see docs/mobile-shell.md).
+   Page and feature code should reach for these instead of raw values.
+   Colors alias the palette in globals.css, so dark mode follows along.
+   ============================================================ */
+:root {
+  /* Spacing — 4px base. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 48px;
+
+  /* Radius */
+  --radius-card: 20px;
+  --radius-pill: 999px;
+  --radius-field: 12px;
+
+  /* Color */
+  --bg-page: var(--bg);
+  --bg-card: var(--surface);
+  --bg-card-subtle: #e9ece6;
+  --text-primary: var(--text);
+  --text-secondary: var(--text-muted);
+  --text-tertiary: var(--text-faint);
+  --accent-positive: var(--positive);
+  --accent-caution: var(--caution);
+  --border-subtle: var(--border);
+
+  /* Type — sizes only; weight, leading and tracking live with each role
+     in components/ui/ui.css. --tracking-label is an addition the label
+     role needs to be "letterspaced". */
+  --text-display: 2.75rem;
+  --text-title: 1.75rem;
+  --text-body: 1rem;
+  --text-label: 0.6875rem;
+  --text-caption: 0.8125rem;
+  --tracking-label: 0.08em;
+
+  /* Motion — nothing ordinary runs longer than --duration-slow, and
+     neither curve overshoots (no bounce). */
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 280ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+
+  /* Shell geometry (derived — see <Screen> and <BottomNav>). */
+  --bottom-nav-height: 56px;
+  --bottom-nav-gap: var(--space-2);
+  --screen-bottom-clearance: calc(
+    env(safe-area-inset-bottom) + var(--bottom-nav-gap) + var(--bottom-nav-height) + var(--space-6)
+  );
+  /* Set by <Sheet> from useKeyboardInset(); 0 when no keyboard is open. */
+  --keyboard-inset: 0px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg-card-subtle: #1f2d28;
+  }
+}
+:root[data-theme="dark"] {
+  --bg-card-subtle: #1f2d28;
+}
+
+/* Reduced motion: durations collapse, so every token-driven transition
+   becomes an instant state change instead of movement. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 1ms;
+    --duration-base: 1ms;
+    --duration-slow: 1ms;
+  }
+}

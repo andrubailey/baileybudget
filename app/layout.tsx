@@ -8,7 +8,12 @@ const geist = Geist({
 });
 
 export const metadata: Metadata = {
-  title: "Bailey Budget",
+  // Pages set their own title ("Budget") so tabs, history and the screen
+  // reader's page announcement can tell them apart (WCAG 2.4.2).
+  title: {
+    template: "%s · Bailey Budget",
+    default: "Bailey Budget",
+  },
   description: "Shared household budget",
   manifest: "/manifest.json",
   appleWebApp: {

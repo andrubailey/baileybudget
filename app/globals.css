@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "./tokens.css";
+@import "../components/ui/ui.css";
 
 :root {
   --bg: #f3f4f2;
@@ -145,9 +147,7 @@
                 drawing itself in) is the one deliberate exception, and
                 is called out as such at its own definition below. */
   --duration-instant: 100ms;
-  --duration-fast: 150ms;
-  --duration-base: 200ms;
-  --duration-slow: 300ms;
+  /* --duration-fast / -base / -slow are defined in tokens.css. */
 
   /* ============================================================
      SAFE-AREA / MOBILE LAYOUT — one shared answer to "how much
@@ -159,7 +159,7 @@
      section fixes.
 
      --mobile-tabbar-h is the floating tab bar's own content height
-     (see MobileTabBar) — a fixed, device-independent constant, not
+     (see BottomNav in components/ui) — a fixed, device-independent constant, not
      a safe-area value: it's the same physical size on every phone,
      only the home-indicator inset beneath it changes device to
      device. Keep this in sync with that component's sizing.
@@ -176,12 +176,12 @@
      plus the tab bar's own height and its own bottom gap, so the
      last row of any list actually clears the tappable bar above it
      rather than sitting half-hidden beneath it. */
-  --mobile-tabbar-h: 4rem;
-  --mobile-tabbar-gap: 0.5rem;
-  --safe-bottom: calc(env(safe-area-inset-bottom) + 1.25rem);
-  --content-bottom-safe: calc(
-    env(safe-area-inset-bottom) + var(--mobile-tabbar-h) + var(--mobile-tabbar-gap) + 1.25rem
-  );
+  /* Aliases onto the shell tokens in tokens.css, kept for the drawers and
+     chat sheet that already read these names. */
+  --mobile-tabbar-h: var(--bottom-nav-height);
+  --mobile-tabbar-gap: var(--bottom-nav-gap);
+  --safe-bottom: calc(env(safe-area-inset-bottom) + var(--space-5));
+  --content-bottom-safe: var(--screen-bottom-clearance);
 }
 
 /* Dark mode — follows the OS/browser preference by default, overridable by
@@ -201,7 +201,9 @@
     --text: #f3f5f2;
     --text-2: #cbd5cf;
     --text-muted: #93a49b;
-    --text-faint: #718377;
+    /* Was #718377 (3.97:1 on --surface); this clears 4.5:1 on every dark
+     surface and stays a step dimmer than --text-muted. */
+  --text-faint: #84968b;
     --accent-soft: rgba(154, 230, 0, 0.14);
     --accent-border: rgba(154, 230, 0, 0.35);
   }
@@ -213,7 +215,9 @@
   --text: #f3f5f2;
   --text-2: #cbd5cf;
   --text-muted: #93a49b;
-  --text-faint: #718377;
+  /* Was #718377 (3.97:1 on --surface); this clears 4.5:1 on every dark
+     surface and stays a step dimmer than --text-muted. */
+  --text-faint: #84968b;
   --accent-soft: rgba(154, 230, 0, 0.14);
   --accent-border: rgba(154, 230, 0, 0.35);
 }
@@ -293,10 +297,8 @@
    overscroll-behavior-y stops the bounce itself from happening at all;
    matching background-color on <html> is a defensive fallback for any
    older engine that still lets a sliver of it show through anyway.
-   overscroll-behavior-x does the equivalent job on the horizontal axis — the
-   mobile tabs now have their own left/right swipe gesture (see swipe-nav.tsx),
-   and this is what keeps a swipe at the very edge of the screen from also
-   triggering the browser's own edge-swipe back/forward gesture on top of it. */
+   overscroll-behavior-x does the equivalent job on the horizontal axis, so a
+   sideways swipe never navigates — pages change only from the bottom nav. */
 html {
   background-color: var(--bg);
   overscroll-behavior-y: none;
@@ -462,7 +464,7 @@ body {
   a:not(.no-tap-scale),
   [role="button"]:not(.no-tap-scale) {
     transition-property: transform;
-    transition-duration: var(--duration-instant);
+    transition-duration: var(--duration-fast);
     transition-timing-function: var(--ease-out);
   }
   button:not(:disabled, .no-tap-scale):active,
@@ -551,12 +553,37 @@ body {
    without a specific reason documented next to it.
    ============================================================ */
 
-/* Bright lime rather than the dark-green --accent — --accent reads fine as
-   an outline on white surfaces but is nearly invisible against the dark
-   teal sidebar/hero surfaces, so keyboard focus vanished there entirely. */
+/* Per theme, because no one color clears 3:1 (WCAG 1.4.11) everywhere:
+   lime is 1.5:1 on white, so light mode uses --accent, which clears 3.1:1
+   or better on every light-theme surface including the dark teal sidebar;
+   dark mode keeps lime (10:1+). */
+:root {
+  --focus-ring: var(--accent);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --focus-ring: var(--accent-bright);
+  }
+}
+:root[data-theme="dark"] {
+  --focus-ring: var(--accent-bright);
+}
 :focus-visible {
-  outline: 2px solid var(--accent-bright);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
+}
+
+/* Keeps keyboard focus from scrolling in underneath the fixed bottom nav or
+   the status bar (WCAG 2.4.11). */
+html {
+  scroll-padding-top: calc(env(safe-area-inset-top) + var(--space-4));
+  scroll-padding-bottom: var(--screen-bottom-clearance);
+}
+@media (min-width: 1024px) {
+  html {
+    scroll-padding-top: 0;
+    scroll-padding-bottom: 8rem;
+  }
 }
 
 /* Text fields across the app (search/chat bar, every form input, table

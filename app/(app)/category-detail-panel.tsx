@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { useDialogFocus } from "@/app/(app)/use-dialog-focus";
 import { createPortal } from "react-dom";
 import { upsertBudgetLine } from "@/app/actions";
 import { fetchCategoryHistory } from "@/app/(app)/category-detail-actions";
@@ -29,10 +30,12 @@ function monthShort(month: string) {
 export function CategoryDetailPanel({
   category: c,
   editablePeriodId,
+  plannedLocked = false,
   onClose,
 }: {
   category: CategoryProgress;
   editablePeriodId: string | null;
+  plannedLocked?: boolean;
   onClose: () => void;
 }) {
   const [closing, setClosing] = useState(false);
@@ -47,6 +50,8 @@ export function CategoryDetailPanel({
   }
   const [saving, startSaving] = useTransition();
   const showToast = useToast();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef);
 
   useEffect(() => {
     let cancelled = false;
@@ -106,7 +111,13 @@ export function CategoryDetailPanel({
     : `/transactions?category=${c.id}`;
 
   return createPortal(
-    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={`${c.name} details`}>
+    <div
+      ref={dialogRef}
+      className="fixed inset-0 z-50 outline-none"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${c.name} details`}
+    >
       <div
         className={`absolute inset-0 bg-black/40 ${
           closing ? "animate-modal-backdrop-out" : "animate-modal-backdrop"
@@ -162,7 +173,7 @@ export function CategoryDetailPanel({
             </p>
             <SegmentedProgress pct={pct} overBudget={c.overBudget} className="mt-2" />
 
-            {editablePeriodId && (
+            {editablePeriodId && !plannedLocked && (
               <form
                 onSubmit={(e) => {
                   e.preventDefault();

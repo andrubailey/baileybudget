@@ -121,6 +121,9 @@ export type Category = {
   // Deactivated categories drop out of new-transaction pickers and the
   // Budgets page's default view, but their past data stays intact.
   is_active: boolean;
+  // Tracked but never planned (e.g. Tithe) — no planned amount, and left out
+  // of every "spent vs. budget" total.
+  exclude_from_budget: boolean;
   created_at: string;
 };
 
