@@ -1,0 +1,18 @@
+{
+  "name": "budget-app-qa",
+  "private": true,
+  "type": "module",
+  "description": "Mobile QA tooling for Bailey Budget: seed data, fake Supabase, device matrix, regression tests. Isolated from the app's own package.json on purpose.",
+  "scripts": {
+    "seed": "node seed/generate.mjs",
+    "mock": "node mock-supabase/server.mjs",
+    "up": "node cli.mjs up",
+    "down": "node cli.mjs down",
+    "shot": "node cli.mjs shot",
+    "audit": "node cli.mjs audit",
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}

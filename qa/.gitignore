@@ -1,0 +1,6 @@
+node_modules/
+# Generated seed data (regenerate with `npm run seed`), screenshots, traces, reports.
+.data/
+artifacts/
+test-results/
+playwright-report/
