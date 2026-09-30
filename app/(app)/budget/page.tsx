@@ -43,7 +43,7 @@ export default async function BudgetSummaryPage() {
   const budgetRows = [...budgeted].sort((a, b) => budgetRatio(b) - budgetRatio(a));
 
   return (
-    <div className="mx-auto max-w-md space-y-5">
+    <div className="mx-auto max-w-md space-y-8">
       <div className="card">
         <p className="text-xs font-medium text-text-muted">
           {totalPlanned > 0 ? "Left to spend" : "Spent"} · {period.name}

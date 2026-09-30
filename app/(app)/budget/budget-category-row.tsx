@@ -39,10 +39,14 @@ export function BudgetCategoryRow({
   const [open, setOpen] = useState(false);
   const pct = of > 0 ? Math.min(100, (actual / of) * 100) : actual > 0 ? 100 : 0;
 
+  // Padding goes on whichever element is the list item: when the row is
+  // wrapped in a button, the inner div is its button's only child, so
+  // first:/last: on it would zero the padding on every row.
+  const itemSpacing = "px-3 py-4 first:pt-1 last:pb-1";
   const row = (
     <div
       style={{ animationDelay: `${index * 12}ms` }}
-      className="animate-fade-in-up flex flex-col gap-2.5 px-3 py-4 first:pt-0 last:pb-0"
+      className={`animate-fade-in-up flex flex-col gap-3 ${detail ? "" : itemSpacing}`}
     >
       <div className="flex items-center justify-between gap-3">
         <CategoryChip id={id} name={name} icon={icon} className="min-w-0 flex-1" />
@@ -58,7 +62,7 @@ export function BudgetCategoryRow({
 
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className="block w-full text-left">
+      <button type="button" onClick={() => setOpen(true)} className={`block w-full text-left ${itemSpacing}`}>
         {row}
       </button>
       {open && (
