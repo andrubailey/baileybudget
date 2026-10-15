@@ -49,6 +49,11 @@ select * from (
     ('027_home_value', exists (select 1 from information_schema.columns where table_name='loans' and column_name='estimated_home_value')),
     ('028_home_purchase_date', exists (select 1 from information_schema.columns where table_name='loans' and column_name='purchase_date')),
     ('029_recurring_soft_delete', exists (select 1 from information_schema.columns where table_name='recurring_transactions' and column_name='deleted_at')),
-    ('030_profile_insights_prefs', exists (select 1 from information_schema.columns where table_name='profiles' and column_name='insights_prefs'))
+    ('030_profile_insights_prefs', exists (select 1 from information_schema.columns where table_name='profiles' and column_name='insights_prefs')),
+    ('031_calendar_events (table)', exists (select 1 from information_schema.tables where table_name='calendar_events')),
+    ('032_budget_lock', exists (select 1 from information_schema.columns where table_name='periods' and column_name='budget_lock_snapshot')),
+    ('033_calendar_event_assignee', exists (select 1 from information_schema.columns where table_name='calendar_events' and column_name='assignee')),
+    ('034_budget_controls', exists (select 1 from information_schema.columns where table_name='categories' and column_name='exclude_from_budget')),
+    ('036_unique_period_month', exists (select 1 from pg_indexes where tablename='periods' and indexname='periods_start_date_key'))
 ) as checks(migration, ok)
 order by ok asc, migration asc;

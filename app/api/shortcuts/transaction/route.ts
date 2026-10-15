@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidateHousehold } from "@/lib/cache";
 import { hashToken } from "@/lib/tokens";
+import { ensureMonthPeriod } from "@/lib/periods";
 
 type Body = {
   kind?: string;
@@ -15,9 +16,7 @@ type Body = {
 };
 
 // Finds the period covering `date`, auto-creating the current month's
-// period if none covers it yet — mirrors lib/periods.ts, duplicated here
-// since that helper reads its client from cookies (a browser session),
-// which a Shortcuts request never has.
+// period if none covers it yet (via the same race-safe helper the app uses).
 async function resolvePeriodId(
   supabase: ReturnType<typeof createAdminClient>,
   date: string,
@@ -27,29 +26,13 @@ async function resolvePeriodId(
     .select("id")
     .lte("start_date", date)
     .gte("end_date", date)
-    .maybeSingle();
-  if (covering) return covering.id;
+    .order("created_at")
+    .limit(1);
+  if (covering?.[0]) return covering[0].id;
 
   const today = new Date().toISOString().slice(0, 10);
-  const { data: current } = await supabase
-    .from("periods")
-    .select("id")
-    .lte("start_date", today)
-    .gte("end_date", today)
-    .maybeSingle();
-  if (current) return current.id;
-
-  const now = new Date();
-  const start = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
-  const end = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 0));
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
-  const name = start.toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
-  const { data: created } = await supabase
-    .from("periods")
-    .insert({ name, start_date: iso(start), end_date: iso(end) })
-    .select("id")
-    .single();
-  return created?.id ?? null;
+  const current = await ensureMonthPeriod(today, supabase);
+  return current?.id ?? null;
 }
 
 export async function POST(request: NextRequest) {

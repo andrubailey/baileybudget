@@ -44,6 +44,9 @@ create table if not exists periods (
   budget_lock_snapshot jsonb
 );
 
+-- One row per month; the app's auto-create relies on this to stay idempotent.
+create unique index if not exists periods_start_date_key on periods(start_date);
+
 create table if not exists categories (
   id uuid primary key default gen_random_uuid(),
   name text not null,
@@ -62,6 +65,9 @@ create table if not exists categories (
   -- Budgets page's default view, but their past transactions and planned
   -- amounts stay intact.
   is_active boolean not null default true,
+  -- Tracked but never planned (e.g. Tithe, which follows income) — no
+  -- planned amount, and left out of every "spent vs. budget" total.
+  exclude_from_budget boolean not null default false,
   created_at timestamptz not null default now()
 );
 
