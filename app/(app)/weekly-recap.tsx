@@ -31,7 +31,7 @@ function monthName(d: Date, month: "long" | "short") {
 // A new recap appears every Saturday, covering that Sunday through Saturday.
 // On Saturday itself it's this week's (today inclusive); Sunday through
 // Friday it's still last Saturday's, until the next one replaces it. The
-// alert's dismissal (see weekly-recap-alert.tsx) is keyed by week, so
+// dismissal (see weekly-recap-alert.tsx) is keyed by week, so
 // reviewing one never hides the next. Plain data, not a component — it's
 // fetched once in the shared layout (so the alert can surface app-wide, not
 // just on the Overview page) and handed to the client-side alert as a prop.

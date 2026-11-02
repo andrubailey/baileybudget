@@ -101,7 +101,7 @@ export function BottomNav({
             type="button"
             onClick={notifications.onPress}
             aria-haspopup="dialog"
-            aria-label={notifications.count > 0 ? `Notifications, ${notifications.count} new` : "Notifications"}
+            aria-label={notifications.count > 0 ? `Notifications, ${notifications.count} active` : "Notifications"}
             className="ui-bottom-nav-tab ui-pressable relative"
           >
             <svg

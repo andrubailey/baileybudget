@@ -13,8 +13,8 @@ export default async function SettingsPage() {
 
       <ThemeToggle />
 
-      {/* The recap only ever surfaces itself once, in notifications, and
-          disappears for good once reviewed —
+      {/* The recap only appears in notifications until it's reviewed or
+          cleared —
           `?recap=1` is its own escape hatch for reopening this week's, but
           nothing links to it. This is that link. */}
       <div className="card flex items-center justify-between gap-3">

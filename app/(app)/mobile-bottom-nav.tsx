@@ -19,7 +19,7 @@ export function MobileBottomNav({
   categories: Category[];
 }) {
   const [adding, setAdding] = useState(false);
-  const { unseenCount, open } = useNotifications();
+  const { activeCount, open } = useNotifications();
   return (
     <>
       {/* The sheet opens on its amount field, so bring the numeric keypad
@@ -28,7 +28,7 @@ export function MobileBottomNav({
         onAdd={() => setAdding(true)}
         addDisabled={!periodId}
         addKeyboard="decimal"
-        notifications={{ count: unseenCount, onPress: open }}
+        notifications={{ count: activeCount, onPress: open }}
       />
       {adding && periodId && (
         <MobileAddSheet

@@ -17,23 +17,41 @@ export type NotificationIssue = {
   href: string;
 };
 
-// Same key and "key:count|key:count" format the old top bar's dismiss used,
-// so anything already dismissed there stays seen.
-const SEEN_KEY = "data-quality-banner-dismissed";
+// Kept on this device, like the rest of this panel's state.
+const CLEARED_KEY = "notifications-cleared-v1";
 // Matches .animate-drawer-out (--duration-base) in globals.css.
 const PANEL_EXIT_MS = 200;
 
-function parseSeen(stored: string | null) {
-  const seen = new Map<string, number>();
-  for (const entry of (stored ?? "").split("|")) {
-    const [key, count] = entry.split(":");
-    if (key) seen.set(key, Number(count) || 0);
+type ClearedNotification = {
+  // What the row said when it was cleared.
+  text: string;
+  href: string;
+  clearedAt: string;
+  // The count the notification is cleared up to: anything above it is new
+  // and brings the notification back. Follows the live count down, so
+  // fixing one and then gaining one counts as new.
+  baseline: number;
+};
+type ClearedNotifications = Record<string, ClearedNotification>;
+
+function readCleared(): ClearedNotifications {
+  try {
+    return JSON.parse(localStorage.getItem(CLEARED_KEY) ?? "{}");
+  } catch {
+    return {}; // localStorage unavailable or unreadable
   }
-  return seen;
 }
 
-const NotificationsContext = createContext<{ unseenCount: number; open: () => void }>({
-  unseenCount: 0,
+function writeCleared(cleared: ClearedNotifications) {
+  try {
+    localStorage.setItem(CLEARED_KEY, JSON.stringify(cleared));
+  } catch {
+    // ignore — localStorage unavailable
+  }
+}
+
+const NotificationsContext = createContext<{ activeCount: number; open: () => void }>({
+  activeCount: 0,
   open: () => {},
 });
 
@@ -43,9 +61,10 @@ export function useNotifications() {
 
 // Mounted once in the shared layout: holds everything that needs attention,
 // keeps the offline queue draining, and renders the notifications sidebar.
-// The bell's count is what's new since the sidebar was last opened: a count
-// going up brings it back, one going down doesn't. Offline entries and an
-// unreviewed recap count until they're actually resolved.
+// The bell's count is everything still active: a notification stays until
+// it's cleared here or its underlying issue is fixed, and a cleared one comes
+// back if its count rises. Offline entries can't be cleared; they end when
+// they send.
 export function NotificationsProvider({
   issues,
   recap,
@@ -58,54 +77,95 @@ export function NotificationsProvider({
   const offline = useOfflineQueueSync();
   const weeklyRecap = useWeeklyRecap(recap);
   const panel = useExitingPanel<true>(PANEL_EXIT_MS);
-  const active = issues.filter((i) => i.count > 0);
+  const live = issues.filter((i) => i.count > 0);
+  const liveSignature = live.map((i) => `${i.key}:${i.count}`).join("|");
 
   // Null until read after mount (no localStorage on the server), which also
   // keeps the bell count-free until hydration is done.
-  const [seen, setSeen] = useState<Map<string, number> | null>(null);
+  const [cleared, setCleared] = useState<ClearedNotifications | null>(null);
   useEffect(() => {
-    let stored: string | null = null;
-    try {
-      stored = localStorage.getItem(SEEN_KEY);
-    } catch {
-      // ignore — localStorage unavailable
-    }
     // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing with localStorage, an external system, after mount
-    setSeen(parseSeen(stored));
+    setCleared(readCleared());
   }, []);
 
-  const unseenCount =
-    seen === null
-      ? 0
-      : active.filter((i) => i.count > (seen.get(i.key) ?? 0)).length +
-        (weeklyRecap.ready ? 1 : 0) +
-        (offline.count > 0 ? 1 : 0);
+  function saveCleared(next: ClearedNotifications) {
+    writeCleared(next);
+    setCleared(next);
+  }
 
-  function open() {
-    const signature = active.map((i) => `${i.key}:${i.count}`).join("|");
-    try {
-      localStorage.setItem(SEEN_KEY, signature);
-    } catch {
-      // ignore — localStorage unavailable
+  // Lets a count that dropped and then rose again read as new.
+  useEffect(() => {
+    if (cleared === null) return;
+    const counts = new Map(liveSignature.split("|").map((e) => e.split(":") as [string, string]));
+    let changed = false;
+    const next = { ...cleared };
+    for (const [key, entry] of Object.entries(next)) {
+      const count = Number(counts.get(key) ?? 0);
+      if (count < entry.baseline) {
+        next[key] = { ...entry, baseline: count };
+        changed = true;
+      }
     }
-    setSeen(parseSeen(signature));
-    panel.open(true);
+    if (!changed) return;
+    writeCleared(next);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- only lowers baselines, so this settles after one pass
+    setCleared(next);
+  }, [cleared, liveSignature]);
+
+  const activeIssues = live.filter((i) => i.count > (cleared?.[i.key]?.baseline ?? 0));
+  const activeCount =
+    cleared === null ? 0 : activeIssues.length + (weeklyRecap.ready ? 1 : 0) + (offline.count > 0 ? 1 : 0);
+
+  const clearedRows = Object.entries(cleared ?? {})
+    .filter(([key]) => !activeIssues.some((i) => i.key === key))
+    .map(([key, entry]) => ({ key, ...entry, stillOpen: live.some((i) => i.key === key) }))
+    .sort((a, b) => b.clearedAt.localeCompare(a.clearedAt));
+
+  function clearIssues(toClear: NotificationIssue[]) {
+    const clearedAt = new Date().toISOString();
+    const next = { ...cleared };
+    for (const issue of toClear) {
+      next[issue.key] = {
+        text: `${issue.count} ${issue.label}`,
+        href: issue.href,
+        clearedAt,
+        baseline: issue.count,
+      };
+    }
+    saveCleared(next);
+  }
+
+  function restoreIssue(key: string) {
+    const next = { ...cleared };
+    delete next[key];
+    saveCleared(next);
   }
 
   return (
-    <NotificationsContext.Provider value={{ unseenCount, open }}>
+    <NotificationsContext.Provider value={{ activeCount, open: () => panel.open(true) }}>
       {children}
       {panel.value && (
         <NotificationsPanel
-          issues={active}
+          issues={activeIssues}
+          clearedRows={clearedRows}
           offline={offline}
-          recapReady={weeklyRecap.ready}
+          recap={
+            recap && { label: recap.rangeShort, ready: weeklyRecap.ready, reviewed: weeklyRecap.reviewed }
+          }
           closing={panel.closing}
           onClose={panel.close}
           onOpenRecap={() => {
             panel.close();
             weeklyRecap.openStory();
           }}
+          onClearIssue={(issue) => clearIssues([issue])}
+          onClearRecap={weeklyRecap.clear}
+          onClearAll={() => {
+            clearIssues(activeIssues);
+            if (weeklyRecap.ready) weeklyRecap.clear();
+          }}
+          onRestoreIssue={restoreIssue}
+          onRestoreRecap={weeklyRecap.restore}
         />
       )}
       {weeklyRecap.story}
@@ -120,13 +180,15 @@ const ISSUE_ICONS: Record<string, React.ReactNode> = {
   "low-balance": <path d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a1 1 0 0 0 .86 1.5h18.64a1 1 0 0 0 .86-1.5L13.71 3.86a1 1 0 0 0-1.72 0Z" />,
 };
 
-function RowIcon({ children, tone = "caution" }: { children: React.ReactNode; tone?: "caution" | "accent" }) {
+const ICON_TONES = {
+  caution: "bg-caution-bg text-caution-strong",
+  accent: "bg-accent-soft text-accent",
+  muted: "bg-(--bg-card-subtle) text-(--text-tertiary)",
+};
+
+function RowIcon({ children, tone = "caution" }: { children: React.ReactNode; tone?: keyof typeof ICON_TONES }) {
   return (
-    <span
-      className={`flex size-9 shrink-0 items-center justify-center rounded-(--radius-pill) ${
-        tone === "caution" ? "bg-caution-bg text-caution-strong" : "bg-accent-soft text-accent"
-      }`}
-    >
+    <span className={`flex size-9 shrink-0 items-center justify-center rounded-(--radius-pill) ${ICON_TONES[tone]}`}>
       {children}
     </span>
   );
@@ -151,35 +213,90 @@ function StrokeIcon({ children }: { children: React.ReactNode }) {
 }
 
 const ROW_CLASS =
-  "ui-pressable flex min-h-(--space-8) w-full items-center gap-(--space-3) py-(--space-3) text-left";
+  "ui-pressable flex min-h-(--space-8) min-w-0 flex-1 items-center gap-(--space-3) py-(--space-3) text-left";
 
-function Chevron() {
+// The row's own action, beside the tappable row rather than inside it.
+function RowAction({ label, onPress, children }: { label: string; onPress: () => void; children: string }) {
   return (
-    <span className="ml-auto shrink-0 text-(--text-tertiary)">
-      <StrokeIcon>
-        <path d="m9 6 6 6-6 6" />
-      </StrokeIcon>
-    </span>
+    <button
+      type="button"
+      onClick={onPress}
+      aria-label={label}
+      className="ui-pressable -mr-(--space-2) flex min-h-11 shrink-0 items-center rounded-(--radius-pill) px-(--space-2) text-(length:--text-caption) font-medium text-(--text-secondary)"
+    >
+      {children}
+    </button>
+  );
+}
+
+function clearedOn(iso: string) {
+  return `Cleared ${new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+}
+
+function FilterButton({
+  selected,
+  onPress,
+  children,
+}: {
+  selected: boolean;
+  onPress: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onPress}
+      aria-pressed={selected}
+      className={`ui-pressable min-h-11 rounded-(--radius-pill) text-(length:--text-caption) font-medium ${
+        selected ? "bg-(--bg-card) text-(--text-primary) shadow-card" : "text-(--text-secondary)"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
 function NotificationsPanel({
   issues,
+  clearedRows,
   offline,
-  recapReady,
+  recap,
   closing,
   onClose,
   onOpenRecap,
+  onClearIssue,
+  onClearRecap,
+  onClearAll,
+  onRestoreIssue,
+  onRestoreRecap,
 }: {
   issues: NotificationIssue[];
+  clearedRows: (ClearedNotification & { key: string; stillOpen: boolean })[];
   offline: { count: number; flushing: boolean };
-  recapReady: boolean;
+  recap: { label: string; ready: boolean; reviewed: boolean } | null;
   closing: boolean;
   onClose: () => void;
   onOpenRecap: () => void;
+  onClearIssue: (issue: NotificationIssue) => void;
+  onClearRecap: () => void;
+  onClearAll: () => void;
+  onRestoreIssue: (key: string) => void;
+  onRestoreRecap: () => void;
 }) {
   const closeRef = useRef<HTMLButtonElement>(null);
-  const empty = issues.length === 0 && offline.count === 0 && !recapReady;
+  const [filter, setFilter] = useState<"active" | "cleared">("active");
+  const recapReady = recap?.ready === true;
+  const recapCleared = recap?.reviewed === true;
+  const clearableCount = issues.length + (recapReady ? 1 : 0);
+  const activeTotal = clearableCount + (offline.count > 0 ? 1 : 0);
+  const clearedTotal = clearedRows.length + (recapCleared ? 1 : 0);
+
+  // The row a button sat in disappears when pressed, which would drop focus
+  // out of the dialog and take Escape with it.
+  function act(action: () => void) {
+    action();
+    closeRef.current?.focus({ preventScroll: true });
+  }
 
   // Move focus in, hand it back on close, and lock the page behind.
   useEffect(() => {
@@ -233,10 +350,34 @@ function NotificationsPanel({
           </button>
         </div>
 
+        <div
+          role="group"
+          aria-label="Filter notifications"
+          className="mx-(--space-4) mb-(--space-2) grid shrink-0 grid-cols-2 gap-(--space-1) rounded-(--radius-pill) bg-(--bg-card-subtle) p-(--space-1)"
+        >
+          <FilterButton selected={filter === "active"} onPress={() => setFilter("active")}>
+            Active ({activeTotal})
+          </FilterButton>
+          <FilterButton selected={filter === "cleared"} onPress={() => setFilter("cleared")}>
+            Cleared ({clearedTotal})
+          </FilterButton>
+        </div>
+
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-(--space-4) pb-(--space-4)">
-          {empty ? (
+          {filter === "active" && clearableCount > 1 && (
+            <div className="flex justify-end">
+              <RowAction label="Clear all notifications" onPress={() => act(onClearAll)}>
+                Clear all
+              </RowAction>
+            </div>
+          )}
+          {filter === "active" && activeTotal === 0 && (
             <EmptyState compact icon="check" message="You're all caught up." />
-          ) : (
+          )}
+          {filter === "cleared" && clearedTotal === 0 && (
+            <EmptyState compact icon="check" message="Nothing cleared yet." />
+          )}
+          {filter === "active" && activeTotal > 0 && (
             <ul className="divide-y divide-(--border-subtle)">
               {offline.count > 0 && (
                 <li role="status" className="flex items-center gap-(--space-3) py-(--space-3)">
@@ -257,7 +398,7 @@ function NotificationsPanel({
                 </li>
               )}
               {issues.map((issue) => (
-                <li key={issue.key}>
+                <li key={issue.key} className="flex items-center gap-(--space-2)">
                   <Link href={issue.href} onClick={onClose} className={ROW_CLASS}>
                     <RowIcon>
                       <StrokeIcon>{ISSUE_ICONS[issue.key]}</StrokeIcon>
@@ -265,12 +406,14 @@ function NotificationsPanel({
                     <span className="ui-body min-w-0 font-medium text-(--text-primary)">
                       {issue.count} {issue.label}
                     </span>
-                    <Chevron />
                   </Link>
+                  <RowAction label={`Clear ${issue.count} ${issue.label}`} onPress={() => act(() => onClearIssue(issue))}>
+                    Clear
+                  </RowAction>
                 </li>
               ))}
               {recapReady && (
-                <li>
+                <li className="flex items-center gap-(--space-2)">
                   <button type="button" onClick={onOpenRecap} className={ROW_CLASS}>
                     <RowIcon tone="accent">
                       <SparkleIcon size={18} />
@@ -278,8 +421,50 @@ function NotificationsPanel({
                     <span className="ui-body min-w-0 font-medium text-(--text-primary)">
                       Your weekly recap is ready
                     </span>
-                    <Chevron />
                   </button>
+                  <RowAction label="Clear weekly recap" onPress={() => act(onClearRecap)}>
+                    Clear
+                  </RowAction>
+                </li>
+              )}
+            </ul>
+          )}
+          {filter === "cleared" && clearedTotal > 0 && (
+            <ul className="divide-y divide-(--border-subtle)">
+              {clearedRows.map((row) => (
+                <li key={row.key} className="flex items-center gap-(--space-2)">
+                  <Link href={row.href} onClick={onClose} className={ROW_CLASS}>
+                    <RowIcon tone="muted">
+                      <StrokeIcon>{ISSUE_ICONS[row.key]}</StrokeIcon>
+                    </RowIcon>
+                    <span className="min-w-0">
+                      <span className="ui-body block font-medium text-(--text-secondary)">{row.text}</span>
+                      <span className="ui-caption block">
+                        {clearedOn(row.clearedAt)}
+                        {row.stillOpen ? "" : " · Resolved"}
+                      </span>
+                    </span>
+                  </Link>
+                  {row.stillOpen && (
+                    <RowAction label={`Restore ${row.text}`} onPress={() => act(() => onRestoreIssue(row.key))}>
+                      Restore
+                    </RowAction>
+                  )}
+                </li>
+              ))}
+              {recapCleared && (
+                <li className="flex items-center gap-(--space-2)">
+                  <button type="button" onClick={onOpenRecap} className={ROW_CLASS}>
+                    <RowIcon tone="muted">
+                      <SparkleIcon size={18} />
+                    </RowIcon>
+                    <span className="ui-body min-w-0 font-medium text-(--text-secondary)">
+                      Weekly recap, {recap?.label}
+                    </span>
+                  </button>
+                  <RowAction label="Restore weekly recap" onPress={() => act(onRestoreRecap)}>
+                    Restore
+                  </RowAction>
                 </li>
               )}
             </ul>

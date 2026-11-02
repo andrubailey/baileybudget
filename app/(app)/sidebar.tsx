@@ -286,7 +286,7 @@ export function Sidebar({
           onClick={notifications.open}
           aria-haspopup="dialog"
           aria-label={
-            notifications.unseenCount > 0 ? `Notifications, ${notifications.unseenCount} new` : "Notifications"
+            notifications.activeCount > 0 ? `Notifications, ${notifications.activeCount} active` : "Notifications"
           }
           className="group relative flex size-10 items-center justify-center rounded-full text-hero-text-muted transition-colors hover:bg-hero-bg-2/60 hover:text-hero-text focus-visible:ring-2 focus-visible:ring-accent-bright/60 focus-visible:outline-none"
         >
@@ -305,12 +305,12 @@ export function Sidebar({
               strokeLinejoin="round"
             />
           </svg>
-          {notifications.unseenCount > 0 && (
+          {notifications.activeCount > 0 && (
             <span
               aria-hidden="true"
               className="absolute top-0.5 left-1/2 min-w-4 rounded-full bg-accent-bright px-1 text-center text-[10px] leading-4 font-bold text-hero-bg tabular-nums"
             >
-              {notifications.unseenCount > 9 ? "9+" : notifications.unseenCount}
+              {notifications.activeCount > 9 ? "9+" : notifications.activeCount}
             </span>
           )}
           <DockTooltip label="Notifications" />
