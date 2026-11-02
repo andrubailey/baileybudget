@@ -12,9 +12,7 @@ function greetingForHour(hour: number): string {
 // match) then swaps in the real time-of-day greeting and today's date after
 // mount, once the viewer's own local clock is available — a server-computed
 // value would use the deploy region's clock instead of the person actually
-// looking at it. The date (not a financial-specific line) is deliberate:
-// this page now fronts more than just money — the shared calendar lives
-// here too — so the header shouldn't read as finance-only.
+// looking at it.
 export function GreetingHeader({ firstName }: { firstName: string }) {
   const [greeting, setGreeting] = useState("Welcome back");
   // Non-breaking space so the heading holds its line height before the

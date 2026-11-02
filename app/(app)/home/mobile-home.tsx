@@ -29,7 +29,7 @@ async function viewerTodayIso(): Promise<string> {
 // Mobile Home answers one question: how much do we have to spend? The hero
 // card answers it; "Due this week" and "Today" are the only other things
 // here, and "Today" disappears entirely when nothing needs us. Everything
-// else the desktop dashboard shows (net worth, income, expenses, calendar,
+// else the desktop dashboard shows (net worth, income, expenses,
 // goals, recent transactions) is desktop-only or on its own tab.
 export async function MobileHome({ fallbackName }: { fallbackName: string }) {
   const [plan, names, transactions, splits, accounts, todayIso] = await Promise.all([

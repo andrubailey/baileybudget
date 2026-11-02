@@ -118,23 +118,6 @@ test("a card purchase is never shown as money coming in", async ({ page }) => {
   expect(shown, `"${purchase.description}" ($${purchase.amount} on ${card.name}) is displayed as ${shown}`).not.toMatch(/^\+/);
 });
 
-test("same-day calendar events are listed in time order", async ({ page }) => {
-  const text = await screenText(page, "/");
-  const block = text.slice(text.indexOf("Calendar"));
-  const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
-  const items = [];
-  for (let i = 1; i < lines.length; i++) {
-    const m = lines[i].match(/^(Today|[A-Z][a-z]{2} \d{1,2}, \d{4})(?: · (\d{1,2}):(\d{2}) ([AP]M))?$/);
-    if (m) items.push({ title: lines[i - 1], day: m[1], minutes: m[2] ? ((Number(m[2]) % 12) + (m[4] === "PM" ? 12 : 0)) * 60 + Number(m[3]) : -1 });
-  }
-  const outOfOrder = items.filter((it, i) => i > 0 && items[i - 1].day === it.day && items[i - 1].minutes > it.minutes);
-  expect(outOfOrder.map((o) => `${o.day}: "${o.title}" listed after a later event`), items.map((i) => `${i.day} ${i.minutes} ${i.title}`).join("\n")).toEqual([]);
-});
-
-// DECISION NEEDED before this can be a real test: does a purchase flagged
-// "needs approval" count as spent? Today it does, everywhere — the Budget
-// tab's "Left to spend" includes proposals that haven't happened. Replace
-// fixme with the chosen behavior once decided.
 test("no amount anywhere shows float noise or more than two decimals", async ({ page }) => {
   const bad = [];
   for (const path of ["/", "/budget", "/balances", "/recent", "/spending", "/spending/budget", "/transactions", "/accounts"]) {

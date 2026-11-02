@@ -6,7 +6,6 @@ import { getLoanSummaries } from "@/lib/loans";
 import {
   getAccountsWithBalances,
   getBalanceHistory,
-  getCalendarEvents,
   getCategories,
   getCategoryProgressForRange,
   getObjectives,
@@ -28,7 +27,6 @@ import { DashboardEqualHeightRow } from "@/app/(app)/dashboard-equal-height-row"
 import { AccountsGlanceCard } from "@/app/(app)/accounts-glance-card";
 import { CooliconPaths } from "@/app/(app)/coolicon";
 import { GoalsCard } from "@/app/(app)/goals-card";
-import { TodayCard } from "@/app/(app)/today-card";
 import { MobileHome } from "@/app/(app)/home/mobile-home";
 import type { Metadata } from "next";
 
@@ -87,7 +85,6 @@ export default async function DashboardPage({
     previousSavingsTransfers,
     objectives,
     loans,
-    calendarEvents,
   ] = await Promise.all([
     getCurrentSession(),
     getPeriods(),
@@ -102,7 +99,6 @@ export default async function DashboardPage({
     getSavingsTransferTotal(previousRange.start, previousRange.end),
     getObjectives(),
     getLoanSummaries(),
-    getCalendarEvents(),
   ]);
   const user = session?.user ?? null;
   const profile = user ? await getCurrentUserProfile(user.id) : null;
@@ -208,7 +204,7 @@ export default async function DashboardPage({
     <div className="min-w-0 space-y-6">
       {/* Phones get MobileHome instead of everything else on this page; the
           desktop dashboard's other cards live on their own mobile tabs or
-          stay desktop-only (calendar is reachable at /calendar). */}
+          stay desktop-only. */}
       <div className="hidden lg:flex lg:items-start lg:justify-between lg:gap-4">
         <GreetingHeader firstName={firstName} />
         <div className="flex shrink-0 items-center gap-3">
@@ -327,8 +323,6 @@ export default async function DashboardPage({
               }
             />
           </div>
-
-          <TodayCard events={calendarEvents} />
 
             <div className="hidden min-w-0 lg:block">
               {/* Budget categories + recent transactions, side by side. Budget
