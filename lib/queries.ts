@@ -80,9 +80,22 @@ export async function getDueRecurringRows(periodId: string) {
 // the generateRecurringForPeriod Server Action (which invalidates the
 // snapshot afterward); re-running never double-creates.
 export async function postRecurringForPeriod(periodId: string): Promise<number> {
-  const rows = await getDueRecurringRows(periodId);
-  if (rows.length === 0) return 0;
+  const due = await getDueRecurringRows(periodId);
+  if (due.length === 0) return 0;
   const supabase = await createClient();
+  // The snapshot can lag behind rows written outside the app, so what's due
+  // is re-checked against the live table before anything is posted.
+  const { data: posted } = await supabase
+    .from("transactions")
+    .select("recurring_transaction_id")
+    .eq("period_id", periodId)
+    .in(
+      "recurring_transaction_id",
+      due.map((r) => r.recurring_transaction_id),
+    );
+  const postedIds = new Set((posted ?? []).map((t) => t.recurring_transaction_id));
+  const rows = due.filter((r) => !postedIds.has(r.recurring_transaction_id));
+  if (rows.length === 0) return 0;
   const {
     data: { session },
   } = await supabase.auth.getSession();
