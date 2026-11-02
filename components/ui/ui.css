@@ -144,6 +144,23 @@
     display: none;
   }
 }
+.ui-bottom-nav[data-surface="desktop"] {
+  display: none;
+}
+@media (min-width: 1024px) {
+  .ui-bottom-nav[data-surface="desktop"] {
+    display: flex;
+    justify-content: center;
+    padding-bottom: var(--space-6);
+  }
+  .ui-bottom-nav[data-surface="desktop"] .ui-bottom-nav-tabs {
+    flex: none;
+    grid-auto-columns: calc(var(--bottom-nav-height) + var(--space-1));
+  }
+  .ui-bottom-nav[data-surface="desktop"] .ui-bottom-nav-tab:hover {
+    color: var(--text-primary);
+  }
+}
 .ui-bottom-nav-tabs {
   display: grid;
   flex: 1 1 auto;

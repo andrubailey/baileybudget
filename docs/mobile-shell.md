@@ -100,7 +100,7 @@ when `href` or `onPress` is set.
   or re-run its setup because of it.
 - It stays mounted through its exit animation.
 
-**`<BottomNav onAdd addDisabled? addLabel? addKeyboard? notifications? secondaryAction?>`**
+**`<BottomNav surface? routes? onAdd addDisabled? addLabel? addKeyboard? notifications? extras? secondaryAction?>`**
 - Four icon-only tabs; the active one sits in a gray pill.
 - `notifications: { count, onPress }` adds a bell after the tabs, with a
   badge when `count` is above zero. The app's bell opens the notifications
@@ -112,9 +112,11 @@ when `href` or `onPress` is set.
 - `secondaryAction` is the reserved empty slot for a future voice-entry
   button. Pass a `<button className="ui-bottom-nav-action ui-pressable">`
   to fill it.
-- Hidden on desktop and while the keyboard is open.
-- The app's instance is `app/(app)/mobile-bottom-nav.tsx`, where "+" opens
-  the existing add sheet.
+- Hidden while the keyboard is open.
+- `surface` (`"phone" | "desktop"`) sets which width it shows at. The phone
+  instance is `app/(app)/mobile-bottom-nav.tsx`, where "+" opens the add
+  sheet. The desktop instance is in `app/(app)/sidebar.tsx`: `routes` points
+  it at `DESKTOP_ROUTES` and `extras` adds Search and the account menu.
 
 **`primeKeyboard(inputMode)`**: call it synchronously inside a tap handler
 that opens something whose first field should get the keyboard. iOS only

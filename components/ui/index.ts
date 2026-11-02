@@ -9,5 +9,5 @@ export { Sheet } from "./sheet";
 export { BottomNav } from "./bottom-nav";
 export { useKeyboardInset } from "./use-keyboard-inset";
 export { primeKeyboard } from "./prime-keyboard";
-export { MOBILE_ROUTES, isActiveTab, type MobileRouteKey } from "./routes";
+export { DESKTOP_ROUTES, MOBILE_ROUTES, isActiveTab, type MobileRouteKey } from "./routes";
 export { formatMoney, splitMoney } from "./money";

@@ -61,7 +61,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // against to notice the other person's writes mid-session.
   const freshnessSignature = activitySignature(transactions);
 
-  const navCounts = { "/spending": pendingApprovalCount };
   const notificationIssues: NotificationIssue[] = [
     {
       key: "uncategorized",
@@ -100,7 +99,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <NotificationsProvider issues={notificationIssues} recap={recap}>
         <div className="flex min-h-full flex-1 flex-col lg:flex-row">
           <Sidebar
-            counts={navCounts}
             userEmail={user?.email ?? null}
             displayName={profile?.display_name ?? null}
             avatarUrl={profile?.avatar_url ?? null}

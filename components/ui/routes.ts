@@ -7,6 +7,14 @@ export const MOBILE_ROUTES = [
   { key: "activity", href: "/recent", label: "Activity" },
 ] as const;
 
+// The same four tabs on desktop, opening the full desktop pages.
+export const DESKTOP_ROUTES = [
+  { key: "home", href: "/", label: "Home" },
+  { key: "money", href: "/spending", label: "Money" },
+  { key: "accounts", href: "/accounts", label: "Accounts" },
+  { key: "activity", href: "/transactions", label: "Activity" },
+] as const;
+
 export type MobileRouteKey = (typeof MOBILE_ROUTES)[number]["key"];
 
 // "/" would otherwise match every path via startsWith.

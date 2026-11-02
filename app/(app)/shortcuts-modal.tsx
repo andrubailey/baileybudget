@@ -7,12 +7,9 @@ const GROUPS: { label: string; items: { keys: string[]; description: string }[] 
     label: "Navigate",
     items: [
       { keys: ["⌥", "1"], description: "Overview" },
-      { keys: ["⌥", "2"], description: "Accounts" },
-      { keys: ["⌥", "3"], description: "Spending" },
-      { keys: ["⌥", "4"], description: "Budget" },
-      { keys: ["⌥", "5"], description: "Goals" },
-      { keys: ["⌥", "6"], description: "Reports" },
-      { keys: ["⌥", "7"], description: "Settings" },
+      { keys: ["⌥", "2"], description: "Spending" },
+      { keys: ["⌥", "3"], description: "Accounts" },
+      { keys: ["⌥", "4"], description: "Transactions" },
     ],
   },
   {

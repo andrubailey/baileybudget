@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { MOBILE_ROUTES, isActiveTab, type MobileRouteKey } from "./routes";
+import { DESKTOP_ROUTES, MOBILE_ROUTES, isActiveTab, type MobileRouteKey } from "./routes";
 import { useKeyboardInset } from "./use-keyboard-inset";
 import { primeKeyboard } from "./prime-keyboard";
 
@@ -29,15 +29,21 @@ const ICONS: Record<MobileRouteKey, React.ReactNode> = {
 // opens notifications, and a separate dark pill on the right for the
 // primary "+" action. That dark pill has a second slot, `secondaryAction`,
 // reserved for a future voice-entry button — it renders nothing until one
-// is passed. Hidden on desktop and while the on-screen keyboard is open.
+// is passed. Hidden while the on-screen keyboard is open. Each surface shows
+// only at its own width, so the phone and desktop can use different pages.
 export function BottomNav({
+  surface = "phone",
+  routes = MOBILE_ROUTES,
   onAdd,
   addDisabled = false,
   addLabel = "Add transaction",
   addKeyboard,
   notifications,
+  extras,
   secondaryAction,
 }: {
+  surface?: "phone" | "desktop";
+  routes?: typeof MOBILE_ROUTES | typeof DESKTOP_ROUTES;
   onAdd: () => void;
   addDisabled?: boolean;
   addLabel?: string;
@@ -46,13 +52,15 @@ export function BottomNav({
   addKeyboard?: "decimal" | "numeric" | "text";
   // Adds the bell; `count` shows as a badge when above zero.
   notifications?: { count: number; onPress: () => void };
+  // More cells at the end of the tabs pill; use the ui-bottom-nav-tab class.
+  extras?: React.ReactNode;
   // Future voice entry. Pass a <button className="ui-bottom-nav-action ui-pressable"> to fill it.
   secondaryAction?: React.ReactNode;
 }) {
   const pathname = usePathname();
   const router = useRouter();
   const keyboardOpen = useKeyboardInset() > 0;
-  const activeIndex = MOBILE_ROUTES.findIndex((route) => isActiveTab(route.href, pathname));
+  const activeIndex = routes.findIndex((route) => isActiveTab(route.href, pathname));
 
   // iOS Safari only applies :active (the press feedback) when the page has
   // a touch listener; an empty passive one is enough.
@@ -63,15 +71,21 @@ export function BottomNav({
   }, []);
 
   return (
-    <nav aria-label="Main" className="ui-bottom-nav" data-hidden={keyboardOpen ? "true" : undefined}>
+    <nav
+      aria-label="Main"
+      className="ui-bottom-nav"
+      data-surface={surface}
+      data-hidden={keyboardOpen ? "true" : undefined}
+    >
       <div className="ui-bottom-nav-tabs">
-        {MOBILE_ROUTES.map((route, i) => {
+        {routes.map((route, i) => {
           const active = i === activeIndex;
           return (
             <Link
               key={route.key}
               href={route.href}
               aria-label={route.label}
+              title={route.label}
               aria-current={active ? "page" : undefined}
               // Start fetching on touch-down rather than on release.
               onPointerDown={() => router.prefetch(route.href)}
@@ -101,6 +115,7 @@ export function BottomNav({
             type="button"
             onClick={notifications.onPress}
             aria-haspopup="dialog"
+            title="Notifications"
             aria-label={notifications.count > 0 ? `Notifications, ${notifications.count} active` : "Notifications"}
             className="ui-bottom-nav-tab ui-pressable relative"
           >
@@ -124,6 +139,7 @@ export function BottomNav({
             )}
           </button>
         )}
+        {extras}
       </div>
       <div className="ui-bottom-nav-actions">
         {secondaryAction}
