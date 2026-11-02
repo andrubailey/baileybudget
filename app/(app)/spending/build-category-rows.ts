@@ -22,7 +22,11 @@ export type CategoryRow = {
   // getRolloverAmounts, which already folds this into `planned` above
   // whenever it's on.
   rollover: boolean;
+  // Tracked but never planned (e.g. Tithe) — kept out of budget totals.
+  excludeFromBudget: boolean;
   planned: number;
+  // The part of `planned` carried in from last month.
+  rolloverAmount: number;
   actual: number;
   lastMonth: number;
   monthlyAverage: number;
@@ -101,7 +105,9 @@ export function buildCategoryRows({
       isActive: c.is_active !== false,
       isNeed: c.is_need,
       rollover: c.rollover,
+      excludeFromBudget: c.exclude_from_budget === true,
       planned: c.planned,
+      rolloverAmount: c.rolloverAmount ?? 0,
       actual: c.actual,
       lastMonth: lastMonthByCategory.get(c.id) ?? 0,
       monthlyAverage:

@@ -14,11 +14,11 @@ import {
 
 // A transaction saved with no connection is staged in lib/offline-queue.ts
 // rather than lost — this is the only thing that actually drains that
-// queue and the only visible sign it exists. Mounted once in the shared
-// layout so it's the same banner no matter which screen you're on when the
-// connection comes back, and so a queued entry from one screen still gets
-// flushed even if you've since navigated away from where you added it.
-export function OfflineQueueBanner() {
+// queue. Used once, by NotificationsProvider in the shared layout, so a
+// queued entry from one screen still gets flushed even if you've since
+// navigated away from where you added it; the notifications panel shows the
+// count and state it returns.
+export function useOfflineQueueSync() {
   const router = useRouter();
   // Lazy-initialized (not set from an effect) so a queue left over from
   // before a reload shows up on the very first render instead of a flash of
@@ -63,24 +63,5 @@ export function OfflineQueueBanner() {
     };
   }, [attemptFlush]);
 
-  if (count === 0) return null;
-
-  return (
-    <div
-      role="status"
-      className="sticky top-0 z-30 flex items-center justify-center gap-2 bg-caution-bg px-4 py-2 text-center text-xs font-medium text-caution-strong"
-      style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.5rem)" }}
-    >
-      {flushing ? (
-        <>
-          <span className="size-1.5 animate-pulse rounded-full bg-caution-strong" aria-hidden="true" />
-          Sending {count} queued {count === 1 ? "entry" : "entries"}…
-        </>
-      ) : (
-        <>
-          {count} {count === 1 ? "entry" : "entries"} waiting for a connection — will send automatically.
-        </>
-      )}
-    </div>
-  );
+  return { count, flushing };
 }

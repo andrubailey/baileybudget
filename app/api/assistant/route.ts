@@ -349,9 +349,9 @@ async function runReadTool(
 type WriteToolContext = {
   supabase: Awaited<ReturnType<typeof createClient>>;
   accountList: { id: string; name: string }[];
-  categoryList: { id: string; name: string; kind: string }[];
+  categoryList: { id: string; name: string; kind: string; exclude_from_budget?: boolean }[];
   objectiveList: { id: string; name: string }[];
-  periodList: { id: string; name: string; start_date: string; end_date: string }[];
+  periodList: { id: string; name: string; start_date: string; end_date: string; budget_locked_at: string | null }[];
 };
 
 // Returns null for a tool name that isn't one of the write tools.
@@ -460,6 +460,15 @@ async function runWriteTool(
         return { content: "planned_amount must be a non-negative number.", isError: true };
       }
       const planned_amount = Math.round(rawPlanned * 100) / 100;
+      if (category.exclude_from_budget) {
+        return { content: `"${category.name}" isn't planned in the budget, so it has no planned amount.`, isError: true };
+      }
+      if (period.budget_locked_at) {
+        return {
+          content: `${period.name}'s planned amounts are locked. Tell the user they can override a category from the Budget page.`,
+          isError: true,
+        };
+      }
       const { error } = await supabase
         .from("budget_lines")
         .upsert(
@@ -609,8 +618,8 @@ async function handlePost(request: Request) {
         .from("accounts")
         .select("id, name")
         .eq("is_active", true),
-      supabase.from("categories").select("id, name, kind"),
-      supabase.from("periods").select("id, name, start_date, end_date"),
+      supabase.from("categories").select("*"),
+      supabase.from("periods").select("*"),
       supabase.from("objectives").select("id, name").is("deleted_at", null),
     ]);
 

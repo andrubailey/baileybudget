@@ -6,7 +6,6 @@ import {
   copyBudgetForward,
   deleteBudgetLine,
   lockBudgetForPeriod,
-  unlockBudgetForPeriod,
   updateCategoryActive,
   updateCategorySettings,
   upsertBudgetLine,
@@ -31,6 +30,7 @@ import { ToggleSwitch } from "@/app/(app)/toggle-switch";
 export function BudgetEditor({
   periodId,
   periodName,
+  periodStart,
   previousPeriod,
   income,
   rows,
@@ -43,6 +43,7 @@ export function BudgetEditor({
 }: {
   periodId: string;
   periodName: string;
+  periodStart: string;
   previousPeriod: { id: string; name: string } | null;
   income: number;
   rows: CategoryRow[];
@@ -61,32 +62,35 @@ export function BudgetEditor({
   const [showDeactivated, setShowDeactivated] = useState(false);
   const [showPast, setShowPast] = useState(false);
   const [locking, setLocking] = useState(false);
-  const [locked, setLocked] = useState(budgetLockedAt);
+  // The prop wins once the server has it (including an auto-lock from
+  // another tab or the other person); the local value just covers the gap
+  // between clicking Lock and the refresh landing.
+  const [lockedLocally, setLockedLocally] = useState<string | null>(null);
+  const locked = budgetLockedAt ?? lockedLocally;
+  const lockedAutomatically = budgetLockedAt !== null && !budgetLockedByEmail;
   const showToast = useToast();
 
   const lockedPlannedByCategory = new Map(
     (budgetLockSnapshot ?? []).map((e) => [e.category_id, e.planned_amount]),
   );
+  const autoLockDay = new Date(`${periodStart}T00:00:00Z`);
+  autoLockDay.setUTCDate(autoLockDay.getUTCDate() + 3);
 
-  async function toggleLock() {
+  async function lockNow() {
     setLocking(true);
-    const result = locked ? await unlockBudgetForPeriod(periodId) : await lockBudgetForPeriod(periodId);
+    const result = await lockBudgetForPeriod(periodId);
     setLocking(false);
     if (!result.ok) {
-      showToast(result.error ? `Couldn't save: ${result.error}` : "Couldn't update the lock");
+      showToast(result.error ? `Couldn't save: ${result.error}` : "Couldn't lock the plan");
       return;
     }
-    if (locked) {
-      setLocked(null);
-      showToast(`${periodName}'s planned amounts unlocked`);
-    } else {
-      setLocked(new Date().toISOString());
-      showToast(`${periodName}'s planned amounts locked`);
-    }
+    setLockedLocally(new Date().toISOString());
+    showToast(`${periodName}'s planned amounts locked`);
   }
 
   const planned = (r: CategoryRow) => overrides[r.id] ?? r.planned;
-  const activeRows = rows.filter((r) => r.isActive);
+  const activeRows = rows.filter((r) => r.isActive && !r.excludeFromBudget);
+  const notBudgetedRows = rows.filter((r) => r.isActive && r.excludeFromBudget);
   const inactiveRows = rows.filter((r) => !r.isActive).sort((a, b) => a.name.localeCompare(b.name));
   const totalBudget = activeRows.reduce((s, r) => s + Math.max(0, planned(r)), 0);
   const savings = income - totalBudget;
@@ -104,10 +108,11 @@ export function BudgetEditor({
   async function save(row: CategoryRow, amount: number) {
     if (amount === planned(row)) return;
     setOverrides((o) => ({ ...o, [row.id]: amount }));
+    const options = { override: locked !== null };
     const result =
       amount > 0
-        ? await upsertBudgetLine(row.id, periodId, amount)
-        : await deleteBudgetLine(row.id, periodId);
+        ? await upsertBudgetLine(row.id, periodId, amount, options)
+        : await deleteBudgetLine(row.id, periodId, options);
     if (!result.ok) {
       setOverrides((o) => {
         const next = { ...o };
@@ -151,7 +156,7 @@ export function BudgetEditor({
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3">
           <p className="text-section-label">Budget · {periodName}</p>
           <div className="flex items-center gap-2">
-            {previousPeriod && (
+            {previousPeriod && !locked && (
               <button
                 type="button"
                 onClick={copyFromLastMonth}
@@ -161,18 +166,22 @@ export function BudgetEditor({
                 {copying ? "Copying…" : `Copy from ${previousPeriod.name.split(" ")[0]}`}
               </button>
             )}
-            <button
-              type="button"
-              onClick={toggleLock}
-              disabled={locking}
-              className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50 ${
-                locked
-                  ? "border-border text-text-faint hover:bg-bg hover:text-text"
-                  : "border-border text-text hover:bg-bg"
-              }`}
-            >
-              {locking ? "Saving…" : locked ? "Unlock planned amounts" : "Lock planned amounts"}
-            </button>
+            {locked ? (
+              <span className="flex items-center gap-1.5 rounded-lg bg-bg px-3 py-1.5 text-sm font-medium text-text-muted">
+                <LockIcon />
+                Locked
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={lockNow}
+                disabled={locking}
+                className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-text transition-colors hover:bg-bg disabled:opacity-50"
+              >
+                <LockIcon />
+                {locking ? "Locking…" : "Lock planned amounts"}
+              </button>
+            )}
             <Link
               href="/spending"
               className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-text transition-colors hover:bg-bg"
@@ -182,13 +191,13 @@ export function BudgetEditor({
           </div>
         </div>
 
-        {locked && (
-          <p className="border-b border-border bg-bg px-5 py-2 text-xs text-text-faint">
-            Planned amounts locked {formatDate(locked.slice(0, 10))}
-            {budgetLockedByEmail ? ` by ${budgetLockedByEmail}` : ""} — editing still works, but any change
-            here won&apos;t match what was locked in.
-          </p>
-        )}
+        <p className="border-b border-border bg-bg px-5 py-2 text-xs text-text-faint">
+          {locked
+            ? `Planned amounts locked ${formatDate(locked.slice(0, 10))}${
+                lockedAutomatically ? " automatically" : budgetLockedByEmail ? ` by ${budgetLockedByEmail}` : ""
+              }. To change one, click its amount and override it — the original stays on record.`
+            : `Planned amounts lock automatically on ${formatDate(autoLockDay.toISOString().slice(0, 10))}, or lock them now once you're set.`}
+        </p>
 
         <div className="grid grid-cols-1 gap-6 p-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
           {/* Income − budget = savings */}
@@ -233,6 +242,11 @@ export function BudgetEditor({
                     <BudgetRow
                       row={r}
                       planned={planned(r)}
+                      locked={locked !== null}
+                      // Rollover money isn't in the snapshot, so compare the
+                      // amount without it, or every rollover row would read
+                      // as overridden.
+                      plannedWithoutRollover={overrides[r.id] ?? r.planned - r.rolloverAmount}
                       lockedPlanned={lockedPlannedByCategory.get(r.id)}
                       busy={togglingId === r.id}
                       onSave={(amount) => save(r, amount)}
@@ -241,6 +255,28 @@ export function BudgetEditor({
                   </Fragment>
                 );
               })}
+              {notBudgetedRows.length > 0 && (
+                <>
+                  <GroupLabel>Not budgeted</GroupLabel>
+                  {notBudgetedRows.map((r) => (
+                    <li key={r.id} className="group flex items-center gap-3 border-b border-border px-4 py-3 last:border-b-0">
+                      <CategoryIconPicker categoryId={r.id} categoryName={r.name} icon={r.icon} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-text">{r.name}</p>
+                        <p className="text-metadata">Tracked, not planned</p>
+                      </div>
+                      <CategorySettingsMenu
+                        row={r}
+                        busy={togglingId === r.id}
+                        onDeactivate={() => toggleActive(r, false)}
+                      />
+                      <span className="tabular shrink-0 px-2 text-sm text-text-muted">
+                        {formatMoney(r.actual)} spent
+                      </span>
+                    </li>
+                  ))}
+                </>
+              )}
             </ul>
             <div className="border-t border-border px-4 py-3">
               <button
@@ -331,6 +367,8 @@ function GroupLabel({ children }: { children: React.ReactNode }) {
 function BudgetRow({
   row,
   planned,
+  locked,
+  plannedWithoutRollover,
   lockedPlanned,
   busy,
   onSave,
@@ -338,6 +376,8 @@ function BudgetRow({
 }: {
   row: CategoryRow;
   planned: number;
+  locked: boolean;
+  plannedWithoutRollover: number;
   // The amount this category was locked at, if the period is locked and
   // this category had a budget line at the time — undefined either way.
   lockedPlanned?: number;
@@ -382,13 +422,18 @@ function BudgetRow({
           )}
         </p>
         <p className="text-metadata">{formatMoney(row.lastMonth)} last month</p>
-        {lockedPlanned !== undefined && lockedPlanned !== planned && (
-          <p className="text-metadata text-caution">Locked at {formatMoney(lockedPlanned)}</p>
+        {locked && Math.abs((lockedPlanned ?? 0) - plannedWithoutRollover) >= 0.005 && (
+          <p className="text-metadata text-caution">
+            Overridden ·{" "}
+            {lockedPlanned ? `${formatMoney(lockedPlanned)} when locked` : "not planned when locked"}
+          </p>
         )}
       </div>
       <CategorySettingsMenu row={row} busy={busy} onDeactivate={onDeactivate} />
       {editing ? (
-        <label className="relative w-28 shrink-0">
+        <label className="relative flex shrink-0 items-center gap-2">
+          {locked && <span className="text-xs font-medium text-caution">Override</span>}
+          <span className="relative w-28">
           <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-sm text-text-faint">$</span>
           <input
             autoFocus
@@ -405,23 +450,24 @@ function BudgetRow({
             }}
             className="tabular w-full rounded-lg border border-border bg-bg py-1.5 pr-2 pl-6 text-right text-sm text-text outline-none focus:border-accent"
           />
+          </span>
         </label>
       ) : planned > 0 ? (
         <button
           type="button"
           onClick={() => setEditing(true)}
+          aria-label={locked ? `Override planned amount for ${row.name}` : undefined}
+          title={locked ? "Locked — click to override" : undefined}
           className="flex shrink-0 items-center gap-3 rounded-lg px-2 py-1 text-sm font-semibold text-text transition-colors hover:bg-bg"
         >
           <span className="tabular">{formatMoney(planned)}</span>
-          <span className="text-text-muted">
-            <PencilIcon />
-          </span>
+          <span className="text-text-muted">{locked ? <LockIcon /> : <PencilIcon />}</span>
         </button>
       ) : (
         <button
           type="button"
           onClick={() => setEditing(true)}
-          aria-label={`Set budget for ${row.name}`}
+          aria-label={locked ? `Override planned amount for ${row.name}` : `Set budget for ${row.name}`}
           className="flex size-8 shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-bg hover:text-text"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -449,6 +495,7 @@ function CategorySettingsMenu({
   const [open, setOpen] = useState(false);
   const [isNeed, setIsNeed] = useState(row.isNeed);
   const [rollover, setRollover] = useState(row.rollover);
+  const [planInBudget, setPlanInBudget] = useState(!row.excludeFromBudget);
   const [saving, setSaving] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const showToast = useToast();
@@ -462,16 +509,22 @@ function CategorySettingsMenu({
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, [open]);
 
-  async function save(next: { is_need: boolean; rollover: boolean }) {
-    const previous = { is_need: isNeed, rollover };
+  async function save(next: { is_need: boolean; rollover: boolean; plan_in_budget: boolean }) {
+    const previous = { is_need: isNeed, rollover, plan_in_budget: planInBudget };
     setIsNeed(next.is_need);
     setRollover(next.rollover);
+    setPlanInBudget(next.plan_in_budget);
     setSaving(true);
-    const result = await updateCategorySettings(row.id, next);
+    const result = await updateCategorySettings(row.id, {
+      is_need: next.is_need,
+      rollover: next.rollover,
+      ...(next.plan_in_budget !== previous.plan_in_budget ? { exclude_from_budget: !next.plan_in_budget } : {}),
+    });
     setSaving(false);
     if (!result.ok) {
       setIsNeed(previous.is_need);
       setRollover(previous.rollover);
+      setPlanInBudget(previous.plan_in_budget);
       showToast(result.error ? `Couldn't save: ${result.error}` : "Couldn't save category settings");
     }
   }
@@ -503,7 +556,7 @@ function CategorySettingsMenu({
             Need (not a want)
             <ToggleSwitch
               checked={isNeed}
-              onChange={(v) => save({ is_need: v, rollover })}
+              onChange={(v) => save({ is_need: v, rollover, plan_in_budget: planInBudget })}
               disabled={saving}
               label="Need (not a want)"
             />
@@ -512,9 +565,18 @@ function CategorySettingsMenu({
             Roll over unspent
             <ToggleSwitch
               checked={rollover}
-              onChange={(v) => save({ is_need: isNeed, rollover: v })}
+              onChange={(v) => save({ is_need: isNeed, rollover: v, plan_in_budget: planInBudget })}
               disabled={saving}
               label="Roll over unspent"
+            />
+          </label>
+          <label className="flex items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-sm text-text">
+            Plan in budget
+            <ToggleSwitch
+              checked={planInBudget}
+              onChange={(v) => save({ is_need: isNeed, rollover, plan_in_budget: v })}
+              disabled={saving}
+              label="Plan in budget"
             />
           </label>
           <div className="mt-1 border-t border-border pt-1">
@@ -533,6 +595,15 @@ function CategorySettingsMenu({
         </div>
       )}
     </div>
+  );
+}
+
+function LockIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="5" y="11" width="14" height="10" rx="2" stroke="currentColor" strokeWidth={2} />
+      <path d="M8 11V8a4 4 0 0 1 8 0v3" stroke="currentColor" strokeWidth={2} strokeLinecap="round" />
+    </svg>
   );
 }
 

@@ -140,6 +140,28 @@ function ensureWorktree(sha) {
   return dir;
 }
 
+// `--ref=working`: a copy of the main checkout as it is right now, including
+// the other agents' uncommitted work — to look at in-flight changes against
+// the seed without touching their tree or their dev server.
+function snapshotWorkingTree() {
+  const dir = resolve(WORKTREES, "working");
+  mkdirSync(dir, { recursive: true });
+  execFileSync("rsync", [
+    "-a", "--delete",
+    "--exclude=/.git", "--exclude=/node_modules", "--exclude=/.next", "--exclude=/.env*", "--exclude=/qa", "--exclude=/.qa-lock-hash",
+    `${APP_ROOT}/`, `${dir}/`,
+  ]);
+  const nodeModules = resolve(dir, "node_modules");
+  const lockMarker = resolve(dir, ".qa-lock-hash");
+  const wantHash = sha256(readFileSync(resolve(APP_ROOT, "package-lock.json"), "utf8"));
+  if (!existsSync(nodeModules) || (existsSync(lockMarker) ? readFileSync(lockMarker, "utf8") : null) !== wantHash) {
+    rmSync(nodeModules, { recursive: true, force: true });
+    execFileSync("cp", ["-Rc", resolve(APP_ROOT, "node_modules"), nodeModules]);
+    writeFileSync(lockMarker, wantHash);
+  }
+  return dir;
+}
+
 function writeEnv(dir, mockUrl) {
   const env = [
     "# Written by qa/lib/stack.mjs — points ONLY at the QA mock Supabase.",
@@ -198,7 +220,8 @@ export function authStatePath(port, userKey) {
 }
 
 export async function up({ ref = "HEAD", port = 3200, seed = ".data/seed.json", prod = false, lan = false } = {}) {
-  const sha = git("rev-parse", "--verify", `${ref}^{commit}`);
+  const working = ref === "working";
+  const sha = working ? `working@${git("rev-parse", "HEAD").slice(0, 10)}` : git("rev-parse", "--verify", `${ref}^{commit}`);
   const seedPath = ensureSeed(seed);
   const host = lan ? lanIp() : "127.0.0.1";
   if (lan && !host) throw new Error("--lan: couldn't find a LAN IPv4 address on this machine.");
@@ -208,7 +231,7 @@ export async function up({ ref = "HEAD", port = 3200, seed = ".data/seed.json", 
   await down({ quiet: true });
 
   console.log(`→ worktree for ${ref} (${sha.slice(0, 10)})`);
-  const dir = ensureWorktree(sha);
+  const dir = working ? snapshotWorkingTree() : ensureWorktree(sha);
   writeEnv(dir, mockUrl);
 
   for (const p of [MOCK_PORT, port]) {

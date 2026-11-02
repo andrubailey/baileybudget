@@ -22,6 +22,10 @@ async function updateSessionInner(request: NextRequest) {
   if (request.nextUrl.pathname.startsWith("/api/shortcuts/")) {
     return NextResponse.next({ request });
   }
+  // The component showcase uses no data; the page itself 404s outside dev.
+  if (process.env.NODE_ENV === "development" && request.nextUrl.pathname === "/ui-kit") {
+    return NextResponse.next({ request });
+  }
 
   let supabaseResponse = NextResponse.next({ request });
 

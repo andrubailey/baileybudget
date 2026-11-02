@@ -285,6 +285,7 @@ export default async function SpendingPage({
           <BreakdownPanel
             periodId={period.id}
             periodName={period.name}
+            plannedLocked={period.budget_locked_at !== null}
             rows={rows}
             incomeRows={incomeRows}
             totalIncome={summary.income}

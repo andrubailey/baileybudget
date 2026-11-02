@@ -70,20 +70,6 @@
   }
 }
 
-/* Banners that sit above <Screen> clear the status bar themselves, but
-   only while they actually render something. */
-.ui-shell-top {
-  padding-top: env(safe-area-inset-top);
-}
-.ui-shell-top:empty {
-  display: none;
-}
-@media (min-width: 1024px) {
-  .ui-shell-top {
-    padding-top: 0;
-  }
-}
-
 /* ---------- Press feedback ---------- */
 /* Fires on press (:active), not release. iOS only applies :active when
    the page has a touch listener — <BottomNav> registers one. */
@@ -161,7 +147,8 @@
 .ui-bottom-nav-tabs {
   display: grid;
   flex: 1 1 auto;
-  grid-template-columns: repeat(4, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   height: var(--bottom-nav-height);
   padding: var(--space-1);
   border: 1px solid var(--border-subtle);
@@ -181,6 +168,22 @@
 .ui-bottom-nav-tab[aria-current="page"] {
   background: var(--bg-card-subtle);
   color: var(--text-primary);
+}
+.ui-bottom-nav-badge {
+  position: absolute;
+  top: var(--space-1);
+  left: 50%;
+  min-width: var(--space-4);
+  padding-inline: var(--space-1);
+  border: 2px solid var(--bg-card);
+  border-radius: var(--radius-pill);
+  background: var(--text-primary);
+  color: var(--bg-card);
+  font-size: var(--text-label);
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 .ui-bottom-nav-actions {
   display: flex;

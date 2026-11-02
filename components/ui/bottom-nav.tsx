@@ -25,7 +25,8 @@ const ICONS: Record<MobileRouteKey, React.ReactNode> = {
 };
 
 // Fixed mobile nav: the four destinations as icons in one pill (active
-// one sits in a gray pill), and a separate dark pill on the right for the
+// one sits in a gray pill), an optional bell at the end of that pill that
+// opens notifications, and a separate dark pill on the right for the
 // primary "+" action. That dark pill has a second slot, `secondaryAction`,
 // reserved for a future voice-entry button — it renders nothing until one
 // is passed. Hidden on desktop and while the on-screen keyboard is open.
@@ -34,6 +35,7 @@ export function BottomNav({
   addDisabled = false,
   addLabel = "Add transaction",
   addKeyboard,
+  notifications,
   secondaryAction,
 }: {
   onAdd: () => void;
@@ -42,6 +44,8 @@ export function BottomNav({
   // Raise this keyboard during the "+" tap (see primeKeyboard), for an add
   // flow that opens straight into a field.
   addKeyboard?: "decimal" | "numeric" | "text";
+  // Adds the bell; `count` shows as a badge when above zero.
+  notifications?: { count: number; onPress: () => void };
   // Future voice entry. Pass a <button className="ui-bottom-nav-action ui-pressable"> to fill it.
   secondaryAction?: React.ReactNode;
 }) {
@@ -92,6 +96,34 @@ export function BottomNav({
             </Link>
           );
         })}
+        {notifications && (
+          <button
+            type="button"
+            onClick={notifications.onPress}
+            aria-haspopup="dialog"
+            aria-label={notifications.count > 0 ? `Notifications, ${notifications.count} new` : "Notifications"}
+            className="ui-bottom-nav-tab ui-pressable relative"
+          >
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M6 9a6 6 0 1 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9ZM10 20.5a2.2 2.2 0 0 0 4 0" />
+            </svg>
+            {notifications.count > 0 && (
+              <span aria-hidden="true" className="ui-bottom-nav-badge">
+                {notifications.count > 9 ? "9+" : notifications.count}
+              </span>
+            )}
+          </button>
+        )}
       </div>
       <div className="ui-bottom-nav-actions">
         {secondaryAction}

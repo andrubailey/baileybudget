@@ -19,11 +19,13 @@ export function CategoryDetailDrawer({
   row,
   periodId,
   periodName,
+  plannedLocked = false,
   onClose,
 }: {
   row: CategoryRow;
   periodId: string;
   periodName: string;
+  plannedLocked?: boolean;
   accounts: Account[];
   categories: Category[];
   onClose: () => void;
@@ -124,17 +126,26 @@ export function CategoryDetailDrawer({
                 </label>
               ) : (
                 <p className="text-sm font-medium text-text">
-                  {row.planned > 0 ? (
+                  {row.excludeFromBudget ? (
+                    <span className="text-text-muted">Not budgeted · tracked only</span>
+                  ) : row.planned > 0 ? (
                     <>
                       Budget <span className="tabular">{formatMoney(row.planned)}</span>
                       <span className="text-text-faint"> · {periodName}</span>
                     </>
+                  ) : plannedLocked ? (
+                    <span className="text-text-muted">Not planned this month</span>
                   ) : (
                     "Set a budget"
                   )}
                 </p>
               )}
-              {!editingBudget && (
+              {plannedLocked && !row.excludeFromBudget && (
+                <Link href="/spending/budget" className="shrink-0 text-xs font-medium text-accent hover:underline">
+                  Locked · override
+                </Link>
+              )}
+              {!editingBudget && !plannedLocked && !row.excludeFromBudget && (
                 <button
                   type="button"
                   onClick={() => setEditingBudget(true)}

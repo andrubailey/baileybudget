@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { RecapStory, type RecapData } from "@/app/(app)/weekly-recap-card";
-import { SparkleIcon } from "@/app/(app)/sparkle-icon";
 
 const DISMISS_KEY = "weekly-recap-dismissed";
 // Fired once a reviewed recap's story has finished closing, so every
@@ -18,14 +17,12 @@ function readReviewedWeekKey(): string | null {
   }
 }
 
-// Whether this week's recap belongs in the top bar right now: only on
+// Whether this week's recap belongs in notifications right now: only on
 // Saturday (the viewer's own clock), and only until it's been reviewed.
 // `?recap=1` skips the Saturday check, for previewing a recap on any day.
-// Shared by WeeklyRecapAlert (its own trigger) and DataQualityBanner (whether
-// the surrounding bar should render at all). Returns null until the
-// localStorage/clock read resolves after mount, so both agree on the
-// server-rendered (nothing-shown) state and never flash a reviewed recap.
-export function useShowRecap(weekKey: string | undefined): boolean | null {
+// Returns null until the localStorage/clock read resolves after mount, so
+// the server-rendered (nothing-shown) state never flashes a reviewed recap.
+function useShowRecap(weekKey: string | undefined): boolean | null {
   const [state, setState] = useState<{ reviewedWeekKey: string | null; saturday: boolean; forced: boolean } | null>(
     null,
   );
@@ -65,15 +62,14 @@ function markRecapReviewed(weekKey: string) {
   }
 }
 
-// The weekly recap's entry in the top alerts bar — a plain link-styled
-// button among the data-quality ones, not its own card. Renders the story
-// itself when tapped; DataQualityBanner decides whether the bar as a whole
-// should be visible via the same useShowRecap check.
-export function WeeklyRecapAlert({ data }: { data: RecapData | null }) {
+// The weekly recap as a notification: `ready` says whether it should be
+// listed, `openStory` plays it, and `story` is the element to render (outside
+// the notifications panel, so it outlives the panel closing).
+export function useWeeklyRecap(data: RecapData | null) {
   const [open, setOpen] = useState(false);
   const show = useShowRecap(data?.weekKey);
-  // Set when the story confirms a review; the bar is only told once the
-  // story has finished its exit animation, so it isn't yanked away mid-close.
+  // Set when the story confirms a review; notifications are only told once
+  // the story has finished its exit animation.
   const reviewedPending = useRef(false);
 
   useEffect(() => {
@@ -85,40 +81,23 @@ export function WeeklyRecapAlert({ data }: { data: RecapData | null }) {
     }
   }, []);
 
-  // An open story stays mounted even once it's been marked reviewed.
-  if (!data || (show !== true && !open)) return null;
+  const story =
+    data && open ? (
+      <RecapStory
+        data={data}
+        onClose={() => {
+          setOpen(false);
+          if (reviewedPending.current) {
+            reviewedPending.current = false;
+            window.dispatchEvent(new Event(REVIEWED_EVENT));
+          }
+        }}
+        onReview={() => {
+          markRecapReviewed(data.weekKey);
+          reviewedPending.current = true;
+        }}
+      />
+    ) : null;
 
-  return (
-    <>
-      {show === true && (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          // Explicit color rather than inheriting the bar's text color — an
-          // FYI nudge, not a caution, whether or not it's sharing the bar
-          // with actual data-quality issues (see DataQualityBanner).
-          className="flex shrink-0 items-center gap-1.5 text-accent underline-offset-2 hover:underline"
-        >
-          <SparkleIcon size={14} />
-          Your weekly recap is ready
-        </button>
-      )}
-      {open && (
-        <RecapStory
-          data={data}
-          onClose={() => {
-            setOpen(false);
-            if (reviewedPending.current) {
-              reviewedPending.current = false;
-              window.dispatchEvent(new Event(REVIEWED_EVENT));
-            }
-          }}
-          onReview={() => {
-            markRecapReviewed(data.weekKey);
-            reviewedPending.current = true;
-          }}
-        />
-      )}
-    </>
-  );
+  return { ready: !!data && show === true, openStory: () => setOpen(true), story };
 }

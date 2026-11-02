@@ -77,6 +77,7 @@ export default async function SpendingBudgetPage() {
       <BudgetEditor
         periodId={period.id}
         periodName={period.name}
+        periodStart={period.start_date}
         previousPeriod={previous ? { id: previous.id, name: previous.name } : null}
         income={summary.income}
         rows={rows}

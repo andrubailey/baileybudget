@@ -37,6 +37,7 @@ function LeftOrOver({ amount }: { amount: number }) {
 export function BreakdownPanel({
   periodId,
   periodName,
+  plannedLocked = false,
   rows,
   incomeRows,
   totalIncome,
@@ -45,6 +46,7 @@ export function BreakdownPanel({
 }: {
   periodId: string;
   periodName: string;
+  plannedLocked?: boolean;
   rows: CategoryRow[];
   incomeRows: IncomeRow[];
   totalIncome: number;
@@ -79,8 +81,11 @@ export function BreakdownPanel({
         .sort((a, b) => b.actual - a.actual || a.name.localeCompare(b.name)),
     [rows],
   );
-  const totalSpent = budgetRows.reduce((s, r) => s + r.actual, 0);
-  const totalPlanned = rows.reduce((s, r) => s + Math.max(0, r.planned), 0);
+  // Categories kept out of the budget (Tithe) still list below, but don't
+  // count toward "spent vs. budget".
+  const totalSpent = budgetRows.filter((r) => !r.excludeFromBudget).reduce((s, r) => s + r.actual, 0);
+  const notBudgetedSpent = budgetRows.filter((r) => r.excludeFromBudget).reduce((s, r) => s + r.actual, 0);
+  const totalPlanned = rows.filter((r) => !r.excludeFromBudget).reduce((s, r) => s + Math.max(0, r.planned), 0);
   const totalPct = totalPlanned > 0 ? (totalSpent / totalPlanned) * 100 : 0;
 
   const openRow = openId ? (rows.find((r) => r.id === openId) ?? null) : null;
@@ -128,6 +133,12 @@ export function BreakdownPanel({
                 <p className="tabular pb-1 text-sm text-text-muted">of {formatMoney(totalPlanned)} budget</p>
               )}
             </div>
+            {notBudgetedSpent > 0 && (
+              <p className="tabular mt-1 text-xs text-text-faint">
+                Plus {formatMoney(notBudgetedSpent)} not budgeted (
+                {budgetRows.filter((r) => r.excludeFromBudget && r.actual > 0).map((r) => r.name).join(", ")})
+              </p>
+            )}
             {totalPlanned > 0 && (
               <>
                 <SegmentedProgress pct={totalPct} overBudget={totalSpent > totalPlanned} className="mt-3" />
@@ -179,12 +190,12 @@ export function BreakdownPanel({
                         />
                         <div className="mt-1.5 flex items-center justify-between text-xs">
                           <span className="tabular text-text-faint">
-                            {hasBudget ? `${Math.round(pct)}% used` : "No budget set"}
+                            {hasBudget ? `${Math.round(pct)}% used` : r.excludeFromBudget ? "Tracked, not planned" : "No budget set"}
                           </span>
                           {hasBudget ? (
                             <LeftOrOver amount={r.planned - r.actual} />
                           ) : (
-                            <span className="text-text-faint">Unbudgeted</span>
+                            <span className="text-text-faint">{r.excludeFromBudget ? "Not budgeted" : "Unbudgeted"}</span>
                           )}
                         </div>
                       </button>
@@ -246,6 +257,7 @@ export function BreakdownPanel({
           row={openRow}
           periodId={periodId}
           periodName={periodName}
+          plannedLocked={plannedLocked}
           accounts={accounts}
           categories={categories}
           onClose={() => setOpenId(null)}

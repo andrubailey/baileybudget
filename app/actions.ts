@@ -259,16 +259,38 @@ export async function quickCreateCategory(
   return { ok: true, id: data.id };
 }
 
+// Reads the live rows rather than the cached snapshot: a lock or a category
+// setting from moments ago must be enforced even if the cache hasn't caught up.
+async function plannedAmountBlocker(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  category_id: string,
+  period_id: string,
+  override: boolean,
+): Promise<string | null> {
+  const [{ data: period }, { data: category }] = await Promise.all([
+    supabase.from("periods").select("budget_locked_at").eq("id", period_id).single(),
+    supabase.from("categories").select("name, exclude_from_budget").eq("id", category_id).single(),
+  ]);
+  if (category?.exclude_from_budget) return `${category.name} isn't planned in the budget.`;
+  if (period?.budget_locked_at && !override) {
+    return "This month's planned amounts are locked. Override it from the Budget page.";
+  }
+  return null;
+}
+
 export async function upsertBudgetLine(
   category_id: string,
   period_id: string,
   planned_amount: number,
+  options: { override?: boolean } = {},
 ): Promise<{ ok: boolean; error?: string }> {
   if (!Number.isFinite(planned_amount) || planned_amount < 0) {
     return { ok: false, error: "Enter a valid, non-negative amount." };
   }
   const roundedAmount = Math.round(planned_amount * 100) / 100;
   const supabase = await createClient();
+  const blocker = await plannedAmountBlocker(supabase, category_id, period_id, options.override ?? false);
+  if (blocker) return { ok: false, error: blocker };
   const { error } = await supabase
     .from("budget_lines")
     .upsert(
@@ -289,8 +311,11 @@ export async function upsertBudgetLine(
 export async function deleteBudgetLine(
   category_id: string,
   period_id: string,
+  options: { override?: boolean } = {},
 ): Promise<{ ok: boolean; error?: string }> {
   const supabase = await createClient();
+  const blocker = await plannedAmountBlocker(supabase, category_id, period_id, options.override ?? false);
+  if (blocker) return { ok: false, error: blocker };
   const { error } = await supabase
     .from("budget_lines")
     .delete()
@@ -303,45 +328,75 @@ export async function deleteBudgetLine(
   return { ok: true };
 }
 
-// Freezes every expense category's current planned_amount for a period into
-// a snapshot, so "what did we say we'd spend" survives later edits to
-// budget_lines. Deliberately doesn't block those later edits — the point is
-// a comparison to look back at, not an approval gate.
-export async function lockBudgetForPeriod(periodId: string): Promise<{ ok: boolean; error?: string }> {
-  const supabase = await createClient();
-  const [{ data: lines, error: linesError }, { data: { user } }] = await Promise.all([
+// Freezes a period's planned amounts into a snapshot and blocks further edits
+// (only an explicit per-category override gets through, and the snapshot
+// keeps the original to compare against). There's no unlock: the lock only
+// applies once, so re-locking can never overwrite the original snapshot.
+async function lockPeriod(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  periodId: string,
+  lockedBy: string | null,
+): Promise<{ ok: boolean; locked: boolean; error?: string }> {
+  const [{ data: lines, error: linesError }, { data: excluded, error: excludedError }] = await Promise.all([
     supabase.from("budget_lines").select("category_id, planned_amount").eq("period_id", periodId),
-    supabase.auth.getUser(),
+    supabase.from("categories").select("id").eq("exclude_from_budget", true),
   ]);
-  if (linesError) return { ok: false, error: linesError.message };
+  if (linesError) return { ok: false, locked: false, error: linesError.message };
+  // Before migration 034 the column doesn't exist; nothing is excluded then.
+  const excludedIds = new Set(excludedError ? [] : (excluded ?? []).map((c) => c.id));
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("periods")
     .update({
       budget_locked_at: new Date().toISOString(),
-      budget_locked_by_email: user?.email ?? null,
-      budget_lock_snapshot: lines ?? [],
+      budget_locked_by_email: lockedBy,
+      budget_lock_snapshot: (lines ?? []).filter((l) => !excludedIds.has(l.category_id)),
     })
-    .eq("id", periodId);
-  if (error) return { ok: false, error: error.message };
+    .eq("id", periodId)
+    .is("budget_locked_at", null)
+    .select("id");
+  if (error) return { ok: false, locked: false, error: error.message };
+  return { ok: true, locked: (data ?? []).length > 0 };
+}
 
+export async function lockBudgetForPeriod(periodId: string): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const result = await lockPeriod(supabase, periodId, user?.email ?? null);
+  if (!result.ok) return { ok: false, error: result.error };
   revalidateHousehold(["periods"]);
   return { ok: true };
 }
 
-// Clears the "locked" flag but keeps the snapshot itself, so an accidental
-// unlock (or "actually let me re-lock this after one more change") doesn't
-// throw away the comparison point — re-locking just overwrites it.
-export async function unlockBudgetForPeriod(periodId: string): Promise<{ ok: boolean; error?: string }> {
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("periods")
-    .update({ budget_locked_at: null, budget_locked_by_email: null })
-    .eq("id", periodId);
-  if (error) return { ok: false, error: error.message };
+const AUTO_LOCK_AFTER_DAYS = 3;
 
-  revalidateHousehold(["periods"]);
-  return { ok: true };
+// Called from the browser with the viewer's local date, so "after the 3rd"
+// means the 3rd where you live rather than in UTC. The server only trusts
+// that date when it's within a day of its own.
+export async function autoLockCurrentPeriod(localToday: string): Promise<{ ok: boolean; locked?: boolean }> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(localToday)) return { ok: false };
+  const skewDays = Math.abs(Date.parse(`${localToday}T00:00:00Z`) - Date.now()) / 86_400_000;
+  if (!(skewDays <= 1.5)) return { ok: false };
+
+  const supabase = await createClient();
+  const { data: period } = await supabase
+    .from("periods")
+    .select("id, start_date, budget_locked_at")
+    .lte("start_date", localToday)
+    .gte("end_date", localToday)
+    .limit(1)
+    .maybeSingle();
+  if (!period || period.budget_locked_at) return { ok: true, locked: false };
+
+  const lockFrom = new Date(`${period.start_date}T00:00:00Z`);
+  lockFrom.setUTCDate(lockFrom.getUTCDate() + AUTO_LOCK_AFTER_DAYS);
+  if (localToday < lockFrom.toISOString().slice(0, 10)) return { ok: true, locked: false };
+
+  const result = await lockPeriod(supabase, period.id, null);
+  if (result.locked) revalidateHousehold(["periods"]);
+  return { ok: result.ok, locked: result.locked };
 }
 
 // Deactivating (rather than deleting) a category keeps its past
@@ -370,15 +425,36 @@ export async function updateCategoryActive(
 // exist before (direct database edit only).
 export async function updateCategorySettings(
   id: string,
-  data: { is_need: boolean; rollover: boolean },
+  data: { is_need: boolean; rollover: boolean; exclude_from_budget?: boolean },
 ): Promise<{ ok: boolean; error?: string }> {
   const supabase = await createClient();
   const { error } = await supabase
     .from("categories")
-    .update({ is_need: data.is_need, rollover: data.rollover })
+    .update({
+      is_need: data.is_need,
+      rollover: data.rollover,
+      ...(data.exclude_from_budget === undefined ? {} : { exclude_from_budget: data.exclude_from_budget }),
+    })
     .eq("id", id);
   if (error) {
     return { ok: false, error: error.message };
+  }
+  // Taking a category out of the budget clears its planned amount for this
+  // month and later; past months keep what was planned at the time.
+  if (data.exclude_from_budget) {
+    const today = new Date().toISOString().slice(0, 10);
+    const { data: periods } = await supabase.from("periods").select("id").gte("end_date", today);
+    const ids = (periods ?? []).map((p) => p.id);
+    if (ids.length > 0) {
+      const { error: clearError } = await supabase
+        .from("budget_lines")
+        .delete()
+        .eq("category_id", id)
+        .in("period_id", ids);
+      if (clearError) return { ok: false, error: clearError.message };
+    }
+    revalidateHousehold(["categories", "budget_lines"]);
+    return { ok: true };
   }
   revalidateHousehold(["categories"]);
   return { ok: true };
@@ -949,6 +1025,15 @@ export async function copyBudgetForward(
 ): Promise<{ ok: boolean; copied?: number; error?: string }> {
   const supabase = await createClient();
 
+  const [{ data: target }, { data: excluded, error: excludedError }] = await Promise.all([
+    supabase.from("periods").select("budget_locked_at").eq("id", toPeriodId).single(),
+    supabase.from("categories").select("id").eq("exclude_from_budget", true),
+  ]);
+  if (target?.budget_locked_at) {
+    return { ok: false, error: "This month's planned amounts are locked." };
+  }
+  const excludedIds = new Set(excludedError ? [] : (excluded ?? []).map((c) => c.id));
+
   const [
     { data: fromLines, error: fromError },
     { data: existingLines, error: existingError },
@@ -967,7 +1052,7 @@ export async function copyBudgetForward(
 
   const alreadySet = new Set((existingLines ?? []).map((l) => l.category_id));
   const rows = (fromLines ?? [])
-    .filter((l) => !alreadySet.has(l.category_id))
+    .filter((l) => !alreadySet.has(l.category_id) && !excludedIds.has(l.category_id))
     .map((l) => ({
       category_id: l.category_id,
       period_id: toPeriodId,

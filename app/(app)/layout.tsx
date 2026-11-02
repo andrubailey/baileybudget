@@ -1,16 +1,15 @@
 import { Sidebar } from "./sidebar";
-import { MobileNav } from "./mobile-nav";
-import { MobileTabBar } from "./mobile-tab-bar";
+import { MobileBottomNav } from "./mobile-bottom-nav";
+import { Screen } from "@/components/ui";
 import { ToastProvider } from "./toast";
 import { GlobalShortcuts } from "./global-shortcuts";
 import { ShortcutsModal } from "./shortcuts-modal";
 import { PullToRefresh } from "./pull-to-refresh";
-import { SwipeNav } from "./swipe-nav";
 import { PageTransition } from "./page-transition";
 import { FinancesChat } from "./finances-chat";
-import { DataQualityBanner, type DataQualityIssue } from "./data-quality-banner";
-import { OfflineQueueBanner } from "./offline-queue-banner";
+import { NotificationsProvider, type NotificationIssue } from "./notifications";
 import { FreshnessWatcher } from "./freshness-watcher";
+import { BudgetAutoLock } from "./budget-auto-lock";
 import { getWeeklyRecapData } from "./weekly-recap";
 import { getTable } from "@/lib/snapshot";
 import { activitySignature } from "@/lib/activity-signature";
@@ -22,11 +21,10 @@ import { headers } from "next/headers";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   // getCurrentSession() reads the JWT straight from cookies with no network
   // call — the real validation already happened in proxy.ts's middleware.
-  // The nav badge count and the data-quality banner below both come from the
+  // The nav badge count and the notifications below both come from the
   // cached transactions snapshot, so this layout costs no database round
-  // trip at all. The recap lives in the same banner now (see
-  // DataQualityBanner/WeeklyRecapAlert) so it's fetched here too — it needs
-  // to be visible app-wide, not just on the Overview page.
+  // trip at all. The recap is one of those notifications, so it's fetched
+  // here too — it needs to be reachable app-wide, not just on the Overview.
   // periods/accounts/categories feed the mobile tab bar's Add sheet, which
   // opens in place as a modal — all read from the same cached snapshot.
   const [session, transactions, splits, recap, billsDueSoon, lowBalanceCount, periods, accounts, categories] =
@@ -64,7 +62,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const freshnessSignature = activitySignature(transactions);
 
   const navCounts = { "/spending": pendingApprovalCount };
-  const dataQualityIssues: DataQualityIssue[] = [
+  const notificationIssues: NotificationIssue[] = [
     {
       key: "uncategorized",
       count: uncategorizedCount,
@@ -96,38 +94,34 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <GlobalShortcuts />
       <ShortcutsModal />
       <FreshnessWatcher initialSignature={freshnessSignature} />
-      <div className="flex min-h-full flex-1 flex-col lg:flex-row">
-        <MobileNav />
-        <Sidebar
-          counts={navCounts}
-          userEmail={user?.email ?? null}
-          displayName={profile?.display_name ?? null}
-          avatarUrl={profile?.avatar_url ?? null}
-        />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <OfflineQueueBanner />
-          <DataQualityBanner issues={dataQualityIssues} recap={recap} />
-          {/* pt-[...]/pb-[...] carry the phone's safe-area clearance (see
-              --content-bottom-safe in globals.css) below the floating tab
-              bar; lg: overrides both back to a flat value once that bar and
-              the safe area stop existing on desktop. */}
-          <main className="w-full min-w-0 flex-1 px-4 pt-[calc(env(safe-area-inset-top)+2.5rem)] pb-[var(--content-bottom-safe)] sm:px-6 lg:px-8 lg:pt-16 lg:pb-32">
-            <PullToRefresh>
-              <SwipeNav>
+      {addPeriod && !addPeriod.budget_locked_at && (
+        <BudgetAutoLock periodStart={addPeriod.start_date} periodEnd={addPeriod.end_date} />
+      )}
+      <NotificationsProvider issues={notificationIssues} recap={recap}>
+        <div className="flex min-h-full flex-1 flex-col lg:flex-row">
+          <Sidebar
+            counts={navCounts}
+            userEmail={user?.email ?? null}
+            displayName={profile?.display_name ?? null}
+            avatarUrl={profile?.avatar_url ?? null}
+          />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <Screen>
+              <PullToRefresh>
                 <div className="mx-auto max-w-[1600px]">
                   <PageTransition enabled={!isPhone}>{children}</PageTransition>
                 </div>
-              </SwipeNav>
-            </PullToRefresh>
-          </main>
+              </PullToRefresh>
+            </Screen>
+          </div>
+          <FinancesChat />
+          <MobileBottomNav
+            periodId={addPeriod?.id ?? null}
+            accounts={accounts.filter((a) => a.is_active)}
+            categories={categories}
+          />
         </div>
-        <FinancesChat />
-        <MobileTabBar
-          periodId={addPeriod?.id ?? null}
-          accounts={accounts.filter((a) => a.is_active)}
-          categories={categories}
-        />
-      </div>
+      </NotificationsProvider>
     </ToastProvider>
   );
 }

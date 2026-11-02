@@ -9,6 +9,7 @@ import { ProfileModal } from "@/app/(app)/profile-modal";
 import { NewTransactionButton } from "@/app/(app)/new-transaction-button";
 import { getAvatarColors } from "@/lib/avatar-colors";
 import { CooliconPaths } from "@/app/(app)/coolicon";
+import { useNotifications } from "@/app/(app)/notifications";
 
 function initialsFor(name: string) {
   return name.trim()[0]?.toUpperCase() ?? "?";
@@ -76,42 +77,6 @@ const DIGIT_CODES = [
   "Digit7",
 ];
 
-// Mobile is scoped to five jobs — a glance at the headline numbers, view
-// the budget, add a transaction, check balances, see recent activity — not
-// a subset of PRIMARY_LINKS. Everything else (the full Transactions table,
-// Spending breakdown, Recurring, Reports, Goals, Settings) stays
-// desktop-only, reachable by direct link if truly needed but not part of
-// the mobile chrome. MobileTabBar renders these four plus MOBILE_ADD_LINK
-// as five flat tabs in a row, Add on the far right.
-export const MOBILE_LINKS = [
-  {
-    href: "/",
-    label: "Overview",
-    icon: <CooliconPaths name="Custom_Dashboard" />,
-  },
-  {
-    href: "/budget",
-    label: "Budget",
-    icon: <CooliconPaths name="Chart_Pie" />,
-  },
-  {
-    href: "/balances",
-    label: "Accounts",
-    icon: <CooliconPaths name="Credit_Card_01" />,
-  },
-  {
-    href: "/recent",
-    label: "Recent",
-    icon: <CooliconPaths name="File_Document" />,
-  },
-];
-
-export const MOBILE_ADD_LINK = {
-  href: "/add",
-  label: "Add",
-  icon: <CooliconPaths name="Add_Plus_Circle" />,
-};
-
 // Label that fades in above a dock button on hover/keyboard focus — the dock
 // is icons only, so this is how you tell what each one is.
 function DockTooltip({ label, hint }: { label: string; hint?: string }) {
@@ -125,7 +90,7 @@ function DockTooltip({ label, hint }: { label: string; hint?: string }) {
 
 // Desktop navigation: a floating, app-like dock pinned to the bottom center
 // of the screen instead of a full-height left sidebar, so every page gets
-// the whole width. Mobile keeps its own bottom tab bar (MobileTabBar); this
+// the whole width. Mobile keeps its own bottom nav (components/ui BottomNav); this
 // is lg+ only. Still named Sidebar since layout.tsx and the shared link
 // lists above are wired through this file.
 export function Sidebar({
@@ -143,6 +108,7 @@ export function Sidebar({
   const router = useRouter();
   const [profileOpen, setProfileOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const notifications = useNotifications();
   const menuRef = useRef<HTMLDivElement>(null);
   // Defaults to the ⌘ glyph (matches the server-rendered HTML) and switches
   // to "Ctrl K" after mount on non-Mac platforms, to avoid a hydration
@@ -313,6 +279,41 @@ export function Sidebar({
             />
           </svg>
           <DockTooltip label="Search" hint={isMac ? "⌘K" : "Ctrl K"} />
+        </button>
+
+        <button
+          type="button"
+          onClick={notifications.open}
+          aria-haspopup="dialog"
+          aria-label={
+            notifications.unseenCount > 0 ? `Notifications, ${notifications.unseenCount} new` : "Notifications"
+          }
+          className="group relative flex size-10 items-center justify-center rounded-full text-hero-text-muted transition-colors hover:bg-hero-bg-2/60 hover:text-hero-text focus-visible:ring-2 focus-visible:ring-accent-bright/60 focus-visible:outline-none"
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path
+              d="M6 9a6 6 0 1 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9ZM10 20.5a2.2 2.2 0 0 0 4 0"
+              stroke="currentColor"
+              strokeWidth={1.6}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          {notifications.unseenCount > 0 && (
+            <span
+              aria-hidden="true"
+              className="absolute top-0.5 left-1/2 min-w-4 rounded-full bg-accent-bright px-1 text-center text-[10px] leading-4 font-bold text-hero-bg tabular-nums"
+            >
+              {notifications.unseenCount > 9 ? "9+" : notifications.unseenCount}
+            </span>
+          )}
+          <DockTooltip label="Notifications" />
         </button>
 
         <div className="flex items-center px-1">

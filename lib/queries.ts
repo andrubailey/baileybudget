@@ -372,6 +372,8 @@ export async function getPeriodSummary(
 
 export type CategoryProgress = Category & {
   planned: number;
+  // The part of `planned` carried in from last month (rollover categories).
+  rolloverAmount?: number;
   actual: number;
   remaining: number;
   overBudget: boolean;
@@ -461,13 +463,14 @@ export async function getCategoryProgress(
     return {
       ...c,
       planned,
+      rolloverAmount: rolloverByCategory.get(c.id) ?? 0,
       actual,
       remaining: planned - actual,
       // Also flags spending with no plan behind it at all (planned = 0) —
       // unbudgeted spend is exactly as "over" as blowing past a real plan,
       // not exempt from the warning just because there was nothing to
       // compare it to.
-      overBudget: actual > planned,
+      overBudget: !c.exclude_from_budget && actual > planned,
       transactions: transactionsByCategory.get(c.id) ?? [],
     };
   });
@@ -702,7 +705,7 @@ export async function getCategoryProgressForRange(
       // unbudgeted spend is exactly as "over" as blowing past a real plan,
       // not exempt from the warning just because there was nothing to
       // compare it to.
-      overBudget: actual > planned,
+      overBudget: !c.exclude_from_budget && actual > planned,
       transactions: transactionsByCategory.get(c.id) ?? [],
     };
   });
@@ -1804,7 +1807,7 @@ function daysUntilNextOccurrence(dayOfMonth: number, today: Date): number {
 }
 
 // Count of active expense bills posting within the next `days` days, for the
-// data-quality banner's "bills due soon" line — a forward-looking nudge
+// notifications' "bills due soon" line — a forward-looking nudge
 // distinct from the Recurring page's own Upcoming/Posted badge, which only
 // answers "has this posted yet this period," not "how soon."
 export async function getBillsDueSoonCount(days = 5): Promise<number> {
